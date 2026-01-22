@@ -1,0 +1,26 @@
+.venv/
+venv/
+
+# Python junk
+__pycache__/
+*.so
+*.egg-info/
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+
+# Logs / HPC
+*.log
+spebt/recon/slurm_logs/
+**/slurm_logs/
+
+# Outputs (common heavy artifacts)
+
+*.pth
+*.h5
+*.hdf5
+*.ckpt
+
+# If you generate huge data folders, add them explicitly here
+# /vscratch outputs shouldn’t be committed anyway
