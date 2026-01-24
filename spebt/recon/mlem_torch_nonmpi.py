@@ -24,7 +24,7 @@ if __name__ == "__main__":
     SFOV = IMG_DIM * IMG_DIM
     SPROJ = 3360
     
-    N_ITERATIONS = 300
+    N_ITERATIONS = 150
     CONVERGENCE_TOLERANCE = 1e-4
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

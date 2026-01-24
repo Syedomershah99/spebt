@@ -4,7 +4,7 @@ import os
 
 # --- 1. Configuration ---
 base_dir = "/vscratch/grp-rutaoyao/Omer/spebt/data/sai_10mm"
-npz_file_path = "/vscratch/grp-rutaoyao/Omer/spebt/recon/recon_deblur_rl.npy"
+npz_file_path = "/vscratch/grp-rutaoyao/Omer/spebt/data/sai_10mm/recon_mlem_torch_derenzo_filtered.npz"
 output_dir = "/vscratch/grp-rutaoyao/Omer/spebt/plots/sai_10mm"
 os.makedirs(output_dir, exist_ok=True)
 print(f"Will save output images to: {output_dir}")

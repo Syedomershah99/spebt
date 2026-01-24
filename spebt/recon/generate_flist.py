@@ -5,9 +5,9 @@ if __name__ == "__main__":
     topdir = "/vscratch/grp-rutaoyao/Omer/spebt/data/sai_10mm"
     
     layout_idxs = [0,1]
-    pose_idxs = np.arange(4)
+    pose_idxs = np.arange(8)
     fnames = [
-        f"position_{layout:03d}_ppdfs_t4_{pose:02d}.hdf5" 
+        f"position_{layout:03d}_ppdfs_t8_{pose:02d}.hdf5" 
         for layout in layout_idxs 
         for pose in pose_idxs
         ]

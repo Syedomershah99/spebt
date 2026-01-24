@@ -127,8 +127,6 @@
 
 #     print(f"--- Finished ASCI histogram generation for layout index: {layout_idx} ---")
 
-# arg analyze t4
-
 #!/usr/bin/env python3
 import torch
 import h5py
@@ -156,8 +154,10 @@ def get_col_idx(header, name: str):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("layout_idx", type=int, help="layout index (e.g., 0)")
-    ap.add_argument("--t4", action="store_true",
-                    help="aggregate across 4 T4 pose files (_t4_00..03)")
+    ap.add_argument("--t8", action="store_true",
+                    help="aggregate across 8 T8 pose files (_t8_00..07)")
+    ap.add_argument("--pose", type=int, default=None,
+                    help="If set (0..7), analyze only that single T8 pose file")
     ap.add_argument("--n-bins", type=int, default=360)
     ap.add_argument("--fwhm-min", type=float, default=0.0)
     ap.add_argument("--fwhm-max", type=float, default=9.0)
@@ -181,12 +181,16 @@ def main():
     n_pix = IMG_NX * IMG_NY
 
     # Decide which “system matrices” to aggregate
-    if not args.t4:
-        pose_tags = [None]   # base only
+    if not args.t8:
+        pose_tags = [None]   # base only (single file)
     else:
-        pose_tags = [0, 1, 2, 3]  # T4 poses
+        if args.pose is not None:
+            if not (0 <= args.pose <= 7):
+                raise ValueError("--pose must be 0..7")
+            pose_tags = [args.pose]
+        else:
+            pose_tags = list(range(8))  # T8 poses
 
-    # This will hold the final aggregated histogram
     asci_histogram_total = torch.zeros((n_pix, n_bins), dtype=torch.int32)
 
     total_valid_beams_used = 0
@@ -198,9 +202,9 @@ def main():
             masks_file = os.path.join(input_dir, f"beams_masks_configuration_{layout_idx:02d}.hdf5")
             pose_label = "base"
         else:
-            props_file = os.path.join(input_dir, f"beams_properties_configuration_{layout_idx:02d}_t4_{pose:02d}.hdf5")
-            masks_file = os.path.join(input_dir, f"beams_masks_configuration_{layout_idx:02d}_t4_{pose:02d}.hdf5")
-            pose_label = f"t4_{pose:02d}"
+            props_file = os.path.join(input_dir, f"beams_properties_configuration_{layout_idx:02d}_t8_{pose:02d}.hdf5")
+            masks_file = os.path.join(input_dir, f"beams_masks_configuration_{layout_idx:02d}_t8_{pose:02d}.hdf5")
+            pose_label = f"t8_{pose:02d}"
 
         if not os.path.exists(props_file) or not os.path.exists(masks_file):
             print(f"[WARN] Missing files for {pose_label}.")
@@ -217,9 +221,6 @@ def main():
         beams_masks = load_beam_masks(masks_file)
 
         # ---- Find relevant columns robustly via header ----
-        # Your code assumed:
-        #   col3 = angle(rad), col4 = FWHM(mm), col7 = (some sensitivity)
-        # Here we use names if present, else fallback to your indices.
         try:
             angle_col = get_col_idx(header, "angle (rad)")
         except Exception:
@@ -230,21 +231,21 @@ def main():
         except Exception:
             fwhm_col = 4  # fallback
 
-        # Sensitivity column name varies; try common ones then fallback to 7
         sens_col = None
-        for cand in ["absolute sensitivity", "absolute sensitivity (a.u.)", "absolute_sensitivity",
-                     "relative sensitivity", "relative_sensitivity", "sensitivity"]:
+        for cand in [
+            "absolute sensitivity", "absolute sensitivity (a.u.)", "absolute_sensitivity",
+            "relative sensitivity", "relative_sensitivity", "sensitivity"
+        ]:
             if cand in header:
                 sens_col = get_col_idx(header, cand)
                 break
         if sens_col is None:
-            sens_col = 7  # fallback to your original index
+            sens_col = 7  # fallback
 
         # ---- Digitize angles into bins ----
         digitized_angles = torch.bucketize(
             layout_beams_properties[:, angle_col], angular_bin_boundaries, right=False
         )
-        # store bin index (0..n_bins-1) as last column
         layout_beams_properties = torch.cat(
             (layout_beams_properties, (digitized_angles - 1).unsqueeze(1).float()),
             dim=1,
@@ -261,7 +262,7 @@ def main():
 
         print(f"  Beams after angle+FWHM filtering: {props_f.shape[0]}")
 
-        # ---- Optional sensitivity threshold (keep your original behavior) ----
+        # ---- Optional sensitivity threshold (same behavior as your current code) ----
         if props_f.shape[0] > 0:
             beams_sensitivity_max = props_f[:, sens_col].max()
             props_f = props_f[props_f[:, sens_col] > beams_sensitivity_max * 0.01]
@@ -273,9 +274,8 @@ def main():
         # ---- Accumulate histogram for this pose ----
         asci_histogram_pose = torch.zeros((n_pix, n_bins), dtype=torch.int32)
 
-        # IMPORTANT assumption (same as your current code):
-        #   props_f columns [1]=detector_idx, [2]=beam_idx
-        # If your header has names, you can switch to lookup like above.
+        # Assumption same as your original code:
+        # props_f columns [1]=detector_idx, [2]=beam_idx
         det_col = 1
         beam_col = 2
 
@@ -289,7 +289,6 @@ def main():
             if detector_idx < 0 or detector_idx >= beams_masks.shape[0]:
                 continue
 
-            # This is exactly your original logic:
             asci_histogram_pose[beams_masks[detector_idx] == beam_idx, angle_bin_idx] += 1
 
         asci_histogram_total += asci_histogram_pose
@@ -301,8 +300,8 @@ def main():
         sys.exit(1)
 
     # ---- Save output ----
-    if args.t4:
-        out_name = f"asci_histogram_{layout_idx:02d}_t4_agg.hdf5"
+    if args.t8:
+        out_name = f"asci_histogram_{layout_idx:02d}_t8_agg.hdf5"
     else:
         out_name = f"asci_histogram_{layout_idx:02d}.hdf5"
 
@@ -314,7 +313,7 @@ def main():
     with h5py.File(out_path, "w") as f:
         f.create_dataset("asci_histogram", data=asci_histogram_total.numpy())
         f.attrs["layout_idx"] = int(layout_idx)
-        f.attrs["t4_aggregated"] = int(args.t4)
+        f.attrs["t8_aggregated"] = int(args.t8)
         f.attrs["n_bins"] = int(n_bins)
         f.attrs["fwhm_min_mm"] = float(FWHM_MIN_MM)
         f.attrs["fwhm_max_mm"] = float(FWHM_MAX_MM)

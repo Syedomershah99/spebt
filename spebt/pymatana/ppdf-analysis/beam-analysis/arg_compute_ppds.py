@@ -20,7 +20,8 @@ from beam_property_extract import (
 )
 # ---------------------------------------------------------------------
 
-T4_TAGS = ["t4_00", "t4_01", "t4_02", "t4_03"]
+# T8 poses produced by arg_ppdf_t8.py (position_XXX_ppdfs_t8_00..07.hdf5)
+T8_TAGS = [f"t8_{i:02d}" for i in range(8)]
 
 # ------------------------- helpers -----------------------------------
 @torch.no_grad()
@@ -31,14 +32,22 @@ def _beam_axis_sampling_line_batch(
     length_mm: float = 64.0,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Sampling line *along* the beam axis (radial)."""
-    n_beams = beam_centers.shape[0]
-    axis = torch.atan2(beam_centers[:, 1] - detector_center[1],
-                       beam_centers[:, 0] - detector_center[0])
+    axis = torch.atan2(
+        beam_centers[:, 1] - detector_center[1],
+        beam_centers[:, 0] - detector_center[0],
+    )
     kx, ky = torch.cos(axis), torch.sin(axis)
-    dist = torch.linspace(-length_mm/2, length_mm/2, n_samples, dtype=torch.float32, device=beam_centers.device)
-    pts  = torch.stack((kx, ky), dim=1).unsqueeze(1).expand(-1, n_samples, -1) \
-           * dist.view(1, n_samples, 1) + beam_centers.unsqueeze(1).expand(-1, n_samples, -1)
+    dist = torch.linspace(
+        -length_mm / 2, length_mm / 2, n_samples,
+        dtype=torch.float32, device=beam_centers.device
+    )
+    pts = (
+        torch.stack((kx, ky), dim=1).unsqueeze(1).expand(-1, n_samples, -1)
+        * dist.view(1, n_samples, 1)
+        + beam_centers.unsqueeze(1).expand(-1, n_samples, -1)
+    )
     return pts, dist
+
 
 @torch.no_grad()
 def _get_beam_width_radial(
@@ -54,9 +63,11 @@ def _get_beam_width_radial(
         detector_center, beams_centers, n_samples=line_n_samples, length_mm=64.0
     )
     n_beams = beams_centers.shape[0]
+
     beams_data_2d_batch = (
         ppdf_2d.view(-1).unsqueeze(0).expand(n_beams, -1).clone().masked_fill_(~beams_masks, 0)
     ).view(n_beams, int(fov_dict["n pixels"][0]), int(fov_dict["n pixels"][1]))
+
     sampled = beam_samples_on_points_batch(beams_data_2d_batch, pts_batch, fov_dict)
     fwhm, x_bounds = full_width_half_maximum_1d_batch(
         dist.view(1, -1).expand(n_beams, -1), sampled
@@ -80,34 +91,47 @@ def compute_ppds_for_layout(
     # --- load meta and geometry --------------------------------------
     layouts_data, layouts_uid = load_scanner_layouts(scanner_layouts_dir, scanner_layouts_filename)
 
-    # SAI-10mm FOV (matches your 200x200, 0.05 mm/px runs)
-    fov = fov_tensor_dict(n_pixels=(200, 200), mm_per_pixel=(0.05, 0.05), center_coordinates=(0.0, 0.0))
+    # IMPORTANT:
+    # For PPDS we treat every PPDF file as already computed on the same canonical 200x200 grid.
+    # So we use the canonical FOV definition here (center at 0,0).
+    fov = fov_tensor_dict(
+        n_pixels=(200, 200),
+        mm_per_pixel=(0.05, 0.05),
+        center_coordinates=(0.0, 0.0)
+    )
 
     _, det_units = load_scanner_layout_geometries(layout_idx, layouts_data)
     n_det = int(det_units.shape[0])
     det_centers = det_units.mean(dim=1)
 
-    fov_corners = (torch.tensor([[-1,-1],[1,-1],[1,1],[-1,1]], dtype=torch.float32) * fov["size in mm"] * 0.5)
+    fov_corners = (
+        torch.tensor([[-1,-1],[1,-1],[1,1],[-1,1]], dtype=torch.float32)
+        * fov["size in mm"] * 0.5
+    )
     hull_points_batch = torch.cat(
         (fov_corners.unsqueeze(0).expand(n_det, -1, -1), det_centers.unsqueeze(1)),
         dim=1
     )
     hull_points_batch = sort_points_for_hull_batch_2d(hull_points_batch)
 
-    # outputs (same as original)
+    # outputs
     PPDS = torch.zeros(int(fov["n pixels"][0]), int(fov["n pixels"][1]), dtype=torch.float32)
     SENS = torch.zeros_like(PPDS)
     V_i  = torch.zeros(n_det, dtype=torch.float32)
 
-    # --- ONLY CHANGE: loop over your 4 T4 PPDF files ------------------
-    for tag in T4_TAGS:
-        ppdf_h5 = f"position_{layout_idx:03d}_ppdfs_{tag}.hdf5"
+    fov_xy = pixels_coordinates(fov)  # fixed for canonical grid
+
+    # --- loop over 8 T8 PPDF pose files -------------------------------
+    for tag in T8_TAGS:
+        # Your filenames are: position_XXX_ppdfs_t8_YY.hdf5
+        pose = int(tag.split("_")[1])
+        ppdf_h5 = f"position_{layout_idx:03d}_ppdfs_t8_{pose:02d}.hdf5"
         ppdf_path = os.path.join(ppdfs_dir, ppdf_h5)
         if not os.path.exists(ppdf_path):
             raise FileNotFoundError(f"Missing PPDF file: {ppdf_path}")
 
         print(f"[LOAD] {ppdf_path}")
-        ppdfs = load_ppdfs_data_from_hdf5(ppdfs_dir, ppdf_h5, fov)  # (n_crystals, npx, npy)
+        ppdfs = load_ppdfs_data_from_hdf5(ppdfs_dir, ppdf_h5, fov)  # expects canonical grid
 
         for i in range(n_det):
             ppdf2d = ppdfs[i].view(int(fov["n pixels"][0]), int(fov["n pixels"][1]))
@@ -125,9 +149,8 @@ def compute_ppds_for_layout(
                 continue
 
             # masks & centers
-            fov_xy   = pixels_coordinates(fov)
             fov_rads = pixels_to_detector_unit_rads(fov_xy, center)
-            masks    = get_beams_masks(fov_rads, bounds)           # (n_beams, n_pixels)
+            masks    = get_beams_masks(fov_rads, bounds)  # (n_beams, n_pixels)
             centers  = get_beams_weighted_center(masks, fov_xy, ppdf2d)
 
             # tangential width (perpendicular)
@@ -149,24 +172,22 @@ def compute_ppds_for_layout(
             if Vi <= eps:
                 continue
 
-            # keep same V_i dataset; across T4 it's a summary (not used in PPDS math)
             V_i[i] += Vi
-
             PPDS += ppdf2d / Vi
 
     # ---- save --------------------------------------------------------
-    out_h5 = os.path.join(out_dir, f"ppds_layout_{layout_idx:03d}.hdf5")
+    out_h5 = os.path.join(out_dir, f"ppds_layout_{layout_idx:03d}_t8.hdf5")
     with h5py.File(out_h5, "w") as f:
         f.create_dataset("PPDS", data=PPDS.numpy())
         f.create_dataset("SENS", data=SENS.numpy())
         f.create_dataset("V_i",  data=V_i.numpy())
-        f["PPDS"].attrs["definition"] = "T4 aggregated: sum_{p in t4} sum_i PPDF_{p,i} / V_{p,i}"
-        f["SENS"].attrs["definition"] = "T4 aggregated conventional sensitivity: sum_{p in t4} sum_i PPDF_{p,i}"
+        f["PPDS"].attrs["definition"] = "T8 aggregated: sum_{p in t8} sum_i PPDF_{p,i} / V_{p,i}"
+        f["SENS"].attrs["definition"] = "T8 aggregated conventional sensitivity: sum_{p in t8} sum_i PPDF_{p,i}"
         f.attrs["layout_idx"] = layout_idx
         f.attrs["layouts_uid"] = layouts_uid
         f.attrs["threshold_relative"] = threshold_relative
         f.attrs["line_n_samples"] = line_n_samples
-        f.attrs["t4_tags"] = ",".join(T4_TAGS)
+        f.attrs["t8_tags"] = ",".join(T8_TAGS)
 
     # ---- histogram of V_i -------------------------------------------
     vals = V_i[V_i > 0]
@@ -175,8 +196,8 @@ def compute_ppds_for_layout(
         ax.hist(vals.cpu().numpy(), bins=50)
         ax.set_xlabel(r"$V_i$  (mm$^2$)  =  $\sum_b$ FWHM$_{i,b}^{\rm tan}$ × FWHM$_{i,b}^{\rm rad}$")
         ax.set_ylabel("Count")
-        ax.set_title(f"Layout {layout_idx:03d}: histogram of $V_i$ (n={vals.numel()})")
-        plt.savefig(os.path.join(out_dir, f"V_i_hist_layout_{layout_idx:03d}.png"), dpi=200)
+        ax.set_title(f"Layout {layout_idx:03d}: histogram of $V_i$ (T8, n={vals.numel()})")
+        plt.savefig(os.path.join(out_dir, f"V_i_hist_layout_{layout_idx:03d}_t8.png"), dpi=200)
         plt.close(fig)
 
     print(f"[OK] Wrote: {out_h5}")
@@ -184,7 +205,7 @@ def compute_ppds_for_layout(
         print(f"[OK] Saved V_i histogram with {vals.numel()} nonzero entries.")
 
 
-# -------------------- average across layouts (unchanged) --------------------
+# -------------------- average across layouts -------------------------
 @torch.no_grad()
 def compute_ppds_average(layout_indices, ppds_dir: str, out_dir: str):
     assert len(layout_indices) > 0, "No layout indices provided for averaging."
@@ -196,7 +217,7 @@ def compute_ppds_average(layout_indices, ppds_dir: str, out_dir: str):
 
     found = []
     for li in layout_indices:
-        h5_path = os.path.join(ppds_dir, f"ppds_layout_{li:03d}.hdf5")
+        h5_path = os.path.join(ppds_dir, f"ppds_layout_{li:03d}_t8.hdf5")
         if not os.path.exists(h5_path):
             print(f"[WARN] Missing {h5_path}; skipping.")
             continue
@@ -227,7 +248,7 @@ def compute_ppds_average(layout_indices, ppds_dir: str, out_dir: str):
     mean_SENS = sum_SENS / float(n)
 
     os.makedirs(out_dir, exist_ok=True)
-    out_h5 = os.path.join(out_dir, "ppds_layout_AVG.hdf5")
+    out_h5 = os.path.join(out_dir, "ppds_layout_AVG_t8.hdf5")
     with h5py.File(out_h5, "w") as f:
         f.create_dataset("PPDS", data=mean_PPDS.cpu().numpy())
         f.create_dataset("SENS", data=mean_SENS.cpu().numpy())
@@ -235,11 +256,10 @@ def compute_ppds_average(layout_indices, ppds_dir: str, out_dir: str):
         f.attrs["layout_indices"] = found
         if layouts_uid is not None:
             f.attrs["layouts_uid"] = layouts_uid
-        f["PPDS"].attrs["definition"] = "Arithmetic mean over layouts of per-layout PPDS maps"
-        f["SENS"].attrs["definition"] = "Arithmetic mean over layouts of per-layout sensitivity (sum of PPDFs)"
+        f["PPDS"].attrs["definition"] = "Arithmetic mean over layouts of per-layout PPDS maps (T8)"
+        f["SENS"].attrs["definition"] = "Arithmetic mean over layouts of per-layout sensitivity (T8)"
 
     print(f"[OK] Wrote average PPDS: {out_h5} (n={n}, layouts={found})")
-# ---------------------------------------------------------------------
 
 
 if __name__ == "__main__":
@@ -256,14 +276,14 @@ if __name__ == "__main__":
             start = int(sys.argv[2]); end = int(sys.argv[3])
             indices = list(range(start, end + 1))
         else:
-            print("Usage:\n  python arg_compute_ppds.py avg <N>\n  python arg_compute_ppds.py avg <start> <end>")
+            print("Usage:\n  python arg_compute_ppds_t8.py avg <N>\n  python arg_compute_ppds_t8.py avg <start> <end>")
             sys.exit(1)
 
         compute_ppds_average(indices, OUT_DIR, OUT_DIR)
         sys.exit(0)
 
     if len(sys.argv) != 2:
-        print("Usage: python arg_compute_ppds.py <layout_idx>\n   or : python arg_compute_ppds.py avg <N|start end>")
+        print("Usage: python arg_compute_ppds_t8.py <layout_idx>\n   or : python arg_compute_ppds_t8.py avg <N|start end>")
         sys.exit(1)
 
     layout_idx = int(sys.argv[1])

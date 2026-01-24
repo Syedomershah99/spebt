@@ -38,8 +38,8 @@ RING_DET_RANGES = {
     "ring4": (2160, 3359),
 }
 
-# T4 suffixes (files you generated)
-T4_TAGS = ["t4_00", "t4_01", "t4_02", "t4_03"]
+# T8 suffixes (files you generated)
+T8_TAGS = [f"t8_{i:02d}" for i in range(8)]
 # --------------------------------------------------
 
 
@@ -106,18 +106,20 @@ def load_beam_properties(h5_path: str):
     beam_index_colname = auto_find_beam_index_column(header)
     beam_idx = col(beam_index_colname).to(torch.int64)
 
+    # NOTE: your header sometimes uses "Angle (rad)" (capital A). Keep as-is.
     angle = col("Angle (rad)")
-    valid = ~torch.isnan(angle)
-    print(f"[DEBUG] Angle NaNs: {int((~valid).sum())}/{angle.numel()}  ({( (~valid).float().mean().item()*100):.2f}%)")
 
-    if valid.any():
-        a = angle[valid]
-        print(f"[DEBUG] Angle range (valid only): min={a.min().item():.4f}, max={a.max().item():.4f}")
+    valid_ang = ~torch.isnan(angle)
+    print(f"[DEBUG] Angle NaNs: {int((~valid_ang).sum())}/{angle.numel()} ({((~valid_ang).float().mean().item()*100):.2f}%)")
+    if valid_ang.any():
+        a = angle[valid_ang]
+        print(f"[DEBUG] Angle range (valid): min={a.min().item():.4f}, max={a.max().item():.4f}")
     else:
         print("[ERROR] All angles are NaN.")
-    valid_mask = ~torch.isnan(fwhm)
-    print(f"[DEBUG]   Total beam rows: {data.shape[0]}")
-    print(f"[DEBUG]   Valid FWHM rows: {valid_mask.sum().item()}")
+
+    valid_fwhm = ~torch.isnan(fwhm)
+    print(f"[DEBUG] Total beam rows: {data.shape[0]}")
+    print(f"[DEBUG] Valid FWHM rows: {valid_fwhm.sum().item()}")
 
     return fwhm, det_id, beam_idx, angle
 
@@ -129,12 +131,11 @@ def build_lookup(
     angle: torch.Tensor,
     n_bins: int,
 ):
-    # bin edges: 0..2π mapped as degrees 0..360 (same as your current logic)
+    # bin edges: 0..2π mapped as degrees 0..360 (same logic as your current)
     angular_bin_boundaries = (
         torch.arange(n_bins + 1, dtype=torch.float32) / 180.0 * torch.pi
     ).contiguous()
 
-    # Make angle contiguous to avoid torch.searchsorted warning
     angle = angle.to(torch.float32).contiguous()
 
     # Keep only rows where BOTH fwhm and angle are valid
@@ -144,7 +145,7 @@ def build_lookup(
     beam_v = beam_idx[valid].to(torch.int64)
     ang_v  = angle[valid]
 
-    # Optional: wrap into [0, 2π) (your range is already there, but safe)
+    # Wrap into [0, 2π)
     ang_v = torch.remainder(ang_v, 2.0 * torch.pi)
 
     # Bin angles -> [0..n_bins-1]
@@ -161,7 +162,7 @@ def build_lookup(
 def file_for(layout_idx: int, kind: str, tag: Optional[str]):
     """
     kind: 'props' or 'masks'
-    tag: None for non-T4, else 't4_00'..'t4_03'
+    tag: None for base, else 't8_00'..'t8_07'
     """
     if kind == "props":
         base = f"beams_properties_configuration_{layout_idx:02d}"
@@ -179,7 +180,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data-dir", default=DEFAULT_DATA_DIR)
     ap.add_argument("--layouts", default="0:1", help="layout range like '0:24' or list like '0,1,2'")
-    ap.add_argument("--t4", action="store_true", help="aggregate over t4_00..t4_03 files per layout")
+    ap.add_argument("--t8", action="store_true", help="aggregate over t8_00..t8_07 files per layout")
     ap.add_argument("--img-nx", type=int, default=DEFAULT_IMG_NX)
     ap.add_argument("--img-ny", type=int, default=DEFAULT_IMG_NY)
     ap.add_argument("--mm-per-pixel", type=float, default=DEFAULT_MM_PER_PIXEL)
@@ -211,7 +212,7 @@ def main():
     layouts_used = 0
     poses_used = 0
 
-    pose_tags = T4_TAGS if args.t4 else [None]
+    pose_tags = T8_TAGS if args.t8 else [None]
 
     for layout_idx in layout_seq:
         any_pose_loaded_for_layout = False
@@ -252,7 +253,6 @@ def main():
 
                 ring_name = which_ring(det)
 
-                # For each beam ID present in this detector row:
                 for b in unique_beams.tolist():
                     key = (det, int(b))
                     if key not in lookup:
@@ -265,7 +265,6 @@ def main():
                     pix_mask = (row == b)
                     pix_ids = torch.nonzero(pix_mask, as_tuple=False).squeeze(1)
 
-                    # Put this beam’s pixels into the right FWHM window histogram
                     for win_name, (w_lo, w_hi) in FWHM_WINDOWS.items():
                         if w_lo <= fwhm_mm < w_hi:
                             asci_hist_allrings[win_name][pix_ids, ang_bin] += 1
@@ -277,18 +276,16 @@ def main():
 
     print(f"\n[INFO] Finished. layouts_used={layouts_used}, poses_used={poses_used}")
 
-    suffix = "t4agg" if args.t4 else "base"
+    suffix = "t8agg" if args.t8 else "base"
     out_dir = os.path.join(args.data_dir, f"asci_fwhm_maps_{suffix}")
     os.makedirs(out_dir, exist_ok=True)
 
-    # === Plotting helper: ASCI fraction scale (same as your original ASCI plots) ===
     def hist_to_asci_frac(hist_2d: torch.Tensor) -> torch.Tensor:
-        # fraction of angle bins that are nonzero per pixel: 0..1
         return torch.count_nonzero(hist_2d, dim=1).to(torch.float32) / float(N_BINS)
 
-    # 1) ALL-RINGS maps (fraction 0..1, displayed as percent via formatter)
+    # 1) ALL-RINGS maps
     for win_name, hist in asci_hist_allrings.items():
-        asci_frac = hist_to_asci_frac(hist)  # (N_PIX,)
+        asci_frac = hist_to_asci_frac(hist)
         img2d = asci_frac.view(IMG_NX, IMG_NY).T.cpu().numpy()
 
         fig, ax = plt.subplots(figsize=(7, 6), layout="constrained")
@@ -310,7 +307,7 @@ def main():
         plt.close(fig)
         print("[SAVE]", out_path)
 
-    # 2) Per-ring maps (same 0..1 ASCI scale)
+    # 2) Per-ring maps
     for ring_name, ring_hists in asci_hist_per_ring.items():
         for win_name, hist in ring_hists.items():
             asci_frac = hist_to_asci_frac(hist)
@@ -335,7 +332,7 @@ def main():
             plt.close(fig)
             print("[SAVE]", out_path)
 
-    # 3) 2×2 panels: all four rings for each window (shared 0..1 scale per window)
+    # 3) 2×2 ring panel per window
     ring_order = ["ring1", "ring2", "ring3", "ring4"]
     ring_titles = {
         "ring1": "Ring I (Det 0–479)",

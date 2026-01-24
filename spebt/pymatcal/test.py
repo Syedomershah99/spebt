@@ -127,106 +127,135 @@ import h5py
 import matplotlib.pyplot as plt
 import os
 
-def load_ppdfs(ppdf_dir: str, filename: str, n_xtals_to_load: int = -1):
+
+def load_ppdfs_for_file(ppdf_dir: str, filename: str, n_xtals_to_load: int = -1):
+    """Load PPDF array from one HDF5 file."""
     path = os.path.join(ppdf_dir, filename)
     if not os.path.exists(path):
         print(f"[MISS] {path}")
         return None
+
     with h5py.File(path, "r") as f:
         data = f["ppdfs"][:n_xtals_to_load] if n_xtals_to_load != -1 else f["ppdfs"][:]
     return data.astype(np.float32)
 
-def sensitivity_from_ppdfs(ppdfs: np.ndarray, fov_pixels: int):
-    # sum over crystals -> (fov_pixels,)
-    sens_1d = np.sum(ppdfs, axis=0)
-    assert sens_1d.size == fov_pixels
-    return sens_1d
+
+def sensitivity_1d_from_ppdfs(ppdfs: np.ndarray) -> np.ndarray:
+    """
+    Sensitivity per pixel for ONE dataset (one file):
+      S_d(x) = sum over crystals c of PPDF_{d,c}(x)
+
+    ppdfs shape: (N_crystals, N_pixels)
+    returns: (N_pixels,)
+    """
+    return np.sum(ppdfs, axis=0)
+
+
+def plot_map_and_hist(sens_2d: np.ndarray, extent, out_dir: str, tag: str, title: str):
+    # Heatmap
+    plt.figure(figsize=(8, 7))
+    plt.imshow(sens_2d, cmap="viridis", origin="lower", extent=extent)
+    plt.colorbar(label="Mean sensitivity (a.u.)")
+    plt.title(title)
+    plt.xlabel("X (mm)")
+    plt.ylabel("Y (mm)")
+    plt.tight_layout()
+    out_map = os.path.join(out_dir, f"sensitivity_map_{tag}.png")
+    plt.savefig(out_map, dpi=300)
+    plt.close()
+    print(f"Saved: {out_map}")
+
+    # Histogram (inside effective FOV: non-zero)
+    vals = sens_2d[sens_2d > 0].flatten()
+    if vals.size == 0:
+        print("[WARN] Sensitivity map has no non-zero values; skipping histogram.")
+        return
+
+    plt.figure(figsize=(10, 6))
+    plt.hist(vals, bins=100, alpha=0.75)
+    plt.title(f"Histogram of Sensitivity Values (a.u.) - {title}")
+    plt.xlabel("Sensitivity (a.u.)")
+    plt.ylabel("Pixel count")
+    plt.grid(True, linestyle="--", alpha=0.5)
+    plt.tight_layout()
+    out_hist = os.path.join(out_dir, f"sensitivity_hist_{tag}.png")
+    plt.savefig(out_hist, dpi=300)
+    plt.close()
+    print(f"Saved: {out_hist}")
+
 
 if __name__ == "__main__":
-    # ---------------- CONFIG ----------------
+    # -------------------- CONFIG --------------------
     base_dir = "/vscratch/grp-rutaoyao/Omer/spebt/data/sai_10mm/"
+
+    # Choose which files define your "datasets"
+    # Example: (2 layouts) × (4 T4 poses) = 8 datasets
     layouts = [0, 1]
     poses = [0, 1, 2, 3]
+    filenames = [
+        f"position_{li:03d}_ppdfs_t4_{pi:02d}.hdf5"
+        for li in layouts
+        for pi in poses
+    ]
+
+    # If you instead want non-T4 single-file-per-layout, use:
+    # filenames = [f"position_{li:03d}_ppdfs.hdf5" for li in layouts]
 
     FOV_X, FOV_Y = 200, 200
-    MM_PER_PX = 0.05
+    MM_PER_PX_X, MM_PER_PX_Y = 0.05, 0.05
+
+    # -1 loads all crystals; otherwise loads first N crystals
+    n_xtals_to_load = -1
+    # ------------------------------------------------
+
     fov_pixels = FOV_X * FOV_Y
 
-    n_xtals_to_load = -1  # -1 = all crystals
-    # ----------------------------------------
-
-    t4_files = [f"position_{li:03d}_ppdfs_t4_{pi:02d}.hdf5" for li in layouts for pi in poses]
-
-    sens_sum = None
+    # Accumulate sensitivity over datasets (after summing over crystals)
+    sens_sum_1d = None
     loaded = 0
 
-    print("Loading files:")
-    for fn in t4_files:
-        ppdfs = load_ppdfs(base_dir, fn, n_xtals_to_load)
+    print("Loading datasets:")
+    for fn in filenames:
+        ppdfs = load_ppdfs_for_file(base_dir, fn, n_xtals_to_load)
         if ppdfs is None:
             continue
 
-        # OLD-STYLE: sum crystals for this dataset
-        sens_1d = sensitivity_from_ppdfs(ppdfs, fov_pixels)
+        # Sanity check
+        if ppdfs.shape[1] != fov_pixels:
+            raise ValueError(
+                f"File {fn} has {ppdfs.shape[1]} pixels, expected {fov_pixels}. "
+                f"Check FOV_X/FOV_Y or the PPDF generation settings."
+            )
 
-        if sens_sum is None:
-            sens_sum = sens_1d
-        else:
-            sens_sum += sens_1d
+        # S_d(x) = sum_c PPDF_{d,c}(x)
+        sens_1d = sensitivity_1d_from_ppdfs(ppdfs)
 
+        # Accumulate across datasets
+        sens_sum_1d = sens_1d if sens_sum_1d is None else (sens_sum_1d + sens_1d)
         loaded += 1
         print(f"  ✓ {fn}  (loaded={loaded})")
 
     if loaded == 0:
         raise RuntimeError("No PPDF files loaded.")
 
-    # OLD-STYLE: average over loaded datasets (layouts×poses)
-    sens_mean_1d = sens_sum / float(loaded)
+    # FINAL: mean over datasets
+    # S(x) = (1/N_datasets) * sum_d sum_c PPDF_{d,c}(x)
+    sens_mean_1d = sens_sum_1d / float(loaded)
     sens_mean_2d = sens_mean_1d.reshape(FOV_Y, FOV_X)
 
-    # ----------- RESOLUTION OF THE “>100%” ISSUE -----------
-    # This is the key: make it explicitly RELATIVE sensitivity (0..1) or (% of max).
-    eps = 1e-12
-    sens_rel = sens_mean_2d / (sens_mean_2d.max() + eps)        # 0..1
-    sens_rel_pct = 100.0 * sens_rel                              # 0..100 %
-    # -------------------------------------------------------
-
     extent = [
-        -(MM_PER_PX * FOV_X / 2.0), +(MM_PER_PX * FOV_X / 2.0),
-        -(MM_PER_PX * FOV_Y / 2.0), +(MM_PER_PX * FOV_Y / 2.0),
+        -(MM_PER_PX_X * FOV_X / 2.0),
+        +(MM_PER_PX_X * FOV_X / 2.0),
+        -(MM_PER_PX_Y * FOV_Y / 2.0),
+        +(MM_PER_PX_Y * FOV_Y / 2.0),
     ]
 
-    # Save raw mean sensitivity (arbitrary units)
-    plt.figure(figsize=(8, 7))
-    plt.imshow(sens_mean_2d, cmap="viridis", origin="lower", extent=extent)
-    plt.colorbar(label=f"Mean sensitivity (a.u.) over {loaded} datasets")
-    plt.title(f"Sensitivity (mean over {len(layouts)} layouts × {len(poses)} poses)")
-    plt.xlabel("X (mm)"); plt.ylabel("Y (mm)")
-    plt.tight_layout()
-    out_raw = os.path.join(base_dir, f"sensitivity_mean_raw_{loaded}datasets.png")
-    plt.savefig(out_raw, dpi=300); plt.close()
-    print(f"\nSaved RAW mean sensitivity (a.u.): {out_raw}")
+    tag = f"mean_au_{loaded}datasets"
+    title = f"Sensitivity (mean over {loaded} datasets)  [sum over crystals, mean over datasets]"
 
-    # Save relative % sensitivity (fixed scale)
-    plt.figure(figsize=(8, 7))
-    plt.imshow(sens_rel_pct, cmap="viridis", origin="lower", extent=extent, vmin=0, vmax=100)
-    plt.colorbar(label="Relative sensitivity (% of max)")
-    plt.title(f"Relative Sensitivity (% of max) (mean over {loaded} datasets)")
-    plt.xlabel("X (mm)"); plt.ylabel("Y (mm)")
-    plt.tight_layout()
-    out_pct = os.path.join(base_dir, f"sensitivity_mean_relative_pct_{loaded}datasets.png")
-    plt.savefig(out_pct, dpi=300); plt.close()
-    print(f"Saved RELATIVE sensitivity (%): {out_pct}")
+    plot_map_and_hist(sens_mean_2d, extent, base_dir, tag, title)
 
-    # Histogram for relative (%) inside FOV (nonzero)
-    vals = sens_rel_pct[sens_mean_2d > 0].flatten()
-    plt.figure(figsize=(10, 6))
-    plt.hist(vals, bins=100, alpha=0.75)
-    plt.title("Histogram of Relative Sensitivity (% of max) inside FOV")
-    plt.xlabel("Relative sensitivity (%)")
-    plt.ylabel("Pixel count")
-    plt.grid(True, linestyle="--", alpha=0.5)
-    out_hist = os.path.join(base_dir, f"sensitivity_hist_relative_pct_{loaded}datasets.png")
-    plt.tight_layout()
-    plt.savefig(out_hist, dpi=300); plt.close()
-    print(f"Saved histogram: {out_hist}")
+    # Optional: print useful stats (still in a.u.)
+    vals = sens_mean_2d[sens_mean_2d > 0]
+    print("\nStats inside FOV (non-zero):")
+    print(f"  min={vals.min():.6g}  mean={vals.mean():.6g}  max={vals.max():.6g}  std={vals.std():.6g}")
