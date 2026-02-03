@@ -22,7 +22,7 @@ from scanner_modeling.geometry_2d import (
     load_scanner_layouts,
 )
 
-def ellipse_offsets_t8(a_mm: float = 0.8, b_mm: float = 0.8, phase_deg: float = 0.0):
+def ellipse_offsets_t8(a_mm: float = 0.2, b_mm: float = 0.2, phase_deg: float = 0.0):
     """8 bed positions on an ellipse (a,b) in mm."""
     phase = np.deg2rad(phase_deg)
     thetas = np.linspace(0, 2*np.pi, 8, endpoint=False) + phase
@@ -48,7 +48,7 @@ def compute_pose(
     FOV_NPIX = (200, 200)
     FOV_SIZE_MM = (10, 10)
     SFOV_SUBDIV = (5, 5)
-    CRYSTAL_SUBS = (5, 5)
+    CRYSTAL_SUBS = (1, 5)
     subdivision_grid = subdivision_grid_rectangle(CRYSTAL_SUBS)
 
     (
@@ -134,8 +134,8 @@ def main():
     ap.add_argument("layout_idx", type=int, help="layout index inside the .tensor file")
     ap.add_argument("--layout_file", type=str, required=True, help="path to scanner_layouts_*.tensor")
     ap.add_argument("--output_dir", type=str, default="/vscratch/grp-rutaoyao/Omer/spebt/data/sai_10mm")
-    ap.add_argument("--a_mm", type=float, default=0.8, help="ellipse semi-axis a (X) in mm")
-    ap.add_argument("--b_mm", type=float, default=0.8, help="ellipse semi-axis b (Y) in mm")
+    ap.add_argument("--a_mm", type=float, default=0.2, help="ellipse semi-axis a (X) in mm")
+    ap.add_argument("--b_mm", type=float, default=0.2, help="ellipse semi-axis b (Y) in mm")
     ap.add_argument("--phase_deg", type=float, default=0.0, help="phase rotate the 8 positions (deg)")
     args = ap.parse_args()
 

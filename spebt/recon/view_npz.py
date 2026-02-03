@@ -4,7 +4,7 @@ import os
 
 # --- 1. Configuration ---
 base_dir = "/vscratch/grp-rutaoyao/Omer/spebt/data/sai_10mm"
-npz_file_path = "/vscratch/grp-rutaoyao/Omer/spebt/data/sai_10mm/recon_mlem_torch_derenzo_filtered.npz"
+npz_file_path = "/vscratch/grp-rutaoyao/Omer/spebt/recon_mlem_torch_derenzo_filtered.npz"
 output_dir = "/vscratch/grp-rutaoyao/Omer/spebt/plots/sai_10mm"
 os.makedirs(output_dir, exist_ok=True)
 print(f"Will save output images to: {output_dir}")
@@ -44,7 +44,7 @@ def save_image(img_2d: np.ndarray, title: str, out_path: str):
     print(f"Saved: {out_path}")
 
 # --- 4. Save snapshots at 200/250/300 iterations (instead of comparison) ---
-target_iters = [150, 200, 250, 295]
+target_iters = [50, 100, 125, 145]
 
 max_saved_iter = (reconstructions.shape[0] - 1) * SAVE_EVERY
 print(f"Max saved iteration available ~ {max_saved_iter}")

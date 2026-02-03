@@ -17,7 +17,7 @@ if __name__ == "__main__":
     base_dir = "/vscratch/grp-rutaoyao/Omer/spebt/data/sai_10mm"
     outputs_dir = base_dir
     flist_path = os.path.join(base_dir, "dataset_flist.csv")
-    projs_path = os.path.join(base_dir, "derenzo-projs.npy")
+    projs_path = os.path.join(base_dir, "derenzo-projs_T8.npy")
     output_path = os.path.join(outputs_dir, "recon_mlem_torch_derenzo_filtered.npz")
 
     IMG_DIM = 200

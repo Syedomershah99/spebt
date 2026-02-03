@@ -119,7 +119,7 @@
 #     # NEW: Also create a histogram for the normalized data
 #     create_and_plot_sensitivity_histogram(sensitivity_map_2d, ppdf_files_base_dir, layouts_str_fname, layouts_str_title)
 
-#test_t4
+# #test_t8
 
 #!/usr/bin/env python3
 import numpy as np
@@ -127,135 +127,159 @@ import h5py
 import matplotlib.pyplot as plt
 import os
 
-
-def load_ppdfs_for_file(ppdf_dir: str, filename: str, n_xtals_to_load: int = -1):
-    """Load PPDF array from one HDF5 file."""
-    path = os.path.join(ppdf_dir, filename)
-    if not os.path.exists(path):
-        print(f"[MISS] {path}")
-        return None
-
-    with h5py.File(path, "r") as f:
-        data = f["ppdfs"][:n_xtals_to_load] if n_xtals_to_load != -1 else f["ppdfs"][:]
-    return data.astype(np.float32)
-
-
-def sensitivity_1d_from_ppdfs(ppdfs: np.ndarray) -> np.ndarray:
+def load_ppdfs_for_layout_t8(ppdf_dir: str, layout_idx: int, pose_idxs, n_xtals_to_load: int = -1):
     """
-    Sensitivity per pixel for ONE dataset (one file):
-      S_d(x) = sum over crystals c of PPDF_{d,c}(x)
-
-    ppdfs shape: (N_crystals, N_pixels)
-    returns: (N_pixels,)
+    Loads and aggregates T8 PPDFs for a given layout across poses.
+    Returns:
+      aggregated_ppdfs: (n_crystals, n_pixels) float32  [sum over poses]
+      n_loaded_poses: int
     """
-    return np.sum(ppdfs, axis=0)
+    aggregated_ppdfs = None
+    n_loaded = 0
+
+    for pose in pose_idxs:
+        ppdf_filename = os.path.join(ppdf_dir, f"position_{layout_idx:03d}_ppdfs_t8_{pose:02d}.hdf5")
+        if not os.path.exists(ppdf_filename):
+            print(f"[MISS] {ppdf_filename}")
+            continue
+
+        with h5py.File(ppdf_filename, "r") as f:
+            ppdfs_data = f["ppdfs"][:n_xtals_to_load] if n_xtals_to_load != -1 else f["ppdfs"][:]
+            ppdfs_data = ppdfs_data.astype(np.float32)
+
+        if aggregated_ppdfs is None:
+            aggregated_ppdfs = ppdfs_data
+        else:
+            aggregated_ppdfs += ppdfs_data
+
+        n_loaded += 1
+
+    return aggregated_ppdfs, n_loaded
 
 
-def plot_map_and_hist(sens_2d: np.ndarray, extent, out_dir: str, tag: str, title: str):
-    # Heatmap
-    plt.figure(figsize=(8, 7))
-    plt.imshow(sens_2d, cmap="viridis", origin="lower", extent=extent)
-    plt.colorbar(label="Mean sensitivity (a.u.)")
-    plt.title(title)
-    plt.xlabel("X (mm)")
-    plt.ylabel("Y (mm)")
-    plt.tight_layout()
-    out_map = os.path.join(out_dir, f"sensitivity_map_{tag}.png")
-    plt.savefig(out_map, dpi=300)
-    plt.close()
-    print(f"Saved: {out_map}")
-
-    # Histogram (inside effective FOV: non-zero)
-    vals = sens_2d[sens_2d > 0].flatten()
-    if vals.size == 0:
-        print("[WARN] Sensitivity map has no non-zero values; skipping histogram.")
+def create_and_plot_sensitivity_histogram(sensitivity_map: np.ndarray, output_dir: str, file_suffix: str, title_suffix: str):
+    """Generates and saves a histogram for a given sensitivity map."""
+    fov_values = sensitivity_map[sensitivity_map > 0].flatten()
+    if fov_values.size == 0:
+        print("Warning: The sensitivity map contains no non-zero values.")
         return
 
     plt.figure(figsize=(10, 6))
-    plt.hist(vals, bins=100, alpha=0.75)
-    plt.title(f"Histogram of Sensitivity Values (a.u.) - {title}")
-    plt.xlabel("Sensitivity (a.u.)")
-    plt.ylabel("Pixel count")
-    plt.grid(True, linestyle="--", alpha=0.5)
+    plt.hist(fov_values, bins=100, color='royalblue', alpha=0.75)
+    plt.title(f'Histogram of Sensitivity Values - {title_suffix}')
+    plt.xlabel('Sensitivity')
+    plt.ylabel('Number of Pixels (Frequency)')
+    plt.grid(True, linestyle='--', alpha=0.6)
+
+    mean_sensitivity = np.mean(fov_values)
+    plt.axvline(mean_sensitivity, color='red', linestyle='dashed', linewidth=2,
+                label=f'Mean: {mean_sensitivity:.6f}')
+    plt.legend()
     plt.tight_layout()
-    out_hist = os.path.join(out_dir, f"sensitivity_hist_{tag}.png")
-    plt.savefig(out_hist, dpi=300)
+
+    hist_filename = os.path.join(output_dir, f"sensitivity_histogram_{file_suffix}.png")
+    plt.savefig(hist_filename, dpi=300)
+    print(f"Saved sensitivity histogram to: {hist_filename}")
     plt.close()
-    print(f"Saved: {out_hist}")
 
 
 if __name__ == "__main__":
-    # -------------------- CONFIG --------------------
-    base_dir = "/vscratch/grp-rutaoyao/Omer/spebt/data/sai_10mm/"
+    # --- Configuration (match your legacy style) ---
+    ppdf_files_base_dir = "/vscratch/grp-rutaoyao/Omer/spebt/data/sai_10mm/"
+    layout_indices = [0, 1]               # <-- layouts 000 and 001
+    pose_indices = list(range(8))         # <-- T8 poses 00..07
 
-    # Choose which files define your "datasets"
-    # Example: (2 layouts) × (4 T4 poses) = 8 datasets
-    layouts = [0, 1]
-    poses = [0, 1, 2, 3]
-    filenames = [
-        f"position_{li:03d}_ppdfs_t4_{pi:02d}.hdf5"
-        for li in layouts
-        for pi in poses
-    ]
+    FOV_PIXELS_X, FOV_PIXELS_Y = 200, 200
+    MM_PER_PIXEL_X, MM_PER_PIXEL_Y = 0.05, 0.05
+    num_crystals_to_sum = -1              # -1 loads all crystals
 
-    # If you instead want non-T4 single-file-per-layout, use:
-    # filenames = [f"position_{li:03d}_ppdfs.hdf5" for li in layouts]
+    # If True: average over poses inside each layout before averaging over layouts
+    # If False: sum over poses (keeps scale larger by factor ~#poses), then average only over layouts
+    AVERAGE_OVER_POSES = True
+    # --- End Configuration ---
 
-    FOV_X, FOV_Y = 200, 200
-    MM_PER_PX_X, MM_PER_PX_Y = 0.05, 0.05
+    if not os.path.isdir(ppdf_files_base_dir):
+        print(f"Error: PPDF directory '{ppdf_files_base_dir}' not found.")
+        exit()
 
-    # -1 loads all crystals; otherwise loads first N crystals
-    n_xtals_to_load = -1
-    # ------------------------------------------------
+    print(f"Loading and aggregating T8 PPDFs for layouts: {layout_indices} (poses {pose_indices}) ...")
 
-    fov_pixels = FOV_X * FOV_Y
+    aggregated_ppdfs = None
+    successful_loads = 0
 
-    # Accumulate sensitivity over datasets (after summing over crystals)
-    sens_sum_1d = None
-    loaded = 0
+    for layout_idx in layout_indices:
+        print(f"\n  - Loading layout {layout_idx:03d} ...")
+        ppdfs_layout_sum, n_loaded_poses = load_ppdfs_for_layout_t8(
+            ppdf_files_base_dir, layout_idx, pose_indices, num_crystals_to_sum
+        )
 
-    print("Loading datasets:")
-    for fn in filenames:
-        ppdfs = load_ppdfs_for_file(base_dir, fn, n_xtals_to_load)
-        if ppdfs is None:
+        if ppdfs_layout_sum is None or n_loaded_poses == 0:
+            print(f"Warning: Could not load any poses for layout {layout_idx:03d}. Skipping.")
             continue
 
-        # Sanity check
-        if ppdfs.shape[1] != fov_pixels:
-            raise ValueError(
-                f"File {fn} has {ppdfs.shape[1]} pixels, expected {fov_pixels}. "
-                f"Check FOV_X/FOV_Y or the PPDF generation settings."
-            )
+        # Optionally average over poses (recommended if you want “per acquisition position” mean)
+        if AVERAGE_OVER_POSES:
+            ppdfs_layout = ppdfs_layout_sum / float(n_loaded_poses)
+        else:
+            ppdfs_layout = ppdfs_layout_sum
 
-        # S_d(x) = sum_c PPDF_{d,c}(x)
-        sens_1d = sensitivity_1d_from_ppdfs(ppdfs)
+        # Aggregate across layouts exactly like your legacy script
+        if aggregated_ppdfs is None:
+            aggregated_ppdfs = ppdfs_layout.astype(np.float32)
+        else:
+            aggregated_ppdfs += ppdfs_layout.astype(np.float32)
 
-        # Accumulate across datasets
-        sens_sum_1d = sens_1d if sens_sum_1d is None else (sens_sum_1d + sens_1d)
-        loaded += 1
-        print(f"  ✓ {fn}  (loaded={loaded})")
+        successful_loads += 1
+        print(f"    Loaded poses: {n_loaded_poses}/8")
 
-    if loaded == 0:
-        raise RuntimeError("No PPDF files loaded.")
+    if aggregated_ppdfs is None or successful_loads == 0:
+        print("Error: No PPDF data was successfully loaded. Exiting.")
+        exit()
 
-    # FINAL: mean over datasets
-    # S(x) = (1/N_datasets) * sum_d sum_c PPDF_{d,c}(x)
-    sens_mean_1d = sens_sum_1d / float(loaded)
-    sens_mean_2d = sens_mean_1d.reshape(FOV_Y, FOV_X)
+    print(f"\nAggregation complete. Successfully loaded {successful_loads} layouts.")
 
+    # --- Generate sensitivity map EXACTLY like your legacy code ---
+    sensitivity_map_1d = np.sum(aggregated_ppdfs, axis=0) / successful_loads
+    sensitivity_map_2d = sensitivity_map_1d.reshape((FOV_PIXELS_Y, FOV_PIXELS_X))
+
+    # Determine plot extent
     extent = [
-        -(MM_PER_PX_X * FOV_X / 2.0),
-        +(MM_PER_PX_X * FOV_X / 2.0),
-        -(MM_PER_PX_Y * FOV_Y / 2.0),
-        +(MM_PER_PX_Y * FOV_Y / 2.0),
+        -(MM_PER_PIXEL_X * FOV_PIXELS_X / 2), (MM_PER_PIXEL_X * FOV_PIXELS_X / 2),
+        -(MM_PER_PIXEL_Y * FOV_PIXELS_Y / 2), (MM_PER_PIXEL_Y * FOV_PIXELS_Y / 2)
     ]
 
-    tag = f"mean_au_{loaded}datasets"
-    title = f"Sensitivity (mean over {loaded} datasets)  [sum over crystals, mean over datasets]"
+    # Output naming
+    poses_tag = "poseMean" if AVERAGE_OVER_POSES else "poseSum"
+    layouts_str_fname = f"t8_{poses_tag}_{successful_loads}layouts"
+    layouts_str_title = f"T8 Sensitivity Map ({successful_loads} Layouts, {poses_tag})"
 
-    plot_map_and_hist(sens_mean_2d, extent, base_dir, tag, title)
+    # Plot and save the map
+    plt.figure(figsize=(8, 7))
+    plt.imshow(sensitivity_map_2d, cmap='viridis', origin='lower', extent=extent)
+    plt.colorbar(label='Average Sensitivity (no max-normalization)')
+    plt.title(layouts_str_title)
+    plt.xlabel('X (mm)')
+    plt.ylabel('Y (mm)')
+    plt.axhline(0, color='white', linestyle=':', lw=0.5)
+    plt.axvline(0, color='white', linestyle=':', lw=0.5)
+    plt.tight_layout()
 
-    # Optional: print useful stats (still in a.u.)
-    vals = sens_mean_2d[sens_mean_2d > 0]
-    print("\nStats inside FOV (non-zero):")
-    print(f"  min={vals.min():.6g}  mean={vals.mean():.6g}  max={vals.max():.6g}  std={vals.std():.6g}")
+    map_filename = os.path.join(ppdf_files_base_dir, f"sensitivity_map_{layouts_str_fname}.png")
+    plt.savefig(map_filename, dpi=300)
+    print(f"\nSaved sensitivity map to: {map_filename}")
+    plt.close()
+
+    # Histogram
+    create_and_plot_sensitivity_histogram(
+        sensitivity_map_2d,
+        ppdf_files_base_dir,
+        layouts_str_fname,
+        layouts_str_title
+    )
+
+    # Print quick stats
+    nonzero = sensitivity_map_2d[sensitivity_map_2d > 0]
+    if nonzero.size:
+        print(f"\n[STATS] nonzero mean={nonzero.mean():.6g}, min={nonzero.min():.6g}, max={nonzero.max():.6g}")
+    else:
+        print("\n[STATS] No nonzero sensitivity pixels found.")
