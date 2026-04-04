@@ -1,0 +1,67 @@
+# Bayesian Optimization Configuration for SAI SC-SPECT
+# Design vector: (aperture_diam_mm, a_mm, b_mm) — 3D continuous
+
+# --- Design space bounds ---
+bounds:
+  aperture_diam_mm: [0.2, 1.0]   # hardware: aperture diameter
+  a_mm: [0.1, 1.0]               # acquisition: T8 ellipse semi-axis X
+  b_mm: [0.1, 1.0]               # acquisition: T8 ellipse semi-axis Y
+
+param_names:
+  - aperture_diam_mm
+  - a_mm
+  - b_mm
+
+# --- Initial data ---
+lhs:
+  n_samples: 150
+  seed: 42
+
+# --- BO settings ---
+bo:
+  batch_size: 8                   # q = number of parallel SLURM jobs per round
+  max_rounds: 13                  # ~104 total evaluations (13 × 8)
+  max_total_evals: 100            # hard cap on total evaluations
+  num_restarts: 10                # L-BFGS-B restarts for acquisition optimization
+  raw_samples: 512                # random candidates for acquisition initialization
+  mc_samples: 256                 # Monte Carlo samples for qEI
+
+# --- Convergence ---
+convergence:
+  patience: 3                     # stop after 3 rounds with no improvement
+  rel_tol: 0.01                   # |JI_best(t) - JI_best(t-5)| / JI_best(t) < 0.01
+  max_wall_hours: 24              # hard wall-time limit
+
+# --- GP settings ---
+gp:
+  model: SingleTaskGP             # BoTorch model class
+  kernel: Matern52                # Matérn 5/2 with ARD lengthscales
+  normalize_inputs: true
+  standardize_outputs: true
+
+# --- Paths (adjust for HPC) ---
+paths:
+  geometry_script: /vscratch/grp-rutaoyao/Omer/spebt/geometry/generate_mph_scanner_circularfov.py
+  ppdf_script: /vscratch/grp-rutaoyao/Omer/spebt/pymatcal/arg_ppdf_t8.py
+  pipeline_script: /vscratch/grp-rutaoyao/Omer/spebt/optimization/run_sai_pipeline.sh
+  results_csv: /vscratch/grp-rutaoyao/Omer/spebt/optimization/results/results_summary.csv
+  manifest_csv: /vscratch/grp-rutaoyao/Omer/spebt/optimization/results/configs_manifest.csv
+  base_work_dir: /vscratch/grp-rutaoyao/Omer/spebt/optimization/results
+
+# --- SLURM settings ---
+slurm:
+  partition: general-compute
+  cpus_per_task: 16
+  mem: 40G
+  time: "02:00:00"
+  account: grp-rutaoyao
+
+# --- SAI system constants (fixed, not optimized) ---
+sai:
+  n_apertures: 180
+  n_layouts: 2                    # 2 collimator rotations (0° and 1°)
+  n_t8_poses: 8                   # 8 bed positions
+  rot_angle_deg: 1.0
+  phase_deg: 0.0
+  fov_npix: [200, 200]
+  fov_size_mm: [10, 10]

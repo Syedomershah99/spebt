@@ -1,6 +1,7 @@
 import os
 import math
 import random
+import argparse
 import torch
 from typing import List, Tuple, Dict
 from torch import save as torch_save, Tensor
@@ -165,10 +166,17 @@ def sample_apertures_uniform_ring(
 # Main (SC-SPECT: detectors fixed, collimator can rotate)
 # -------------------------------
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Generate SC-SPECT scanner geometry")
+    parser.add_argument("--aperture_diam", type=float, default=0.4,
+                        help="Aperture diameter in mm (default: 0.4)")
+    parser.add_argument("--output_dir", type=str, default=None,
+                        help="Output directory for .tensor file (default: current dir)")
+    cli_args = parser.parse_args()
+
     # ===== HR ring parameters =====
     RING_INNER_DIAM_MM = 67.5
     RING_THICKNESS_MM  = 2.5
-    APERTURE_DIAM_MM   = 0.4
+    APERTURE_DIAM_MM   = cli_args.aperture_diam
     MIN_SPACING_MM     = 0.8
     APERTURE_COUNT     = 180
     FOV_DIAMETER_MM    = 10.0
@@ -362,6 +370,9 @@ if __name__ == "__main__":
     )
 
     out_file_name = f"scanner_layouts_{base_scanner_md5}_{motion_id}.tensor"
+    if cli_args.output_dir:
+        os.makedirs(cli_args.output_dir, exist_ok=True)
+        out_file_name = os.path.join(cli_args.output_dir, out_file_name)
     print(f"\nSaving SC-SPECT layouts to:\n  {out_file_name}")
     torch_save(out_data, out_file_name)
     print("Saved.")
