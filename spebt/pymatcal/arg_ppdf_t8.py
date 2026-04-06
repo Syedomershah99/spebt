@@ -137,6 +137,8 @@ def main():
     ap.add_argument("--a_mm", type=float, default=0.2, help="ellipse semi-axis a (X) in mm")
     ap.add_argument("--b_mm", type=float, default=0.2, help="ellipse semi-axis b (Y) in mm")
     ap.add_argument("--phase_deg", type=float, default=0.0, help="phase rotate the 8 positions (deg)")
+    ap.add_argument("--pose_idx", type=int, default=None,
+                    help="run only this single pose index (0-7). If omitted, run all 8.")
     args = ap.parse_args()
 
     layout_dir = os.path.dirname(args.layout_file)
@@ -148,17 +150,32 @@ def main():
 
     poses = ellipse_offsets_t8(args.a_mm, args.b_mm, args.phase_deg)
 
-    print(f"--- T8 PPDFs | layout={args.layout_idx} | a={args.a_mm} b={args.b_mm} | poses=8 ---")
-    for i, (dx, dy) in enumerate(poses):
+    if args.pose_idx is not None:
+        # Single pose mode
+        if not (0 <= args.pose_idx < len(poses)):
+            raise ValueError(f"pose_idx={args.pose_idx} out of range 0..{len(poses)-1}")
+        print(f"--- T8 PPDF | layout={args.layout_idx} | pose={args.pose_idx} | a={args.a_mm} b={args.b_mm} ---")
+        dx, dy = poses[args.pose_idx]
         compute_pose(
             layout_idx=args.layout_idx,
-            pose_idx=i,
-            dx=dx,
-            dy=dy,
+            pose_idx=args.pose_idx,
+            dx=dx, dy=dy,
             scanner_layouts=scanner_layouts,
             layouts_md5=layouts_md5,
             output_dir=args.output_dir,
         )
+    else:
+        # All 8 poses (original behavior)
+        print(f"--- T8 PPDFs | layout={args.layout_idx} | a={args.a_mm} b={args.b_mm} | poses=8 ---")
+        for i, (dx, dy) in enumerate(poses):
+            compute_pose(
+                layout_idx=args.layout_idx,
+                pose_idx=i,
+                dx=dx, dy=dy,
+                scanner_layouts=scanner_layouts,
+                layouts_md5=layouts_md5,
+                output_dir=args.output_dir,
+            )
 
 if __name__ == "__main__":
     main()
