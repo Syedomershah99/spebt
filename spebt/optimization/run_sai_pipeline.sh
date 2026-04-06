@@ -94,13 +94,30 @@ fi
 
 # -------------------------------------------------------
 # Step 2: Beam analysis (masks, properties, ASCI)
-# TODO: Uncomment when beam analysis scripts are adapted for T8
+# Runs per-layout: extract masks → extract properties → ASCI histogram
+# Uses T8-aggregated PPDFs (sums 8 poses per layout)
 # -------------------------------------------------------
-echo "[2/3] Beam analysis — SKIPPED (scripts pending adaptation)"
-# When ready, this will run per-layout:
-#   python ${CODE_DIR}/pymatana/.../arg_extract_beam_masks.py --layout_idx <L> --work_dir ${WORK_DIR} --tensor_file ${TENSOR_FILE}
-#   python ${CODE_DIR}/pymatana/.../arg_extract_beam_properties.py --layout_idx <L> --work_dir ${WORK_DIR} --tensor_file ${TENSOR_FILE}
-#   python ${CODE_DIR}/pymatana/.../arg_analyze_extracted_properties.py --layout_idx <L> --work_dir ${WORK_DIR}
+echo "[2/3] Beam analysis (masks → properties → ASCI)..."
+export PYTHONPATH="${CODE_DIR}/pymatana/ppdf-analysis/beam-analysis:${PYTHONPATH:-}"
+
+for layout_idx in 0 1; do
+  echo "  Layout ${layout_idx}: extracting masks..."
+  python "${CODE_DIR}/optimization/sai_extract_masks.py" \
+    --layout_idx "${layout_idx}" \
+    --work_dir "${WORK_DIR}" \
+    --tensor_file "${TENSOR_FILE}"
+
+  echo "  Layout ${layout_idx}: extracting properties..."
+  python "${CODE_DIR}/optimization/sai_extract_props.py" \
+    --layout_idx "${layout_idx}" \
+    --work_dir "${WORK_DIR}" \
+    --tensor_file "${TENSOR_FILE}"
+
+  echo "  Layout ${layout_idx}: computing ASCI histogram..."
+  python "${CODE_DIR}/optimization/sai_analyze_asci.py" \
+    --layout_idx "${layout_idx}" \
+    --work_dir "${WORK_DIR}"
+done
 
 # -------------------------------------------------------
 # Step 3: Compute JI and append to results CSV
