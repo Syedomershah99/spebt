@@ -169,6 +169,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate SC-SPECT scanner geometry")
     parser.add_argument("--aperture_diam", type=float, default=0.4,
                         help="Aperture diameter in mm (default: 0.4)")
+    parser.add_argument("--n_apertures", type=int, default=180,
+                        help="Number of apertures on HR ring (default: 180)")
     parser.add_argument("--output_dir", type=str, default=None,
                         help="Output directory for .tensor file (default: current dir)")
     cli_args = parser.parse_args()
@@ -178,7 +180,7 @@ if __name__ == "__main__":
     RING_THICKNESS_MM  = 2.5
     APERTURE_DIAM_MM   = cli_args.aperture_diam
     MIN_SPACING_MM     = 0.8
-    APERTURE_COUNT     = 180
+    APERTURE_COUNT     = cli_args.n_apertures
     FOV_DIAMETER_MM    = 10.0
 
     SEED = int(os.getenv("HR_APERTURE_SEED", "2025"))

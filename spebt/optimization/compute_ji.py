@@ -163,8 +163,7 @@ def main():
                         help="Config identifier for CSV row")
     # Optional: pass design parameters for CSV tracking
     parser.add_argument("--aperture_diam_mm", type=float, default=None)
-    parser.add_argument("--a_mm", type=float, default=None)
-    parser.add_argument("--b_mm", type=float, default=None)
+    parser.add_argument("--n_apertures", type=int, default=None)
     args = parser.parse_args()
 
     results = compute_ji(args.work_dir)
@@ -173,10 +172,8 @@ def main():
 
     if args.aperture_diam_mm is not None:
         results["aperture_diam_mm"] = args.aperture_diam_mm
-    if args.a_mm is not None:
-        results["a_mm"] = args.a_mm
-    if args.b_mm is not None:
-        results["b_mm"] = args.b_mm
+    if args.n_apertures is not None:
+        results["n_apertures"] = args.n_apertures
 
     # Append to CSV (create with header if new)
     df_new = pd.DataFrame([results])
