@@ -19,7 +19,7 @@ import pandas as pd
 from botorch.models import SingleTaskGP
 from botorch.fit import fit_gpytorch_mll
 from botorch.utils.transforms import normalize, unnormalize
-from botorch.acquisition.monte_carlo import qExpectedImprovement
+from botorch.acquisition.logei import qLogExpectedImprovement
 from botorch.optim import optimize_acqf
 from gpytorch.mlls import ExactMarginalLogLikelihood
 
@@ -105,9 +105,9 @@ def get_next_candidate(results_csv: str = None):
     except Exception:
         pass
 
-    # 4. Optimize Acquisition Function (qEI, q=1)
-    logger.info("Optimizing Acquisition Function (Monte Carlo EI)...")
-    MC_EI = qExpectedImprovement(
+    # 4. Optimize Acquisition Function (qLogEI, q=1)
+    logger.info("Optimizing Acquisition Function (Log Expected Improvement)...")
+    MC_EI = qLogExpectedImprovement(
         model=gp,
         best_f=train_y_std.max(),
     )
