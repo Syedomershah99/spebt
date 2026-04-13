@@ -63,30 +63,7 @@ write_zero_ji() {
     --config_name "${CONFIG_NAME}" \
     --aperture_diam_mm "${APERTURE_DIAM}" \
     --n_apertures "${N_APERTURES}" \
-    --force_zero --reason "${reason}" 2>/dev/null || \
-  python -c "
-import os, pandas as pd
-row = {
-    'config': '${CONFIG_NAME}',
-    'work_dir': '${WORK_DIR}',
-    'aperture_diam_mm': ${APERTURE_DIAM},
-    'n_apertures': ${N_APERTURES},
-    'fwhm_mean': float('nan'),
-    'sensitivity_total': float('nan'),
-    'sensitivity_mean': float('nan'),
-    'asci_pct': float('nan'),
-    'n_ppdf_files': 0,
-    'JI': 0.0,
-}
-df = pd.DataFrame([row])
-csv_path = '${RESULTS_CSV}'
-if os.path.exists(csv_path):
-    df.to_csv(csv_path, mode='a', header=False, index=False)
-else:
-    os.makedirs(os.path.dirname(csv_path) or '.', exist_ok=True)
-    df.to_csv(csv_path, index=False)
-print(f'  Written JI=0 to {csv_path}')
-"
+    --force_zero --reason "${reason}"
   echo "=================================================="
   echo "PIPELINE COMPLETE (infeasible) | $(date)"
   echo "=================================================="

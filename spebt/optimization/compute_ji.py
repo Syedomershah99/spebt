@@ -164,9 +164,24 @@ def main():
     # Optional: pass design parameters for CSV tracking
     parser.add_argument("--aperture_diam_mm", type=float, default=None)
     parser.add_argument("--n_apertures", type=int, default=None)
+    parser.add_argument("--force_zero", action="store_true",
+                        help="Write JI=0 row (for infeasible configs)")
+    parser.add_argument("--reason", type=str, default="",
+                        help="Reason for force_zero (logged)")
     args = parser.parse_args()
 
-    results = compute_ji(args.work_dir)
+    if args.force_zero:
+        results = {
+            "fwhm_mean": float("nan"),
+            "sensitivity_total": float("nan"),
+            "sensitivity_mean": float("nan"),
+            "asci_pct": float("nan"),
+            "n_ppdf_files": 0,
+            "JI": 0.0,
+        }
+        print(f"[{args.config_name}] FORCE_ZERO: {args.reason}")
+    else:
+        results = compute_ji(args.work_dir)
     results["config"] = args.config_name
     results["work_dir"] = args.work_dir
 
