@@ -62,7 +62,15 @@ def get_next_candidate(results_csv: str = None):
 
     df = pd.read_csv(csv_path)
     df = df.dropna(subset=["JI"])
-    df = df[df["JI"] > 1e-9]
+
+    # Keep infeasible (JI=0) points but assign a small penalty value
+    # so the GP learns to avoid those regions of the design space
+    n_infeasible = (df["JI"] <= 1e-9).sum()
+    if n_infeasible > 0:
+        feasible_min = df.loc[df["JI"] > 1e-9, "JI"].min() if (df["JI"] > 1e-9).any() else 1e-10
+        penalty_val = feasible_min * 0.1  # 10% of worst feasible JI
+        df.loc[df["JI"] <= 1e-9, "JI"] = penalty_val
+        logger.info(f"Replaced {n_infeasible} infeasible (JI=0) points with penalty={penalty_val:.4e}")
 
     n_points = len(df)
     logger.info(f"Loaded {n_points} data points from history.")
