@@ -13,40 +13,28 @@
 #SBATCH --mail-user=syedomer@buffalo.edu
 #SBATCH --mail-type=FAIL,END
 
-set -euo pipefail
+set -uo pipefail
+# Note: -e intentionally omitted so we can handle errors per-step
 
 # ============================================================
 # SAI SC-SPECT per-config pipeline
 # Called by run_bo_loop.py or submit_lhs_sweep.sh.
 #
-# Key optimization: 16 PPDF poses run in parallel (not sequential).
-# With 25 CPUs, runs ~8 poses concurrently (each is ~single-threaded).
-# Resume-safe: skips already-computed HDF5 files.
-#
-# Environment variables (passed via --export):
-#   WORK_DIR       - output directory for this config
-#   APERTURE_DIAM  - aperture diameter in mm
-#   N_APERTURES    - number of apertures
-#   A_MM           - T8 ellipse semi-axis X (default 0.2)
-#   B_MM           - T8 ellipse semi-axis Y (default 0.2)
-#   CODE_DIR       - base code directory
-#   RESULTS_CSV    - path to append JI results
-#   CONFIG_NAME    - identifier for this config
+# Robustness features:
+#   - Infeasible geometry → writes JI=0 to CSV and exits cleanly
+#   - Corrupt HDF5 files → detected and deleted before resume
+#   - Parallel PPDF poses (12 concurrent) with per-process throttling
+#   - Stale beam analysis outputs cleaned before re-run
 # ============================================================
 
 source /vscratch/grp-rutaoyao/Omer/.venv/bin/activate
 export PYTHONPATH="${CODE_DIR}/pymatcal:${PYTHONPATH:-}"
 export HDF5_USE_FILE_LOCKING=FALSE
-
-# Limit PyTorch threads per process (we run many in parallel)
 export OMP_NUM_THREADS=2
 export MKL_NUM_THREADS=2
 
-# Defaults for T8 (fixed during BO)
 A_MM="${A_MM:-0.2}"
 B_MM="${B_MM:-0.2}"
-
-# Max parallel PPDF processes (leave a few CPUs for OS/IO)
 MAX_PARALLEL=12
 
 mkdir -p "${WORK_DIR}"
@@ -60,8 +48,50 @@ echo "  n_apertures   = ${N_APERTURES}"
 echo "  a_mm=${A_MM}  b_mm=${B_MM}"
 echo "  work_dir = ${WORK_DIR}"
 echo "  CPUs = ${SLURM_CPUS_PER_TASK}"
-echo "  Max parallel = ${MAX_PARALLEL}"
 echo "=================================================="
+
+# -------------------------------------------------------
+# Helper: write JI=0 for infeasible/failed configs
+# -------------------------------------------------------
+write_zero_ji() {
+  local reason="$1"
+  echo "[INFEASIBLE] ${reason}"
+  echo "  Writing JI=0 to results CSV..."
+  python "${CODE_DIR}/optimization/compute_ji.py" \
+    --work_dir "${WORK_DIR}" \
+    --out_csv "${RESULTS_CSV}" \
+    --config_name "${CONFIG_NAME}" \
+    --aperture_diam_mm "${APERTURE_DIAM}" \
+    --n_apertures "${N_APERTURES}" \
+    --force_zero --reason "${reason}" 2>/dev/null || \
+  python -c "
+import os, pandas as pd
+row = {
+    'config': '${CONFIG_NAME}',
+    'work_dir': '${WORK_DIR}',
+    'aperture_diam_mm': ${APERTURE_DIAM},
+    'n_apertures': ${N_APERTURES},
+    'fwhm_mean': float('nan'),
+    'sensitivity_total': float('nan'),
+    'sensitivity_mean': float('nan'),
+    'asci_pct': float('nan'),
+    'n_ppdf_files': 0,
+    'JI': 0.0,
+}
+df = pd.DataFrame([row])
+csv_path = '${RESULTS_CSV}'
+if os.path.exists(csv_path):
+    df.to_csv(csv_path, mode='a', header=False, index=False)
+else:
+    os.makedirs(os.path.dirname(csv_path) or '.', exist_ok=True)
+    df.to_csv(csv_path, index=False)
+print(f'  Written JI=0 to {csv_path}')
+"
+  echo "=================================================="
+  echo "PIPELINE COMPLETE (infeasible) | $(date)"
+  echo "=================================================="
+  exit 0
+}
 
 # -------------------------------------------------------
 # Step 0: Generate geometry (skip if .tensor already exists)
@@ -73,15 +103,16 @@ if [ ${#TENSORS[@]} -gt 0 ]; then
   echo "[0/3] Geometry already exists: ${TENSOR_FILE}"
 else
   echo "[0/3] Generating scanner geometry..."
-  python "${CODE_DIR}/geometry/generate_mph_scanner_circularfov.py" \
+  if ! python "${CODE_DIR}/geometry/generate_mph_scanner_circularfov.py" \
     --aperture_diam "${APERTURE_DIAM}" \
     --n_apertures "${N_APERTURES}" \
-    --output_dir "${WORK_DIR}"
+    --output_dir "${WORK_DIR}" 2>&1; then
+    write_zero_ji "Geometry generation failed (likely aperture too wide for n_apertures)"
+  fi
 
   TENSORS=("${WORK_DIR}"/*.tensor)
   if [ ${#TENSORS[@]} -eq 0 ]; then
-    echo "[ERROR] No .tensor file generated in ${WORK_DIR}"
-    exit 1
+    write_zero_ji "No .tensor file produced"
   fi
   TENSOR_FILE="${TENSORS[0]}"
 fi
@@ -89,10 +120,23 @@ echo "  Tensor file: ${TENSOR_FILE}"
 
 # -------------------------------------------------------
 # Step 1: PPDF computation (2 layouts × 8 T8 poses = 16 files)
-#   Parallelized: each pose runs as a separate background process.
-#   Skips poses whose HDF5 output already exists (resume support).
+#   - Validates existing HDF5 files (deletes corrupt ones)
+#   - Parallelizes up to MAX_PARALLEL poses
 # -------------------------------------------------------
 echo "[1/3] Computing PPDFs (2 layouts × 8 T8 poses, parallel)..."
+
+# Validate existing HDF5 files — delete corrupt ones
+echo "  Checking existing HDF5 integrity..."
+python3 -c "
+import h5py, glob, os
+for f in glob.glob('${WORK_DIR}/position_*_ppdfs_t8_*.hdf5'):
+    try:
+        with h5py.File(f, 'r') as h:
+            _ = h['ppdfs'].shape
+    except:
+        print(f'  Deleting corrupt: {os.path.basename(f)}')
+        os.remove(f)
+"
 
 n_running=0
 n_skipped=0
@@ -108,9 +152,8 @@ for layout_idx in 0 1; do
       continue
     fi
 
-    # Throttle: wait if at max parallel
+    # Throttle
     while [ ${n_running} -ge ${MAX_PARALLEL} ]; do
-      # Wait for any one child to finish
       wait -n 2>/dev/null || true
       n_running=$((n_running - 1))
     done
@@ -133,34 +176,35 @@ done
 echo "  Launched ${n_launched} poses, skipped ${n_skipped} (already exist)"
 echo "  Waiting for all PPDF processes to finish..."
 
-# Wait for all background jobs, track failures
 FAIL=0
 for pid in "${PIDS[@]}"; do
   wait "${pid}" || FAIL=$((FAIL + 1))
 done
 
 if [ ${FAIL} -gt 0 ]; then
-  echo "[ERROR] ${FAIL} PPDF process(es) failed"
-  exit 1
+  echo "[WARNING] ${FAIL} PPDF process(es) failed"
 fi
 
 # Verify 16 HDF5 files
 N_HDF5=$(ls "${WORK_DIR}"/position_*_ppdfs_t8_*.hdf5 2>/dev/null | wc -l)
 echo "  Total PPDF files: ${N_HDF5} (expected 16)"
 if [ "${N_HDF5}" -lt 16 ]; then
-  echo "[ERROR] Expected 16 PPDF files, got ${N_HDF5}"
-  exit 1
+  write_zero_ji "Only ${N_HDF5}/16 PPDF files produced"
 fi
 
 echo "  Step 1 complete at $(date)"
 
 # -------------------------------------------------------
 # Step 2: Beam analysis (masks, properties, ASCI)
-# Runs per-layout: extract masks → extract properties → ASCI histogram
-# Uses T8-aggregated PPDFs (sums 8 poses per layout)
+# Clean stale outputs first, then run per-layout
 # -------------------------------------------------------
-echo "[2/3] Beam analysis (masks → properties → ASCI)..."
+echo "[2/3] Beam analysis (masks -> properties -> ASCI)..."
 export PYTHONPATH="${CODE_DIR}/pymatana/ppdf-analysis/beam-analysis:${PYTHONPATH:-}"
+
+# Remove stale beam analysis files (force fresh computation)
+rm -f "${WORK_DIR}"/beams_masks_configuration_*.hdf5
+rm -f "${WORK_DIR}"/beams_properties_configuration_*.hdf5
+rm -f "${WORK_DIR}"/asci_histogram_*.hdf5
 
 for layout_idx in 0 1; do
   echo "  Layout ${layout_idx}: extracting masks..."
