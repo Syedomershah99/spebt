@@ -35,6 +35,8 @@ export MKL_NUM_THREADS=2
 
 A_MM="${A_MM:-0.2}"
 B_MM="${B_MM:-0.2}"
+SCINT_RADIAL_MM="${SCINT_RADIAL_MM:-6.0}"
+RING_THICKNESS_MM="${RING_THICKNESS_MM:-2.5}"
 MAX_PARALLEL=12
 
 mkdir -p "${WORK_DIR}"
@@ -43,8 +45,10 @@ cd "${WORK_DIR}"
 echo "=================================================="
 echo "SAI Pipeline | $(date)"
 echo "Config: ${CONFIG_NAME}"
-echo "  aperture_diam = ${APERTURE_DIAM} mm"
-echo "  n_apertures   = ${N_APERTURES}"
+echo "  aperture_diam    = ${APERTURE_DIAM} mm"
+echo "  n_apertures      = ${N_APERTURES}"
+echo "  scint_radial_mm  = ${SCINT_RADIAL_MM} mm"
+echo "  ring_thickness   = ${RING_THICKNESS_MM} mm"
 echo "  a_mm=${A_MM}  b_mm=${B_MM}"
 echo "  work_dir = ${WORK_DIR}"
 echo "  CPUs = ${SLURM_CPUS_PER_TASK}"
@@ -63,6 +67,8 @@ write_zero_ji() {
     --config_name "${CONFIG_NAME}" \
     --aperture_diam_mm "${APERTURE_DIAM}" \
     --n_apertures "${N_APERTURES}" \
+    --scint_radial_thickness_mm "${SCINT_RADIAL_MM}" \
+    --ring_thickness_mm "${RING_THICKNESS_MM}" \
     --force_zero --reason "${reason}"
   echo "=================================================="
   echo "PIPELINE COMPLETE (infeasible) | $(date)"
@@ -83,6 +89,8 @@ else
   if ! python "${CODE_DIR}/geometry/generate_mph_scanner_circularfov.py" \
     --aperture_diam "${APERTURE_DIAM}" \
     --n_apertures "${N_APERTURES}" \
+    --scint_radial_mm "${SCINT_RADIAL_MM}" \
+    --ring_thickness "${RING_THICKNESS_MM}" \
     --output_dir "${WORK_DIR}" 2>&1; then
     write_zero_ji "Geometry generation failed (likely aperture too wide for n_apertures)"
   fi
@@ -211,7 +219,9 @@ python "${CODE_DIR}/optimization/compute_ji.py" \
   --out_csv "${RESULTS_CSV}" \
   --config_name "${CONFIG_NAME}" \
   --aperture_diam_mm "${APERTURE_DIAM}" \
-  --n_apertures "${N_APERTURES}"
+  --n_apertures "${N_APERTURES}" \
+  --scint_radial_thickness_mm "${SCINT_RADIAL_MM}" \
+  --ring_thickness_mm "${RING_THICKNESS_MM}"
 
 echo "=================================================="
 echo "PIPELINE COMPLETE | $(date)"

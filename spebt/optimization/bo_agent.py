@@ -33,11 +33,11 @@ logger = logging.getLogger("BO_Agent_SAI")
 warnings.filterwarnings("ignore", category=UserWarning)
 
 # --- Design space bounds ---
-# [aperture_diam_mm, n_apertures]
+# [aperture_diam_mm, n_apertures, scint_radial_thickness_mm, ring_thickness_mm]
 # n_apertures treated as continuous, rounded to int for geometry generation
-PARAM_NAMES = ["aperture_diam_mm", "n_apertures"]
-BOUNDS_MIN = [0.2, 60.0]
-BOUNDS_MAX = [1.0, 360.0]
+PARAM_NAMES = ["aperture_diam_mm", "n_apertures", "scint_radial_thickness_mm", "ring_thickness_mm"]
+BOUNDS_MIN = [0.2, 60.0, 3.0, 1.0]
+BOUNDS_MAX = [1.0, 360.0, 12.0, 5.0]
 DIM = len(PARAM_NAMES)
 
 RESULTS_FILE = None  # set by caller or CLI
@@ -124,14 +124,17 @@ def get_next_candidate(results_csv: str = None):
     candidate_physical = unnormalize(candidate_norm, bounds)
     next_diam = candidate_physical[0, 0].item()
     next_n_ap = candidate_physical[0, 1].item()
+    next_scint_radial = candidate_physical[0, 2].item()
+    next_ring_thick = candidate_physical[0, 3].item()
 
     # Round n_apertures to nearest integer
     next_n_ap = int(round(next_n_ap))
 
     logger.info(f"Optimization Complete.")
-    logger.info(f"SUGGESTION -> Aperture Diam: {next_diam:.4f} mm | N Apertures: {next_n_ap}")
+    logger.info(f"SUGGESTION -> Aperture Diam: {next_diam:.4f} mm | N Apertures: {next_n_ap} | "
+                f"Scint Radial: {next_scint_radial:.4f} mm | Ring Thickness: {next_ring_thick:.4f} mm")
 
-    return next_diam, next_n_ap
+    return next_diam, next_n_ap, next_scint_radial, next_ring_thick
 
 
 if __name__ == "__main__":
@@ -142,7 +145,9 @@ if __name__ == "__main__":
                         help="Path to results_summary.csv")
     args = parser.parse_args()
 
-    diam, n_ap = get_next_candidate(args.results_csv)
+    diam, n_ap, scint_rad, ring_thick = get_next_candidate(args.results_csv)
     print(f"\nSuggested next config:")
-    print(f"  aperture_diam = {diam:.4f} mm")
-    print(f"  n_apertures   = {n_ap}")
+    print(f"  aperture_diam        = {diam:.4f} mm")
+    print(f"  n_apertures          = {n_ap}")
+    print(f"  scint_radial_thick   = {scint_rad:.4f} mm")
+    print(f"  ring_thickness       = {ring_thick:.4f} mm")

@@ -164,6 +164,8 @@ def main():
     # Optional: pass design parameters for CSV tracking
     parser.add_argument("--aperture_diam_mm", type=float, default=None)
     parser.add_argument("--n_apertures", type=int, default=None)
+    parser.add_argument("--scint_radial_thickness_mm", type=float, default=None)
+    parser.add_argument("--ring_thickness_mm", type=float, default=None)
     parser.add_argument("--force_zero", action="store_true",
                         help="Write JI=0 row (for infeasible configs)")
     parser.add_argument("--reason", type=str, default="",
@@ -189,6 +191,10 @@ def main():
         results["aperture_diam_mm"] = args.aperture_diam_mm
     if args.n_apertures is not None:
         results["n_apertures"] = args.n_apertures
+    if args.scint_radial_thickness_mm is not None:
+        results["scint_radial_thickness_mm"] = args.scint_radial_thickness_mm
+    if args.ring_thickness_mm is not None:
+        results["ring_thickness_mm"] = args.ring_thickness_mm
 
     # Append to CSV (create with header if new)
     df_new = pd.DataFrame([results])

@@ -171,13 +171,17 @@ if __name__ == "__main__":
                         help="Aperture diameter in mm (default: 0.4)")
     parser.add_argument("--n_apertures", type=int, default=180,
                         help="Number of apertures on HR ring (default: 180)")
+    parser.add_argument("--scint_radial_mm", type=float, default=6.0,
+                        help="Scintillator radial thickness in mm (default: 6.0)")
+    parser.add_argument("--ring_thickness", type=float, default=2.5,
+                        help="HR collimator ring thickness in mm (default: 2.5)")
     parser.add_argument("--output_dir", type=str, default=None,
                         help="Output directory for .tensor file (default: current dir)")
     cli_args = parser.parse_args()
 
     # ===== HR ring parameters =====
     RING_INNER_DIAM_MM = 67.5
-    RING_THICKNESS_MM  = 2.5
+    RING_THICKNESS_MM  = cli_args.ring_thickness
     APERTURE_DIAM_MM   = cli_args.aperture_diam
     MIN_SPACING_MM     = 0.8
     APERTURE_COUNT     = cli_args.n_apertures
@@ -189,7 +193,7 @@ if __name__ == "__main__":
     RING_INNER_DIAMS_MM = [260.0, 390.0, 520.0, 650.0]
     DETS_PER_RING       = [40*6*2, 40*9*2, 40*12*2, 40*15*2]  # 3360 total
     SCINT_TANGENT_MM    = 0.84
-    SCINT_RADIAL_MM     = 6.0
+    SCINT_RADIAL_MM     = cli_args.scint_radial_mm
     INTRA_GAP_MM        = 0.84
     SCINT_AXIAL_MM      = 20.0
 
