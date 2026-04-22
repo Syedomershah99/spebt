@@ -31,7 +31,7 @@ from rich.panel import Panel
 CODE_DIR = "/vscratch/grp-rutaoyao/Omer/spebt/spebt"
 RESULTS_DIR = os.path.join(CODE_DIR, "optimization", "results")
 MANIFEST_FILE = os.path.join(RESULTS_DIR, "experiment_manifest.csv")
-RESULTS_CSV = os.path.join(RESULTS_DIR, "results_summary.csv")
+RESULTS_CSV = os.path.join(RESULTS_DIR, "results_summary_4d.csv")
 SLURM_SCRIPT = os.path.join(CODE_DIR, "optimization", "run_sai_pipeline.sh")
 LOG_DIR = os.path.join(RESULTS_DIR, "slurm_logs")
 
