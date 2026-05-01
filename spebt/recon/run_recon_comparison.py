@@ -129,9 +129,16 @@ def forward_project(flist, phantom_path, output_dir, device):
 
     projs = torch.cat(all_projs, dim=0)
 
-    # Add Poisson noise (realistic photon counting statistics)
-    projs = torch.poisson(projs.clamp(min=0))
-    print(f"[Step 2] Added Poisson noise to projections")
+    # Scale to realistic photon count levels, then add Poisson noise
+    # Raw projections are tiny (system matrix = detection probabilities).
+    # In real SPECT, activity produces millions of counts.
+    # Scale so max projection bin ~ 1000 counts (typical SPECT).
+    count_scale = 1000.0 / projs.max().clamp(min=1e-12)
+    projs_scaled = projs * count_scale
+    projs_noisy = torch.poisson(projs_scaled.clamp(min=0))
+    # Scale back to original magnitude for MLEM
+    projs = projs_noisy / count_scale
+    print(f"[Step 2] Added Poisson noise (scale factor={count_scale:.1f}, max counts={projs_scaled.max():.0f})")
 
     projs_path = os.path.join(output_dir, "projections_T8.npy")
     np.save(projs_path, projs.numpy())
