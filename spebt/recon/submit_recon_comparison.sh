@@ -29,7 +29,7 @@ source /vscratch/grp-rutaoyao/Omer/.venv/bin/activate
 CODE_DIR="/vscratch/grp-rutaoyao/Omer/spebt/spebt"
 RECON_SCRIPT="${CODE_DIR}/recon/run_recon_comparison.py"
 RESULTS_BASE="${CODE_DIR}/recon/recon_results"
-PHANTOM="/vscratch/grp-rutaoyao/Omer/spebt/data/sai_10mm/hot_rods_phantom_10.0_mm_x_10.0_mm.pt"
+PHANTOM="/vscratch/grp-rutaoyao/Omer/spebt/spebt/data/sai_10mm/hot_rods_phantom_10.0_mm_x_10.0_mm.pt"
 
 # Paths to PPDF directories
 BASELINE_PPDF="/vscratch/grp-rutaoyao/Omer/spebt/data/sai_10mm"

@@ -411,7 +411,7 @@ def main():
         # Try common locations
         for candidate in [
             os.path.join(args.ppdf_dir, "hot_rods_phantom_10.0_mm_x_10.0_mm.pt"),
-            "/vscratch/grp-rutaoyao/Omer/spebt/data/sai_10mm/hot_rods_phantom_10.0_mm_x_10.0_mm.pt",
+            "/vscratch/grp-rutaoyao/Omer/spebt/spebt/data/sai_10mm/hot_rods_phantom_10.0_mm_x_10.0_mm.pt",
         ]:
             if os.path.exists(candidate):
                 phantom_path = candidate
