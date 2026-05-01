@@ -8,8 +8,8 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
-#SBATCH --output=slurm_logs/recon_compare_%j.out
-#SBATCH --error=slurm_logs/recon_compare_%j.err
+#SBATCH --output=/vscratch/grp-rutaoyao/Omer/spebt/spebt/recon/slurm_logs/recon_compare_%j.out
+#SBATCH --error=/vscratch/grp-rutaoyao/Omer/spebt/spebt/recon/slurm_logs/recon_compare_%j.err
 #SBATCH --mail-user=syedomer@buffalo.edu
 #SBATCH --mail-type=FAIL,END
 
@@ -36,7 +36,6 @@ BASELINE_PPDF="/vscratch/grp-rutaoyao/Omer/spebt/data/sai_10mm"
 BO_PPDF="/vscratch/grp-rutaoyao/Omer/spebt/spebt/optimization/results/bo_0013_ap0.5300_nap232"
 
 mkdir -p "${RESULTS_BASE}"
-mkdir -p "$(dirname "$0")/slurm_logs"
 
 echo "=================================================="
 echo "Reconstruction Comparison | $(date)"
