@@ -128,6 +128,11 @@ def forward_project(flist, phantom_path, output_dir, device):
             print(f"  Projected {i + 1}/{len(flist)} files")
 
     projs = torch.cat(all_projs, dim=0)
+
+    # Add Poisson noise (realistic photon counting statistics)
+    projs = torch.poisson(projs.clamp(min=0))
+    print(f"[Step 2] Added Poisson noise to projections")
+
     projs_path = os.path.join(output_dir, "projections_T8.npy")
     np.save(projs_path, projs.numpy())
     print(f"[Step 2] Projections shape: {projs.shape} -> {projs_path}")
