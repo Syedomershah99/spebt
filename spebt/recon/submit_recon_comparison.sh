@@ -35,6 +35,9 @@ PHANTOM="/vscratch/grp-rutaoyao/Omer/spebt/spebt/data/sai_10mm/hot_rods_phantom_
 BASELINE_PPDF="/vscratch/grp-rutaoyao/Omer/spebt/data/sai_10mm"
 BO_PPDF="/vscratch/grp-rutaoyao/Omer/spebt/spebt/optimization/results/bo_0013_ap0.5300_nap232"
 
+# Same count scale for both configs — preserves sensitivity difference
+COUNT_SCALE=1e5
+
 mkdir -p "${RESULTS_BASE}"
 
 echo "=================================================="
@@ -48,6 +51,7 @@ python "${RECON_SCRIPT}" \
   --config baseline \
   --ppdf_dir "${BASELINE_PPDF}" \
   --phantom_path "${PHANTOM}" \
+  --count_scale "${COUNT_SCALE}" \
   --output_dir "${RESULTS_BASE}/baseline"
 
 # Step 2: BO-optimized reconstruction
@@ -57,6 +61,7 @@ python "${RECON_SCRIPT}" \
   --config bo_optimized \
   --ppdf_dir "${BO_PPDF}" \
   --phantom_path "${PHANTOM}" \
+  --count_scale "${COUNT_SCALE}" \
   --output_dir "${RESULTS_BASE}/bo_optimized"
 
 # Step 3: Comparison

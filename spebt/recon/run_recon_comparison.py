@@ -104,7 +104,7 @@ def generate_flist(ppdf_dir, output_dir):
 # =====================
 # Step 2: Forward projection
 # =====================
-def forward_project(flist, phantom_path, output_dir, device):
+def forward_project(flist, phantom_path, output_dir, device, count_scale=1e5):
     """Project phantom through system matrices."""
     phantom_data = torch.load(phantom_path, map_location="cpu", weights_only=False)
     phantom_tensor = phantom_data["Phantom tensor"]
@@ -129,16 +129,14 @@ def forward_project(flist, phantom_path, output_dir, device):
 
     projs = torch.cat(all_projs, dim=0)
 
-    # Scale to realistic photon count levels, then add Poisson noise
-    # Raw projections are tiny (system matrix = detection probabilities).
-    # In real SPECT, activity produces millions of counts.
-    # Scale so max projection bin ~ 1000 counts (typical SPECT).
-    count_scale = 1000.0 / projs.max().clamp(min=1e-12)
+    # Add Poisson noise with fixed activity scale (same for both configs).
+    # This preserves the sensitivity difference: higher-sensitivity config
+    # gets more counts -> less relative Poisson noise.
     projs_scaled = projs * count_scale
+    print(f"[Step 2] Projection stats: raw max={projs.max():.6f}, scaled max={projs_scaled.max():.0f} counts")
     projs_noisy = torch.poisson(projs_scaled.clamp(min=0))
-    # Scale back to original magnitude for MLEM
     projs = projs_noisy / count_scale
-    print(f"[Step 2] Added Poisson noise (scale factor={count_scale:.1f}, max counts={projs_scaled.max():.0f})")
+    print(f"[Step 2] Added Poisson noise (count_scale={count_scale:.0f})")
 
     projs_path = os.path.join(output_dir, "projections_T8.npy")
     np.save(projs_path, projs.numpy())
@@ -406,6 +404,8 @@ def main():
                         help="Baseline results directory (for comparison)")
     parser.add_argument("--bo_dir", type=str,
                         help="BO-optimized results directory (for comparison)")
+    parser.add_argument("--count_scale", type=float, default=1e5,
+                        help="Activity scale factor for Poisson noise (same for both configs)")
     args = parser.parse_args()
 
     if args.compare:
@@ -443,8 +443,8 @@ def main():
     # Step 1: Generate file list
     flist_path, flist = generate_flist(args.ppdf_dir, args.output_dir)
 
-    # Step 2: Forward projection
-    projs_path = forward_project(flist, phantom_path, args.output_dir, device)
+    # Step 2: Forward projection (with Poisson noise)
+    projs_path = forward_project(flist, phantom_path, args.output_dir, device, count_scale=args.count_scale)
 
     # Step 3: ML-EM reconstruction
     recon_path = run_mlem(flist, projs_path, args.output_dir, device)
