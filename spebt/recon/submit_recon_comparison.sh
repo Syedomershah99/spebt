@@ -33,7 +33,7 @@ PHANTOM="/vscratch/grp-rutaoyao/Omer/spebt/spebt/data/sai_10mm/hot_rods_phantom_
 
 # Paths to PPDF directories
 BASELINE_PPDF="/vscratch/grp-rutaoyao/Omer/spebt/data/sai_10mm"
-BO_PPDF="/vscratch/grp-rutaoyao/Omer/spebt/optimization/config_0022_ap0.4294_nap230"
+BO_PPDF="/vscratch/grp-rutaoyao/Omer/spebt/optimization/config_0016_ap0.3496_nap260"
 
 # Same count scale for both configs — preserves sensitivity difference
 COUNT_SCALE=100
@@ -56,13 +56,13 @@ python "${RECON_SCRIPT}" \
 
 # Step 2: BO-optimized reconstruction
 echo ""
-echo "=== LHS_22 CONFIG (d=0.429mm, n=230) ==="
+echo "=== LHS_16 CONFIG (d=0.35mm, n=260) ==="
 python "${RECON_SCRIPT}" \
   --config bo_optimized \
   --ppdf_dir "${BO_PPDF}" \
   --phantom_path "${PHANTOM}" \
   --count_scale "${COUNT_SCALE}" \
-  --output_dir "${RESULTS_BASE}/lhs_22"
+  --output_dir "${RESULTS_BASE}/lhs_16"
 
 # Step 3: Comparison
 echo ""
@@ -70,10 +70,10 @@ echo "=== GENERATING COMPARISON ==="
 python "${RECON_SCRIPT}" \
   --compare \
   --baseline_dir "${RESULTS_BASE}/baseline" \
-  --bo_dir "${RESULTS_BASE}/lhs_22" \
+  --bo_dir "${RESULTS_BASE}/lhs_16" \
   --baseline_label "Baseline (d=0.4, n=180)" \
-  --bo_label "LHS_22 (d=0.429, n=230)" \
-  --output_dir "${RESULTS_BASE}/comparison_lhs22"
+  --bo_label "LHS_16 (d=0.35, n=260)" \
+  --output_dir "${RESULTS_BASE}/comparison_lhs16"
 
 echo ""
 echo "=================================================="
