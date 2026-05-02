@@ -36,7 +36,7 @@ BASELINE_PPDF="/vscratch/grp-rutaoyao/Omer/spebt/data/sai_10mm"
 BO_PPDF="/vscratch/grp-rutaoyao/Omer/spebt/spebt/optimization/results/bo_0013_ap0.5300_nap232"
 
 # Same count scale for both configs — preserves sensitivity difference
-COUNT_SCALE=1e5
+COUNT_SCALE=100
 
 mkdir -p "${RESULTS_BASE}"
 
