@@ -314,8 +314,8 @@ def compute_cnr(recon_path, phantom_path, output_dir, use_gauss=True):
 # =====================
 # Step 5: Comparison Plot
 # =====================
-def plot_comparison(baseline_dir, bo_dir, output_dir):
-    """Side-by-side comparison of baseline vs BO-optimized reconstruction."""
+def plot_comparison(baseline_dir, bo_dir, output_dir, baseline_label="Baseline", bo_label="Candidate"):
+    """Side-by-side comparison of two reconstructions."""
     os.makedirs(output_dir, exist_ok=True)
 
     # Load reconstructions
@@ -338,14 +338,14 @@ def plot_comparison(baseline_dir, bo_dir, output_dir):
     # Baseline
     ax1 = fig.add_subplot(gs[0])
     ax1.imshow(base_img.T, cmap="hot", extent=extent, origin="lower", vmin=0, vmax=vmax)
-    ax1.set_title(f"Baseline (d=0.4, n=180)\nCNR={float(base_cnr['overall_cnr']):.2f}", fontsize=12)
+    ax1.set_title(f"{baseline_label}\nCNR={float(base_cnr['overall_cnr']):.2f}", fontsize=12)
     ax1.set_xlabel("X (mm)")
     ax1.set_ylabel("Y (mm)")
 
-    # BO-optimized
+    # Candidate
     ax2 = fig.add_subplot(gs[1])
     ax2.imshow(bo_img.T, cmap="hot", extent=extent, origin="lower", vmin=0, vmax=vmax)
-    ax2.set_title(f"BO-Optimized (d=0.53, n=232)\nCNR={float(bo_cnr['overall_cnr']):.2f}", fontsize=12)
+    ax2.set_title(f"{bo_label}\nCNR={float(bo_cnr['overall_cnr']):.2f}", fontsize=12)
     ax2.set_xlabel("X (mm)")
 
     # CNR bar chart
@@ -356,8 +356,8 @@ def plot_comparison(baseline_dir, bo_dir, output_dir):
     base_sector = base_cnr["sector_cnrs"]
     bo_sector = bo_cnr["sector_cnrs"]
 
-    ax3.barh(x - width/2, base_sector, width, label="Baseline", color="steelblue")
-    ax3.barh(x + width/2, bo_sector, width, label="BO-Optimized", color="coral")
+    ax3.barh(x - width/2, base_sector, width, label=baseline_label, color="steelblue")
+    ax3.barh(x + width/2, bo_sector, width, label=bo_label, color="coral")
     ax3.set_yticks(x)
     ax3.set_yticklabels([f"{r:.3f}mm" for r in rod_radii])
     ax3.set_xlabel("CNR")
@@ -406,12 +406,17 @@ def main():
                         help="BO-optimized results directory (for comparison)")
     parser.add_argument("--count_scale", type=float, default=1e5,
                         help="Activity scale factor for Poisson noise (same for both configs)")
+    parser.add_argument("--baseline_label", type=str, default="Baseline",
+                        help="Label for baseline config in comparison plot")
+    parser.add_argument("--bo_label", type=str, default="Candidate",
+                        help="Label for candidate config in comparison plot")
     args = parser.parse_args()
 
     if args.compare:
         if not args.baseline_dir or not args.bo_dir:
             parser.error("--compare requires --baseline_dir and --bo_dir")
-        plot_comparison(args.baseline_dir, args.bo_dir, args.output_dir)
+        plot_comparison(args.baseline_dir, args.bo_dir, args.output_dir,
+                        baseline_label=args.baseline_label, bo_label=args.bo_label)
         return
 
     if not args.ppdf_dir:
