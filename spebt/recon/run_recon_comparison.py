@@ -167,7 +167,6 @@ def run_mlem(flist, projs_path, output_dir, device):
     estimate = torch.ones(SFOV, device=device, dtype=torch.float32)
 
     estimates_history = []
-    estimates_gauss = []
     diffs = []
 
     print(f"[Step 3] Starting ML-EM ({N_ITERATIONS} iterations)...")
@@ -199,8 +198,6 @@ def run_mlem(flist, projs_path, output_dir, device):
         if it % SAVE_EVERY == 0:
             est2d = estimate.view(IMG_DIM, IMG_DIM).detach().cpu()
             estimates_history.append(est2d.numpy())
-            est2d_f = gaussian_filter_2d(est2d.to(device), fwhm_mm=GAUSS_FWHM_MM, mm_per_px=MM_PER_PX)
-            estimates_gauss.append(est2d_f.detach().cpu().numpy())
 
         dt = time.time() - t0
         if (it + 1) % 10 == 0:
@@ -213,17 +210,13 @@ def run_mlem(flist, projs_path, output_dir, device):
     total_time = time.time() - t_start
     print(f"  Total reconstruction time: {total_time / 60:.1f} min")
 
-    # Final with post-filter
     final = estimate.view(IMG_DIM, IMG_DIM).detach()
-    final_gauss = gaussian_filter_2d(final, fwhm_mm=GAUSS_FWHM_MM, mm_per_px=MM_PER_PX)
 
-    recon_path = os.path.join(output_dir, "recon_mlem_T8_gauss.npz")
+    recon_path = os.path.join(output_dir, "recon_mlem_T8.npz")
     np.savez_compressed(
         recon_path,
         estimates=np.array(estimates_history),
-        estimates_gauss=np.array(estimates_gauss),
         final=final.cpu().numpy(),
-        final_gauss=final_gauss.cpu().numpy(),
         diffs=np.array(diffs),
     )
     print(f"[Step 3] Saved reconstruction: {recon_path}")
@@ -233,13 +226,10 @@ def run_mlem(flist, projs_path, output_dir, device):
 # =====================
 # Step 4: CNR Computation
 # =====================
-def compute_cnr(recon_path, phantom_path, output_dir, use_gauss=True):
+def compute_cnr(recon_path, phantom_path, output_dir):
     """Compute CNR per rod sector."""
     nz = np.load(recon_path)
-    if use_gauss and "final_gauss" in nz:
-        recon = torch.from_numpy(nz["final_gauss"])
-    else:
-        recon = torch.from_numpy(nz["final"])
+    recon = torch.from_numpy(nz["final"])
     H, W = recon.shape
 
     phantom_data = torch.load(phantom_path, map_location="cpu", weights_only=False)
@@ -333,11 +323,11 @@ def plot_comparison(baseline_dir, bo_dir, output_dir, baseline_label="Baseline",
     os.makedirs(output_dir, exist_ok=True)
 
     # Load reconstructions
-    base_nz = np.load(os.path.join(baseline_dir, "recon_mlem_T8_gauss.npz"))
-    bo_nz = np.load(os.path.join(bo_dir, "recon_mlem_T8_gauss.npz"))
+    base_nz = np.load(os.path.join(baseline_dir, "recon_mlem_T8.npz"))
+    bo_nz = np.load(os.path.join(bo_dir, "recon_mlem_T8.npz"))
 
-    base_img = base_nz["final_gauss"]
-    bo_img = bo_nz["final_gauss"]
+    base_img = base_nz["final"]
+    bo_img = bo_nz["final"]
 
     # Load CNR results
     base_cnr = np.load(os.path.join(baseline_dir, "cnr_results.npz"), allow_pickle=True)
