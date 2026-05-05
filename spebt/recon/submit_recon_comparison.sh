@@ -3,7 +3,7 @@
 #SBATCH --cluster=ub-hpc
 #SBATCH --partition=general-compute
 #SBATCH --qos=general-compute
-#SBATCH --time=02:00:00
+#SBATCH --time=04:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
@@ -14,12 +14,9 @@
 #SBATCH --mail-type=FAIL,END
 
 # ============================================================
-# Reconstruction comparison: Baseline vs BO-Optimized
+# Reconstruction comparison: Baseline vs BO-Optimized vs LHS_16
 #
-# Runs ML-EM on both configs and generates CNR comparison.
-#
-# Usage:
-#   sbatch submit_recon_comparison.sh
+# Noise: Harsh's approach (physical emission rates + Poisson)
 # ============================================================
 
 set -euo pipefail
@@ -31,42 +28,67 @@ RECON_SCRIPT="${CODE_DIR}/recon/run_recon_comparison.py"
 RESULTS_BASE="${CODE_DIR}/recon/recon_results"
 PHANTOM="/vscratch/grp-rutaoyao/Omer/spebt/spebt/data/sai_10mm/hot_rods_phantom_10.0_mm_x_10.0_mm.pt"
 
-# Paths to PPDF directories
+# PPDF directories
 BASELINE_PPDF="/vscratch/grp-rutaoyao/Omer/spebt/data/sai_10mm"
-BO_PPDF="/vscratch/grp-rutaoyao/Omer/spebt/optimization/config_0016_ap0.3496_nap260"
+BO_PPDF="/vscratch/grp-rutaoyao/Omer/spebt/spebt/optimization/results/bo_0013_ap0.5300_nap232"
+LHS16_PPDF="/vscratch/grp-rutaoyao/Omer/spebt/optimization/config_0016_ap0.3496_nap260"
 
-# Same count scale for both configs — preserves sensitivity difference
-COUNT_SCALE=100
+# Physical noise parameters (same as Harsh's fake_projection_v3.py)
+T_SEC=10
+E_HOT=10
+E_BG=2
 
 mkdir -p "${RESULTS_BASE}"
 
 echo "=================================================="
-echo "Reconstruction Comparison | $(date)"
+echo "Reconstruction Comparison (Harsh noise model) | $(date)"
+echo "  T=${T_SEC}s  e_hot=${E_HOT}  e_bg=${E_BG}"
 echo "=================================================="
 
-# Step 1: Baseline reconstruction
+# Step 1: Baseline
 echo ""
-echo "=== BASELINE CONFIG (d=0.4mm, n=180) ==="
+echo "=== BASELINE (d=0.4mm, n=180) ==="
 python "${RECON_SCRIPT}" \
   --config baseline \
   --ppdf_dir "${BASELINE_PPDF}" \
   --phantom_path "${PHANTOM}" \
-  --count_scale "${COUNT_SCALE}" \
+  --T_sec "${T_SEC}" --e_hot "${E_HOT}" --e_bg "${E_BG}" \
   --output_dir "${RESULTS_BASE}/baseline"
 
-# Step 2: BO-optimized reconstruction
+# Step 2: BO-optimized
 echo ""
-echo "=== LHS_16 CONFIG (d=0.35mm, n=260) ==="
+echo "=== BO-OPTIMIZED (d=0.53mm, n=232) ==="
 python "${RECON_SCRIPT}" \
   --config bo_optimized \
   --ppdf_dir "${BO_PPDF}" \
   --phantom_path "${PHANTOM}" \
-  --count_scale "${COUNT_SCALE}" \
+  --T_sec "${T_SEC}" --e_hot "${E_HOT}" --e_bg "${E_BG}" \
+  --output_dir "${RESULTS_BASE}/bo_optimized"
+
+# Step 3: LHS_16
+echo ""
+echo "=== LHS_16 (d=0.35mm, n=260) ==="
+python "${RECON_SCRIPT}" \
+  --config bo_optimized \
+  --ppdf_dir "${LHS16_PPDF}" \
+  --phantom_path "${PHANTOM}" \
+  --T_sec "${T_SEC}" --e_hot "${E_HOT}" --e_bg "${E_BG}" \
   --output_dir "${RESULTS_BASE}/lhs_16"
 
-# Step 3: Comparison
+# Step 4: Comparison — Baseline vs BO
 echo ""
-echo "=== GENERATING COMPARISON ==="
+echo "=== COMPARISON: Baseline vs BO ==="
+python "${RECON_SCRIPT}" \
+  --compare \
+  --baseline_dir "${RESULTS_BASE}/baseline" \
+  --bo_dir "${RESULTS_BASE}/bo_optimized" \
+  --baseline_label "Baseline (d=0.4, n=180)" \
+  --bo_label "BO-Optimized (d=0.53, n=232)" \
+  --output_dir "${RESULTS_BASE}/comparison_bo"
+
+# Step 5: Comparison — Baseline vs LHS_16
+echo ""
+echo "=== COMPARISON: Baseline vs LHS_16 ==="
 python "${RECON_SCRIPT}" \
   --compare \
   --baseline_dir "${RESULTS_BASE}/baseline" \

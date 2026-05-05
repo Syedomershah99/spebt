@@ -104,8 +104,16 @@ def generate_flist(ppdf_dir, output_dir):
 # =====================
 # Step 2: Forward projection
 # =====================
-def forward_project(flist, phantom_path, output_dir, device, count_scale=1e5):
-    """Project phantom through system matrices."""
+def forward_project(flist, phantom_path, output_dir, device, T_sec=10.0, e_hot=10.0, e_bg=2.0):
+    """Project phantom through system matrices with Poisson noise.
+
+    Noise implementation follows Harsh's fake_projection_v3.py:
+      1. Convert phantom from binary (0/1) to physical emission counts
+         - hot voxels  = T_sec * e_hot  (counts per voxel)
+         - background  = T_sec * e_bg   (counts per voxel)
+      2. Forward project: expected_counts = H @ phantom_counts
+      3. Apply Poisson noise: detected = Poisson(expected_counts)
+    """
     phantom_data = torch.load(phantom_path, map_location="cpu", weights_only=False)
     phantom_tensor = phantom_data["Phantom tensor"]
 
@@ -113,34 +121,40 @@ def forward_project(flist, phantom_path, output_dir, device, count_scale=1e5):
     pad_h = (IMG_DIM - h) // 2
     pad_w = (IMG_DIM - w) // 2
     phantom_padded = F.pad(phantom_tensor, (pad_w, pad_w, pad_h, pad_h), "constant", 0)
-    phantom_flat = phantom_padded.view(-1).to(device)
+
+    # Convert binary phantom to physical emission counts (Harsh's approach)
+    phantom_counts = torch.full_like(phantom_padded, fill_value=T_sec * e_bg)
+    hot_mask = phantom_padded > 0.1
+    phantom_counts[hot_mask] = T_sec * e_hot
+
+    phantom_flat = phantom_counts.view(-1).to(device)
 
     print(f"[Step 2] Phantom: {h}x{w} -> padded {IMG_DIM}x{IMG_DIM}")
+    print(f"[Step 2] Activity: T={T_sec}s, e_hot={e_hot}, e_bg={e_bg}")
+    print(f"[Step 2]   hot voxel counts = {T_sec * e_hot:.0f}, bg voxel counts = {T_sec * e_bg:.0f}")
+    print(f"[Step 2]   hot voxels: {int(hot_mask.sum())}, bg voxels: {int((~hot_mask).sum())}")
 
     all_projs = []
     for i, fname in enumerate(flist):
         with h5py.File(fname, "r") as h5f:
             m = torch.from_numpy(h5f["ppdfs"][:]).to(device=device, dtype=torch.float32)
-            m = m.view(1, SPROJ, SFOV)
-            proj = torch.matmul(m, phantom_flat)
-            all_projs.append(proj.cpu())
+            m = m.view(SPROJ, SFOV)
+
+        # Forward project -> expected counts per detector bin
+        p = torch.matmul(m, phantom_flat).clamp(min=1e-12)
+        # Poisson noise per detector bin
+        q = torch.poisson(p)
+        all_projs.append(q.unsqueeze(0).cpu())
+
         if (i + 1) % 4 == 0:
-            print(f"  Projected {i + 1}/{len(flist)} files")
+            print(f"  Projected {i + 1}/{len(flist)} files  (max expected={p.max():.1f} counts)")
 
     projs = torch.cat(all_projs, dim=0)
-
-    # Add Poisson noise with fixed activity scale (same for both configs).
-    # This preserves the sensitivity difference: higher-sensitivity config
-    # gets more counts -> less relative Poisson noise.
-    projs_scaled = projs * count_scale
-    print(f"[Step 2] Projection stats: raw max={projs.max():.6f}, scaled max={projs_scaled.max():.0f} counts")
-    projs_noisy = torch.poisson(projs_scaled.clamp(min=0))
-    projs = projs_noisy / count_scale
-    print(f"[Step 2] Added Poisson noise (count_scale={count_scale:.0f})")
 
     projs_path = os.path.join(output_dir, "projections_T8.npy")
     np.save(projs_path, projs.numpy())
     print(f"[Step 2] Projections shape: {projs.shape} -> {projs_path}")
+    print(f"[Step 2] Total counts: {projs.sum():.0f}, max per bin: {projs.max():.0f}")
     return projs_path
 
 
@@ -404,8 +418,12 @@ def main():
                         help="Baseline results directory (for comparison)")
     parser.add_argument("--bo_dir", type=str,
                         help="BO-optimized results directory (for comparison)")
-    parser.add_argument("--count_scale", type=float, default=1e5,
-                        help="Activity scale factor for Poisson noise (same for both configs)")
+    parser.add_argument("--T_sec", type=float, default=10.0,
+                        help="Scan time in seconds")
+    parser.add_argument("--e_hot", type=float, default=10.0,
+                        help="Emission rate for hot voxels (counts/voxel/sec)")
+    parser.add_argument("--e_bg", type=float, default=2.0,
+                        help="Emission rate for background voxels (counts/voxel/sec)")
     parser.add_argument("--baseline_label", type=str, default="Baseline",
                         help="Label for baseline config in comparison plot")
     parser.add_argument("--bo_label", type=str, default="Candidate",
@@ -448,8 +466,9 @@ def main():
     # Step 1: Generate file list
     flist_path, flist = generate_flist(args.ppdf_dir, args.output_dir)
 
-    # Step 2: Forward projection (with Poisson noise)
-    projs_path = forward_project(flist, phantom_path, args.output_dir, device, count_scale=args.count_scale)
+    # Step 2: Forward projection (with Poisson noise, Harsh's approach)
+    projs_path = forward_project(flist, phantom_path, args.output_dir, device,
+                                 T_sec=args.T_sec, e_hot=args.e_hot, e_bg=args.e_bg)
 
     # Step 3: ML-EM reconstruction
     recon_path = run_mlem(flist, projs_path, args.output_dir, device)
