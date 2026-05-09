@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """
-Compute Joint Index (JI) for SAI SC-SPECT configurations.
+Compute metrics for SAI SC-SPECT configurations.
 
-Adapted from Kirtiraj's 6_calc_ji.py for SAI:
-  - 200×200 FOV (not 280×280)
-  - 16 HDF5 files per config (2 layouts × 8 T8 poses, not 15 rotations)
-  - JI = (sensitivity_mean / FWHM²) × ASCI_pct / 100
+Metrics: FWHM, ASCI, sensitivity, MPXI
+  - 200×200 FOV (0.05 mm/px)
+  - 16 HDF5 files per config (2 layouts × 8 T8 poses)
 
 Usage:
-  python compute_ji.py --work_dir <path> --out_csv results/results_summary.csv --config_name config_0001
+  python compute_metrics.py --work_dir <path> --out_csv results/results_summary_mobo.csv --config_name config_0001
 """
 import argparse
 import os
@@ -161,21 +160,14 @@ def compute_mpxi(work_dir: str):
     return float(np.mean(all_k))
 
 
-def compute_ji(work_dir: str) -> dict:
+def compute_metrics(work_dir: str) -> dict:
     """
-    Compute all metrics and JI for a single configuration.
-    JI = (sensitivity_mean / FWHM²) × ASCI_pct / 100
+    Compute all 4 metrics for a single configuration.
+    Returns: fwhm_mean, sensitivity_total, sensitivity_mean, asci_pct, mpxi_mean.
     """
     sens_total, sens_mean, n_files = compute_sensitivity(work_dir)
     fwhm_mean, asci_pct = compute_fwhm_and_asci(work_dir)
     mpxi_mean = compute_mpxi(work_dir)
-
-    # JI formula
-    ji = np.nan
-    if (not np.isnan(fwhm_mean) and fwhm_mean > 0
-            and not np.isnan(asci_pct)
-            and not np.isnan(sens_mean)):
-        ji = (sens_mean / (fwhm_mean ** 2)) * asci_pct / 100.0
 
     return {
         "fwhm_mean": fwhm_mean,
@@ -183,28 +175,24 @@ def compute_ji(work_dir: str) -> dict:
         "sensitivity_mean": sens_mean,
         "asci_pct": asci_pct,
         "n_ppdf_files": n_files,
-        "JI": ji,
         "mpxi_mean": mpxi_mean,
     }
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Compute JI for SAI SC-SPECT config")
+    parser = argparse.ArgumentParser(description="Compute metrics for SAI SC-SPECT config")
     parser.add_argument("--work_dir", type=str, required=True,
                         help="Directory containing PPDF HDF5 + beam analysis outputs")
     parser.add_argument("--out_csv", type=str, required=True,
                         help="Path to output CSV (appends if exists)")
     parser.add_argument("--config_name", type=str, default="config",
                         help="Config identifier for CSV row")
-    # Optional: pass design parameters for CSV tracking
+    # Design parameters for CSV tracking
     parser.add_argument("--aperture_diam_mm", type=float, default=None)
     parser.add_argument("--n_apertures", type=int, default=None)
     parser.add_argument("--n_det_ring1", type=int, default=None)
-    # Legacy (kept for backward compat with old CSV data)
-    parser.add_argument("--scint_radial_thickness_mm", type=float, default=None)
-    parser.add_argument("--ring_thickness_mm", type=float, default=None)
     parser.add_argument("--force_zero", action="store_true",
-                        help="Write JI=0 row (for infeasible configs)")
+                        help="Write NaN row (for infeasible configs)")
     parser.add_argument("--reason", type=str, default="",
                         help="Reason for force_zero (logged)")
     args = parser.parse_args()
@@ -216,12 +204,11 @@ def main():
             "sensitivity_mean": float("nan"),
             "asci_pct": float("nan"),
             "n_ppdf_files": 0,
-            "JI": 0.0,
             "mpxi_mean": float("nan"),
         }
         print(f"[{args.config_name}] FORCE_ZERO: {args.reason}")
     else:
-        results = compute_ji(args.work_dir)
+        results = compute_metrics(args.work_dir)
     results["config"] = args.config_name
     results["work_dir"] = args.work_dir
 
@@ -231,10 +218,6 @@ def main():
         results["n_apertures"] = args.n_apertures
     if args.n_det_ring1 is not None:
         results["n_det_ring1"] = args.n_det_ring1
-    if args.scint_radial_thickness_mm is not None:
-        results["scint_radial_thickness_mm"] = args.scint_radial_thickness_mm
-    if args.ring_thickness_mm is not None:
-        results["ring_thickness_mm"] = args.ring_thickness_mm
 
     # Append to CSV (create with header if new)
     df_new = pd.DataFrame([results])
@@ -248,7 +231,6 @@ def main():
           f"ASCI={results['asci_pct']:.2f}%  "
           f"Sens={results['sensitivity_mean']:.4e}  "
           f"MPXI={results['mpxi_mean']:.4f}  "
-          f"JI={results['JI']:.6e}  "
           f"({results['n_ppdf_files']} PPDF files)")
 
 

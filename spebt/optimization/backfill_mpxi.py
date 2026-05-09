@@ -15,9 +15,8 @@ import sys
 
 import pandas as pd
 
-# Add compute_ji to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from compute_ji import compute_mpxi
+from compute_metrics import compute_mpxi
 
 
 def main():

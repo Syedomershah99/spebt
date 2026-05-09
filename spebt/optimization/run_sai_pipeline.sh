@@ -63,7 +63,7 @@ write_zero_ji() {
   local reason="$1"
   echo "[INFEASIBLE] ${reason}"
   echo "  Writing JI=0 to results CSV..."
-  python "${CODE_DIR}/optimization/compute_ji.py" \
+  python "${CODE_DIR}/optimization/compute_metrics.py" \
     --work_dir "${WORK_DIR}" \
     --out_csv "${RESULTS_CSV}" \
     --config_name "${CONFIG_NAME}" \
@@ -216,7 +216,7 @@ done
 # Step 3: Compute JI and append to results CSV
 # -------------------------------------------------------
 echo "[3/3] Computing JI..."
-python "${CODE_DIR}/optimization/compute_ji.py" \
+python "${CODE_DIR}/optimization/compute_metrics.py" \
   --work_dir "${WORK_DIR}" \
   --out_csv "${RESULTS_CSV}" \
   --config_name "${CONFIG_NAME}" \
