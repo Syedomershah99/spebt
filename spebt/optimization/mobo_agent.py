@@ -39,9 +39,12 @@ logger = logging.getLogger("MOBO_Agent_SAI")
 warnings.filterwarnings("ignore", category=UserWarning)
 
 # --- Design space bounds ---
-PARAM_NAMES = ["aperture_diam_mm", "n_apertures", "scint_radial_thickness_mm", "ring_thickness_mm"]
-BOUNDS_MIN = [0.2, 60.0, 3.0, 1.0]
-BOUNDS_MAX = [1.0, 360.0, 12.0, 5.0]
+# 3D: aperture_diam, n_apertures, n_det_ring1 (crystals on detector ring 1)
+# n_det_ring1 range: 120 (60 cells, sparse) to 480 (240 cells, fully packed)
+# Must be even (2 crystals per cell). Rounded after acquisition.
+PARAM_NAMES = ["aperture_diam_mm", "n_apertures", "n_det_ring1"]
+BOUNDS_MIN = [0.2, 60.0, 120.0]
+BOUNDS_MAX = [1.0, 360.0, 480.0]
 DIM = len(PARAM_NAMES)
 
 # --- Objective columns (as they appear in the CSV) ---
@@ -144,16 +147,17 @@ def get_next_candidate(results_csv: str):
     candidate_physical = unnormalize(candidate_norm, bounds)
     next_diam = candidate_physical[0, 0].item()
     next_n_ap = int(round(candidate_physical[0, 1].item()))
-    next_scint_radial = candidate_physical[0, 2].item()
-    next_ring_thick = candidate_physical[0, 3].item()
+    next_n_det = int(round(candidate_physical[0, 2].item()))
+    # n_det_ring1 must be even (2 crystals per cell)
+    if next_n_det % 2 != 0:
+        next_n_det += 1
 
     logger.info(f"Acquisition value: {acq_value.item():.6f}")
     logger.info(f"SUGGESTION -> aperture_diam={next_diam:.4f} mm | "
                 f"n_apertures={next_n_ap} | "
-                f"scint_radial={next_scint_radial:.4f} mm | "
-                f"ring_thickness={next_ring_thick:.4f} mm")
+                f"n_det_ring1={next_n_det}")
 
-    return next_diam, next_n_ap, next_scint_radial, next_ring_thick
+    return next_diam, next_n_ap, next_n_det
 
 
 if __name__ == "__main__":
@@ -164,9 +168,8 @@ if __name__ == "__main__":
                         help="Path to results CSV with fwhm_mean, asci_pct, sensitivity_mean, mpxi_mean columns")
     args = parser.parse_args()
 
-    diam, n_ap, scint_rad, ring_thick = get_next_candidate(args.results_csv)
+    diam, n_ap, n_det = get_next_candidate(args.results_csv)
     print(f"\nSuggested next config:")
-    print(f"  aperture_diam        = {diam:.4f} mm")
-    print(f"  n_apertures          = {n_ap}")
-    print(f"  scint_radial_thick   = {scint_rad:.4f} mm")
-    print(f"  ring_thickness       = {ring_thick:.4f} mm")
+    print(f"  aperture_diam   = {diam:.4f} mm")
+    print(f"  n_apertures     = {n_ap}")
+    print(f"  n_det_ring1     = {n_det}")
