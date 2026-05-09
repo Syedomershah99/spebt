@@ -128,6 +128,39 @@ def compute_fwhm_and_asci(work_dir: str):
     return fwhm_mean, asci_pct
 
 
+def compute_mpxi(work_dir: str):
+    """
+    Compute mean MPXI (multiplexing index) from beam mask files.
+
+    For each detector, counts unique non-zero beam IDs in its mask row (= k).
+    Returns mean(k) across all detectors and both layouts.
+    Lower is better (less signal ambiguity).
+
+    Masks are already T8-aggregated (PPDFs summed before mask extraction).
+    """
+    mask_files = sorted(glob.glob(os.path.join(work_dir, "beams_masks_configuration_*.hdf5")))
+    if not mask_files:
+        return np.nan
+
+    all_k = []
+    for mask_file in mask_files:
+        try:
+            with h5py.File(mask_file, "r") as f:
+                masks = f["beam_mask"][:]  # (n_det, n_pix)
+            # Per detector: count unique non-zero beam IDs
+            for row in masks:
+                unique_ids = np.unique(row)
+                k = int(np.count_nonzero(unique_ids))  # exclude 0 (background)
+                all_k.append(k)
+        except Exception as e:
+            print(f"  [warn] Failed to read {mask_file}: {e}")
+
+    if not all_k:
+        return np.nan
+
+    return float(np.mean(all_k))
+
+
 def compute_ji(work_dir: str) -> dict:
     """
     Compute all metrics and JI for a single configuration.
@@ -135,6 +168,7 @@ def compute_ji(work_dir: str) -> dict:
     """
     sens_total, sens_mean, n_files = compute_sensitivity(work_dir)
     fwhm_mean, asci_pct = compute_fwhm_and_asci(work_dir)
+    mpxi_mean = compute_mpxi(work_dir)
 
     # JI formula
     ji = np.nan
@@ -150,6 +184,7 @@ def compute_ji(work_dir: str) -> dict:
         "asci_pct": asci_pct,
         "n_ppdf_files": n_files,
         "JI": ji,
+        "mpxi_mean": mpxi_mean,
     }
 
 
@@ -180,6 +215,7 @@ def main():
             "asci_pct": float("nan"),
             "n_ppdf_files": 0,
             "JI": 0.0,
+            "mpxi_mean": float("nan"),
         }
         print(f"[{args.config_name}] FORCE_ZERO: {args.reason}")
     else:
@@ -207,6 +243,7 @@ def main():
     print(f"[{args.config_name}] FWHM={results['fwhm_mean']:.4f}  "
           f"ASCI={results['asci_pct']:.2f}%  "
           f"Sens={results['sensitivity_mean']:.4e}  "
+          f"MPXI={results['mpxi_mean']:.4f}  "
           f"JI={results['JI']:.6e}  "
           f"({results['n_ppdf_files']} PPDF files)")
 
