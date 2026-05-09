@@ -43,7 +43,7 @@ warnings.filterwarnings("ignore", category=UserWarning)
 # n_det values must be even (2 crystals per cell). Rounded after acquisition.
 PARAM_NAMES = ["aperture_diam_mm", "n_apertures", "n_det_ring1", "n_det_ring2"]
 BOUNDS_MIN = [0.2, 60.0, 120.0, 180.0]
-BOUNDS_MAX = [1.0, 360.0, 480.0, 720.0]
+BOUNDS_MAX = [1.0, 360.0, 660.0, 960.0]
 DIM = len(PARAM_NAMES)
 
 # --- Objective columns (as they appear in the CSV) ---
