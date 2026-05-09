@@ -49,7 +49,7 @@ def ensure_manifest_header():
     if not os.path.exists(MANIFEST_FILE):
         with open(MANIFEST_FILE, "w") as f:
             f.write("idx,config_name,aperture_diam_mm,n_apertures,"
-                    "n_det_ring1,work_dir,job_id,status\n")
+                    "n_det_ring1,n_det_ring2,work_dir,job_id,status\n")
 
 
 def get_next_manifest_index():
@@ -60,10 +60,10 @@ def get_next_manifest_index():
     return max(0, len(lines) - 1)
 
 
-def append_manifest_row(idx, config_name, diam, n_ap, n_det, work_dir, job_id, status="submitted"):
+def append_manifest_row(idx, config_name, diam, n_ap, n_det1, n_det2, work_dir, job_id, status="submitted"):
     with open(MANIFEST_FILE, "a") as f:
         f.write(f"{idx},{config_name},{diam:.6f},{n_ap},"
-                f"{n_det},{work_dir},{job_id},{status}\n")
+                f"{n_det1},{n_det2},{work_dir},{job_id},{status}\n")
 
 
 def patch_manifest_status(idx, job_id, status):
@@ -71,9 +71,9 @@ def patch_manifest_status(idx, job_id, status):
         lines = f.readlines()
     last_i = max(i for i, ln in enumerate(lines) if ln.strip())
     parts = lines[last_i].rstrip("\n").split(",")
-    if len(parts) >= 8:
-        parts[6] = str(job_id)
-        parts[7] = status
+    if len(parts) >= 9:
+        parts[7] = str(job_id)
+        parts[8] = status
         lines[last_i] = ",".join(parts) + "\n"
         with open(MANIFEST_FILE, "w") as f:
             f.writelines(lines)
@@ -139,7 +139,7 @@ def main():
 
     console.print(Panel.fit(
         "[bold green]SAI SC-SPECT MOBO Controller[/bold green]\n"
-        "Design: (aperture_diam, n_apertures, n_det_ring1)\n"
+        "Design: (aperture_diam, n_apertures, n_det_ring1, n_det_ring2)\n"
         "4 objectives: FWHM (min), ASCI (max), Sensitivity (max), MPXI (min)\n"
         "ModelListGP + qLogNEHVI | Sequential q=1",
         subtitle=f"Max iterations: {TOTAL_ITERATIONS}"
@@ -173,20 +173,21 @@ def main():
             # 1. Ask MOBO agent for next candidate
             console.log("Calling mobo_agent.get_next_candidate()...")
             try:
-                diam, n_ap, n_det = get_next_candidate(RESULTS_CSV)
+                diam, n_ap, n_det1, n_det2 = get_next_candidate(RESULTS_CSV)
             except Exception as e:
                 console.print(f"[bold red]MOBO Agent Failed:[/bold red] {e}")
                 break
 
-            console.log(f"[cyan]Candidate:[/cyan] d={diam:.4f}mm  n={n_ap}  n_det_ring1={n_det}")
+            console.log(f"[cyan]Candidate:[/cyan] d={diam:.4f}mm  n={n_ap}  "
+                        f"nd1={n_det1}  nd2={n_det2}")
 
             # 2. Create work directory
-            config_name = f"mobo_{idx:04d}_ap{diam:.4f}_nap{n_ap}_ndet{n_det}"
+            config_name = f"mobo_{idx:04d}_ap{diam:.4f}_nap{n_ap}_nd1_{n_det1}_nd2_{n_det2}"
             work_dir = os.path.join(RESULTS_DIR, config_name)
             os.makedirs(work_dir, exist_ok=True)
 
             # 3. Append to manifest
-            append_manifest_row(idx, config_name, diam, n_ap, n_det, work_dir, "", "pending")
+            append_manifest_row(idx, config_name, diam, n_ap, n_det1, n_det2, work_dir, "", "pending")
 
             # 4. Submit SLURM job
             env_vars = (
@@ -194,7 +195,8 @@ def main():
                 f"WORK_DIR={work_dir},"
                 f"APERTURE_DIAM={diam},"
                 f"N_APERTURES={n_ap},"
-                f"N_DET_RING1={n_det},"
+                f"N_DET_RING1={n_det1},"
+                f"N_DET_RING2={n_det2},"
                 f"A_MM=0.2,B_MM=0.2,"
                 f"CODE_DIR={CODE_DIR},"
                 f"RESULTS_CSV={RESULTS_CSV},"

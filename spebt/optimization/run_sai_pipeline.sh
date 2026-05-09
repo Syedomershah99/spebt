@@ -38,6 +38,7 @@ B_MM="${B_MM:-0.2}"
 SCINT_RADIAL_MM="${SCINT_RADIAL_MM:-6.0}"
 RING_THICKNESS_MM="${RING_THICKNESS_MM:-2.5}"
 N_DET_RING1="${N_DET_RING1:-480}"
+N_DET_RING2="${N_DET_RING2:-720}"
 MAX_PARALLEL=12
 
 mkdir -p "${WORK_DIR}"
@@ -49,6 +50,7 @@ echo "Config: ${CONFIG_NAME}"
 echo "  aperture_diam    = ${APERTURE_DIAM} mm"
 echo "  n_apertures      = ${N_APERTURES}"
 echo "  n_det_ring1      = ${N_DET_RING1}"
+echo "  n_det_ring2      = ${N_DET_RING2}"
 echo "  scint_radial_mm  = ${SCINT_RADIAL_MM} mm (fixed)"
 echo "  ring_thickness   = ${RING_THICKNESS_MM} mm (fixed)"
 echo "  a_mm=${A_MM}  b_mm=${B_MM}"
@@ -70,6 +72,7 @@ write_zero_ji() {
     --aperture_diam_mm "${APERTURE_DIAM}" \
     --n_apertures "${N_APERTURES}" \
     --n_det_ring1 "${N_DET_RING1}" \
+    --n_det_ring2 "${N_DET_RING2}" \
     --force_zero --reason "${reason}"
   echo "=================================================="
   echo "PIPELINE COMPLETE (infeasible) | $(date)"
@@ -93,6 +96,7 @@ else
     --scint_radial_mm "${SCINT_RADIAL_MM}" \
     --ring_thickness "${RING_THICKNESS_MM}" \
     --n_det_ring1 "${N_DET_RING1}" \
+    --n_det_ring2 "${N_DET_RING2}" \
     --output_dir "${WORK_DIR}" 2>&1; then
     write_zero_ji "Geometry generation failed (likely aperture too wide for n_apertures)"
   fi
@@ -215,14 +219,15 @@ done
 # -------------------------------------------------------
 # Step 3: Compute JI and append to results CSV
 # -------------------------------------------------------
-echo "[3/3] Computing JI..."
+echo "[3/3] Computing metrics..."
 python "${CODE_DIR}/optimization/compute_metrics.py" \
   --work_dir "${WORK_DIR}" \
   --out_csv "${RESULTS_CSV}" \
   --config_name "${CONFIG_NAME}" \
   --aperture_diam_mm "${APERTURE_DIAM}" \
   --n_apertures "${N_APERTURES}" \
-  --n_det_ring1 "${N_DET_RING1}"
+  --n_det_ring1 "${N_DET_RING1}" \
+  --n_det_ring2 "${N_DET_RING2}"
 
 echo "=================================================="
 echo "PIPELINE COMPLETE | $(date)"

@@ -177,6 +177,8 @@ if __name__ == "__main__":
                         help="HR collimator ring thickness in mm (default: 2.5)")
     parser.add_argument("--n_det_ring1", type=int, default=480,
                         help="Number of crystals on detector ring 1 (default: 480, must be even)")
+    parser.add_argument("--n_det_ring2", type=int, default=720,
+                        help="Number of crystals on detector ring 2 (default: 720, must be even)")
     parser.add_argument("--output_dir", type=str, default=None,
                         help="Output directory for .tensor file (default: current dir)")
     cli_args = parser.parse_args()
@@ -194,9 +196,12 @@ if __name__ == "__main__":
     # ===== Detector ring parameters =====
     RING_INNER_DIAMS_MM = [260.0, 390.0, 520.0, 650.0]
     N_DET_RING1 = cli_args.n_det_ring1
+    N_DET_RING2 = cli_args.n_det_ring2
     if N_DET_RING1 % 2 != 0:
         raise ValueError(f"--n_det_ring1 must be even (got {N_DET_RING1}), each cell has 2 crystals")
-    DETS_PER_RING       = [N_DET_RING1, 40*9*2, 40*12*2, 40*15*2]  # rings 2-4 unchanged
+    if N_DET_RING2 % 2 != 0:
+        raise ValueError(f"--n_det_ring2 must be even (got {N_DET_RING2}), each cell has 2 crystals")
+    DETS_PER_RING       = [N_DET_RING1, N_DET_RING2, 40*12*2, 40*15*2]  # rings 3-4 unchanged
     SCINT_TANGENT_MM    = 0.84
     SCINT_RADIAL_MM     = cli_args.scint_radial_mm
     INTRA_GAP_MM        = 0.84

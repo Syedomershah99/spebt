@@ -1,5 +1,5 @@
 #!/bin/bash
-# Submit all 3D LHS configs from configs_manifest_3d.csv as SLURM jobs.
+# Submit all 4D LHS configs from configs_manifest_3d.csv as SLURM jobs.
 #
 # Usage:
 #   cd /vscratch/grp-rutaoyao/Omer/spebt/spebt/optimization
@@ -18,7 +18,7 @@ SLURM_SCRIPT="${CODE_DIR}/optimization/run_sai_pipeline.sh"
 MANIFEST="${RESULTS_DIR}/configs_manifest_3d.csv"
 LOG_DIR="${RESULTS_DIR}/slurm_logs"
 
-# Fixed parameters (no longer part of design vector)
+# Fixed parameters
 A_MM=0.2
 B_MM=0.2
 
@@ -31,8 +31,8 @@ if [ ! -f "${MANIFEST}" ]; then
 fi
 
 echo "=========================================="
-echo "3D LHS Sweep Submission (MOBO)"
-echo "  Design: aperture_diam, n_apertures, n_det_ring1"
+echo "4D LHS Sweep Submission (MOBO)"
+echo "  Design: aperture_diam, n_apertures, n_det_ring1, n_det_ring2"
 echo "  Manifest: ${MANIFEST}"
 echo "  Pipeline: ${SLURM_SCRIPT}"
 echo "  Results:  ${RESULTS_CSV}"
@@ -40,15 +40,15 @@ echo "=========================================="
 
 # Read CSV, skip header
 n_submitted=0
-tail -n +2 "${MANIFEST}" | while IFS=',' read -r idx aperture_diam n_apertures n_det_ring1 work_dir; do
-  config_name="lhs3d_${idx}_ap${aperture_diam}_nap${n_apertures}_ndet${n_det_ring1}"
+tail -n +2 "${MANIFEST}" | while IFS=',' read -r idx aperture_diam n_apertures n_det_ring1 n_det_ring2 work_dir; do
+  config_name="lhs4d_${idx}_ap${aperture_diam}_nap${n_apertures}_nd1_${n_det_ring1}_nd2_${n_det_ring2}"
 
-  echo "Submitting config ${idx}: d=${aperture_diam} n=${n_apertures} ndet=${n_det_ring1}"
+  echo "Submitting config ${idx}: d=${aperture_diam} n=${n_apertures} nd1=${n_det_ring1} nd2=${n_det_ring2}"
 
   job_id=$(sbatch --parsable \
     --output="${LOG_DIR}/out/${config_name}_%j.out" \
     --error="${LOG_DIR}/err/${config_name}_%j.err" \
-    --export="ALL,WORK_DIR=${work_dir},APERTURE_DIAM=${aperture_diam},N_APERTURES=${n_apertures},N_DET_RING1=${n_det_ring1},A_MM=${A_MM},B_MM=${B_MM},CODE_DIR=${CODE_DIR},RESULTS_CSV=${RESULTS_CSV},CONFIG_NAME=${config_name}" \
+    --export="ALL,WORK_DIR=${work_dir},APERTURE_DIAM=${aperture_diam},N_APERTURES=${n_apertures},N_DET_RING1=${n_det_ring1},N_DET_RING2=${n_det_ring2},A_MM=${A_MM},B_MM=${B_MM},CODE_DIR=${CODE_DIR},RESULTS_CSV=${RESULTS_CSV},CONFIG_NAME=${config_name}" \
     "${SLURM_SCRIPT}")
 
   echo "  -> Job ${job_id}"

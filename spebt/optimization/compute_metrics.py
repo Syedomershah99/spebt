@@ -191,6 +191,7 @@ def main():
     parser.add_argument("--aperture_diam_mm", type=float, default=None)
     parser.add_argument("--n_apertures", type=int, default=None)
     parser.add_argument("--n_det_ring1", type=int, default=None)
+    parser.add_argument("--n_det_ring2", type=int, default=None)
     parser.add_argument("--force_zero", action="store_true",
                         help="Write NaN row (for infeasible configs)")
     parser.add_argument("--reason", type=str, default="",
@@ -218,6 +219,8 @@ def main():
         results["n_apertures"] = args.n_apertures
     if args.n_det_ring1 is not None:
         results["n_det_ring1"] = args.n_det_ring1
+    if args.n_det_ring2 is not None:
+        results["n_det_ring2"] = args.n_det_ring2
 
     # Append to CSV (create with header if new)
     df_new = pd.DataFrame([results])
