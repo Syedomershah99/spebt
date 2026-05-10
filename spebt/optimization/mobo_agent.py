@@ -15,6 +15,7 @@ Design vector: (aperture_diam_mm, n_apertures, scint_radial_thickness_mm, ring_t
 Usage:
   python mobo_agent.py --results_csv results/results_summary.csv
 """
+import math
 import os
 import logging
 import warnings
@@ -45,6 +46,18 @@ PARAM_NAMES = ["aperture_diam_mm", "n_apertures", "n_det_ring1", "n_det_ring2"]
 BOUNDS_MIN = [0.2, 60.0, 120.0, 180.0]
 BOUNDS_MAX = [1.0, 360.0, 660.0, 960.0]
 DIM = len(PARAM_NAMES)
+
+# --- Feasibility constraint ---
+# Aperture overlap: aperture_diam < circumference / n_apertures
+HR_R_CENTER = 67.5 / 2.0 + 2.5 / 2.0  # 35.0 mm
+HR_CIRCUMFERENCE = 2.0 * math.pi * HR_R_CENTER  # ~219.9 mm
+SAFETY_MARGIN = 0.95
+
+
+def is_feasible(diam, n_ap):
+    """Check if aperture config fits on the HR ring without overlap."""
+    return diam < SAFETY_MARGIN * HR_CIRCUMFERENCE / n_ap
+
 
 # --- Objective columns (as they appear in the CSV) ---
 OBJ_COLUMNS = ["fwhm_mean", "asci_pct", "sensitivity_mean", "mpxi_mean"]
@@ -134,12 +147,31 @@ def get_next_candidate(results_csv: str):
         cache_root=True,
     )
 
+    # Feasibility constraint in normalized space:
+    # aperture_diam < 0.95 * circumference / n_apertures
+    # In normalized [0,1] coords:
+    #   diam_physical = BOUNDS_MIN[0] + x[0] * (BOUNDS_MAX[0] - BOUNDS_MIN[0])
+    #   n_ap_physical = BOUNDS_MIN[1] + x[1] * (BOUNDS_MAX[1] - BOUNDS_MIN[1])
+    # Constraint: diam_physical * n_ap_physical < 0.95 * circumference
+    # => (min_d + x0 * range_d) * (min_n + x1 * range_n) < threshold
+    # BoTorch: constraint(x) >= 0 means feasible
+    diam_min, diam_range = BOUNDS_MIN[0], BOUNDS_MAX[0] - BOUNDS_MIN[0]
+    nap_min, nap_range = BOUNDS_MIN[1], BOUNDS_MAX[1] - BOUNDS_MIN[1]
+    threshold = SAFETY_MARGIN * HR_CIRCUMFERENCE
+
+    def aperture_constraint(x):
+        # x shape: (q, d) in normalized [0,1] space
+        diam = diam_min + x[..., 0] * diam_range
+        n_ap = nap_min + x[..., 1] * nap_range
+        return threshold - diam * n_ap  # >= 0 means feasible
+
     candidate_norm, acq_value = optimize_acqf(
         acq_function=acqf,
         bounds=torch.stack([torch.zeros(DIM), torch.ones(DIM)]).double(),
         q=1,
-        num_restarts=10,
-        raw_samples=512,
+        num_restarts=20,
+        raw_samples=1024,
+        nonlinear_inequality_constraints=[aperture_constraint],
     )
 
     # --- Un-normalize ---
@@ -153,6 +185,11 @@ def get_next_candidate(results_csv: str):
         next_n_det1 += 1
     if next_n_det2 % 2 != 0:
         next_n_det2 += 1
+
+    # Final feasibility check (belt and suspenders)
+    if not is_feasible(next_diam, next_n_ap):
+        logger.warning(f"Candidate infeasible (d={next_diam:.4f}, n={next_n_ap}), clamping aperture_diam")
+        next_diam = min(next_diam, SAFETY_MARGIN * HR_CIRCUMFERENCE / next_n_ap - 0.01)
 
     logger.info(f"Acquisition value: {acq_value.item():.6f}")
     logger.info(f"SUGGESTION -> aperture_diam={next_diam:.4f} mm | "
