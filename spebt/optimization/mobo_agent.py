@@ -160,7 +160,7 @@ def get_next_candidate(results_csv: str):
         n_ap = nap_min + x_norm[..., 1] * nap_range
         return diam * n_ap < threshold
 
-    def feasible_ic_generator(acq_function, bounds, num_restarts, raw_samples, options=None):
+    def feasible_ic_generator(acq_function, bounds, num_restarts, raw_samples, options=None, **kwargs):
         """Generate feasible initial conditions for constrained acquisition optimization."""
         # Oversample heavily to get enough feasible points
         n_candidates = max(raw_samples * 10, 10000)
