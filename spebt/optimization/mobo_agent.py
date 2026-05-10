@@ -149,21 +149,33 @@ def get_next_candidate(results_csv: str):
 
     # Feasibility constraint in normalized space:
     # aperture_diam < 0.95 * circumference / n_apertures
-    # In normalized [0,1] coords:
-    #   diam_physical = BOUNDS_MIN[0] + x[0] * (BOUNDS_MAX[0] - BOUNDS_MIN[0])
-    #   n_ap_physical = BOUNDS_MIN[1] + x[1] * (BOUNDS_MAX[1] - BOUNDS_MIN[1])
-    # Constraint: diam_physical * n_ap_physical < 0.95 * circumference
-    # => (min_d + x0 * range_d) * (min_n + x1 * range_n) < threshold
-    # BoTorch: constraint(x) >= 0 means feasible
+    # Physical: diam * n_ap < 0.95 * circumference = threshold
     diam_min, diam_range = BOUNDS_MIN[0], BOUNDS_MAX[0] - BOUNDS_MIN[0]
     nap_min, nap_range = BOUNDS_MIN[1], BOUNDS_MAX[1] - BOUNDS_MIN[1]
     threshold = SAFETY_MARGIN * HR_CIRCUMFERENCE
 
-    def aperture_constraint(x):
-        # x shape: (q, d) in normalized [0,1] space
-        diam = diam_min + x[..., 0] * diam_range
-        n_ap = nap_min + x[..., 1] * nap_range
-        return threshold - diam * n_ap  # >= 0 means feasible
+    def is_feasible_norm(x_norm):
+        """Check feasibility in normalized [0,1] space. x_norm shape: (..., DIM)"""
+        diam = diam_min + x_norm[..., 0] * diam_range
+        n_ap = nap_min + x_norm[..., 1] * nap_range
+        return diam * n_ap < threshold
+
+    def feasible_ic_generator(acq_function, bounds, num_restarts, raw_samples, options=None):
+        """Generate feasible initial conditions for constrained acquisition optimization."""
+        # Oversample heavily to get enough feasible points
+        n_candidates = max(raw_samples * 10, 10000)
+        X_rnd = torch.rand(n_candidates, 1, DIM, dtype=bounds.dtype, device=bounds.device)
+        # Filter feasible
+        feasible_mask = is_feasible_norm(X_rnd.squeeze(1))
+        X_feasible = X_rnd[feasible_mask]
+        if len(X_feasible) < num_restarts:
+            raise RuntimeError(f"Only {len(X_feasible)} feasible ICs found, need {num_restarts}")
+        # Evaluate acquisition and pick top candidates
+        n_eval = min(len(X_feasible), raw_samples)
+        with torch.no_grad():
+            acq_values = acq_function(X_feasible[:n_eval])
+        top_indices = torch.argsort(acq_values, descending=True)[:num_restarts]
+        return X_feasible[top_indices]
 
     candidate_norm, acq_value = optimize_acqf(
         acq_function=acqf,
@@ -171,7 +183,7 @@ def get_next_candidate(results_csv: str):
         q=1,
         num_restarts=20,
         raw_samples=1024,
-        nonlinear_inequality_constraints=[aperture_constraint],
+        ic_generator=feasible_ic_generator,
     )
 
     # --- Un-normalize ---
