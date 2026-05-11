@@ -193,16 +193,15 @@ def get_next_candidate(results_csv: str):
 
     def feasible_ic_generator(acq_function, bounds, num_restarts, raw_samples, options=None, **kwargs):
         """Generate feasible initial conditions for constrained acquisition optimization."""
-        # Oversample heavily to get enough feasible points
-        n_candidates = max(raw_samples * 10, 10000)
+        # Generate feasible candidates (lightweight — filter before acqf eval)
+        n_candidates = 2000
         X_rnd = torch.rand(n_candidates, 1, DIM, dtype=bounds.dtype, device=bounds.device)
-        # Filter feasible
         feasible_mask = is_feasible_norm(X_rnd.squeeze(1))
         X_feasible = X_rnd[feasible_mask]
         if len(X_feasible) < num_restarts:
             raise RuntimeError(f"Only {len(X_feasible)} feasible ICs found, need {num_restarts}")
-        # Evaluate acquisition and pick top candidates
-        n_eval = min(len(X_feasible), raw_samples)
+        # Evaluate acquisition in small batches to limit memory
+        n_eval = min(len(X_feasible), 256)
         with torch.no_grad():
             acq_values = acq_function(X_feasible[:n_eval])
         top_indices = torch.argsort(acq_values, descending=True)[:num_restarts]
@@ -212,8 +211,8 @@ def get_next_candidate(results_csv: str):
         acq_function=acqf,
         bounds=torch.stack([torch.zeros(DIM), torch.ones(DIM)]).double(),
         q=1,
-        num_restarts=20,
-        raw_samples=1024,
+        num_restarts=10,
+        raw_samples=256,
         ic_generator=feasible_ic_generator,
     )
 
