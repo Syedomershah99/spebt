@@ -80,19 +80,47 @@ def get_next_candidate(results_csv: str):
 
     df = pd.read_csv(results_csv)
 
-    # Drop rows where any objective is NaN (infeasible configs)
+    # Separate feasible and failed rows
     df_valid = df.dropna(subset=OBJ_COLUMNS)
+    df_failed = df[df[OBJ_COLUMNS].isna().any(axis=1)]
     n_total = len(df)
     n_valid = len(df_valid)
-    n_infeasible = n_total - n_valid
-    logger.info(f"Loaded {n_total} rows, {n_valid} feasible, {n_infeasible} infeasible (dropped)")
+    n_failed = len(df_failed)
+    logger.info(f"Loaded {n_total} rows, {n_valid} feasible, {n_failed} failed")
 
     if n_valid < 3:
         raise ValueError(f"Need at least 3 feasible points for MOBO, got {n_valid}")
 
-    # --- Prepare tensors ---
-    train_x = torch.tensor(df_valid[PARAM_NAMES].values, dtype=torch.double)
-    train_y_raw = torch.tensor(df_valid[OBJ_COLUMNS].values, dtype=torch.double)
+    # --- Assign penalty values to failed configs so the GP learns to avoid them ---
+    # Use worst observed value (in the "maximize" direction) with a margin
+    if n_failed > 0 and len(df_failed[PARAM_NAMES].dropna()) > 0:
+        valid_vals = df_valid[OBJ_COLUMNS].values
+        # Penalty: for each objective, assign worst-feasible value made 20% worse
+        penalty_row = []
+        for i, d in enumerate(OBJ_DIRECTIONS):
+            col = valid_vals[:, i]
+            if d > 0:  # maximize → penalty is well below minimum
+                penalty_row.append(float(col.min()) * 0.5)
+            else:  # minimize → penalty is well above maximum
+                penalty_row.append(float(col.max()) * 2.0)
+        logger.info(f"Penalty values for {n_failed} failed configs: {penalty_row}")
+
+        # Build combined training data: valid + failed-with-penalty
+        df_failed_with_params = df_failed.dropna(subset=PARAM_NAMES)
+        failed_x = df_failed_with_params[PARAM_NAMES].values
+        failed_y = [penalty_row] * len(df_failed_with_params)
+
+        train_x = torch.tensor(
+            pd.concat([df_valid[PARAM_NAMES], df_failed_with_params[PARAM_NAMES]]).values,
+            dtype=torch.double)
+        train_y_raw = torch.tensor(
+            list(df_valid[OBJ_COLUMNS].values) + failed_y,
+            dtype=torch.double)
+        logger.info(f"Training with {n_valid} feasible + {len(df_failed_with_params)} penalized = "
+                     f"{len(train_x)} total points")
+    else:
+        train_x = torch.tensor(df_valid[PARAM_NAMES].values, dtype=torch.double)
+        train_y_raw = torch.tensor(df_valid[OBJ_COLUMNS].values, dtype=torch.double)
 
     # Apply direction signs (negate FWHM and MPXI so all objectives are maximized)
     directions = torch.tensor(OBJ_DIRECTIONS, dtype=torch.double)
@@ -202,6 +230,43 @@ def get_next_candidate(results_csv: str):
     if not is_feasible(next_diam, next_n_ap):
         logger.warning(f"Candidate infeasible (d={next_diam:.4f}, n={next_n_ap}), clamping aperture_diam")
         next_diam = min(next_diam, SAFETY_MARGIN * HR_CIRCUMFERENCE / next_n_ap - 0.01)
+
+    # --- Deduplication: reject if too close to a previously tried config ---
+    all_x = torch.tensor(df[PARAM_NAMES].dropna().values, dtype=torch.double)
+    candidate_vec = torch.tensor([next_diam, float(next_n_ap), float(next_n_det1), float(next_n_det2)],
+                                 dtype=torch.double)
+    # Normalize distances by parameter ranges to compare fairly
+    ranges = bounds[1] - bounds[0]
+    norm_dists = ((all_x - candidate_vec) / ranges).norm(dim=1)
+    min_dist = norm_dists.min().item() if len(norm_dists) > 0 else 1.0
+
+    if min_dist < 0.02:  # less than 2% of design space away = duplicate
+        logger.warning(f"Candidate too close to existing config (dist={min_dist:.4f}), adding exploration noise")
+        import random
+        for _attempt in range(50):
+            # Random feasible perturbation
+            noise_diam = next_diam + random.uniform(-0.2, 0.2)
+            noise_n_ap = next_n_ap + random.randint(-60, 60)
+            noise_n_det1 = next_n_det1 + random.choice([-100, -50, 0, 50, 100])
+            noise_n_det2 = next_n_det2 + random.choice([-100, -50, 0, 50, 100])
+            # Clamp to bounds
+            noise_diam = max(BOUNDS_MIN[0], min(BOUNDS_MAX[0], noise_diam))
+            noise_n_ap = max(int(BOUNDS_MIN[1]), min(int(BOUNDS_MAX[1]), noise_n_ap))
+            noise_n_det1 = max(int(BOUNDS_MIN[2]), min(int(BOUNDS_MAX[2]), noise_n_det1))
+            noise_n_det2 = max(int(BOUNDS_MIN[3]), min(int(BOUNDS_MAX[3]), noise_n_det2))
+            if noise_n_det1 % 2 != 0:
+                noise_n_det1 += 1
+            if noise_n_det2 % 2 != 0:
+                noise_n_det2 += 1
+            if is_feasible(noise_diam, noise_n_ap):
+                perturbed_vec = torch.tensor([noise_diam, float(noise_n_ap),
+                                              float(noise_n_det1), float(noise_n_det2)], dtype=torch.double)
+                new_dists = ((all_x - perturbed_vec) / ranges).norm(dim=1)
+                if new_dists.min().item() >= 0.02:
+                    next_diam, next_n_ap = noise_diam, noise_n_ap
+                    next_n_det1, next_n_det2 = noise_n_det1, noise_n_det2
+                    logger.info(f"Perturbed to: d={next_diam:.4f} n={next_n_ap} nd1={next_n_det1} nd2={next_n_det2}")
+                    break
 
     logger.info(f"Acquisition value: {acq_value.item():.6f}")
     logger.info(f"SUGGESTION -> aperture_diam={next_diam:.4f} mm | "
