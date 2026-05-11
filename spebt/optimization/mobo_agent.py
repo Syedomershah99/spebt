@@ -42,9 +42,12 @@ warnings.filterwarnings("ignore", category=UserWarning)
 # --- Design space bounds ---
 # 4D: aperture_diam, n_apertures, n_det_ring1, n_det_ring2
 # n_det values must be even (2 crystals per cell). Rounded after acquisition.
+# n_apertures max: geometry generator enforces MIN_SPACING=0.8mm between
+# aperture centers → chord = 2*R*sin(π/n) >= 0.8 → n_max ≈ 274 at R=35mm.
+# Use 270 with safety margin.
 PARAM_NAMES = ["aperture_diam_mm", "n_apertures", "n_det_ring1", "n_det_ring2"]
 BOUNDS_MIN = [0.2, 60.0, 120.0, 180.0]
-BOUNDS_MAX = [1.0, 360.0, 660.0, 960.0]
+BOUNDS_MAX = [1.0, 270.0, 660.0, 960.0]
 DIM = len(PARAM_NAMES)
 
 # --- Feasibility constraint ---

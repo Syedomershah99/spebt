@@ -24,7 +24,7 @@ from scipy.stats.qmc import LatinHypercube
 
 
 BOUNDS_MIN = np.array([0.2, 60.0, 120.0, 180.0])
-BOUNDS_MAX = np.array([1.0, 360.0, 660.0, 960.0])
+BOUNDS_MAX = np.array([1.0, 270.0, 660.0, 960.0])  # n_ap max: MIN_SPACING=0.8mm → n≤274
 PARAM_NAMES = ["aperture_diam_mm", "n_apertures", "n_det_ring1", "n_det_ring2"]
 DIM = len(PARAM_NAMES)
 
