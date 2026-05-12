@@ -6,8 +6,8 @@
 #SBATCH --time=06:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=25
-#SBATCH --mem=40G
+#SBATCH --cpus-per-task=36
+#SBATCH --mem=64G
 #SBATCH --output=slurm_logs/out/pipeline_%A_%a.out
 #SBATCH --error=slurm_logs/err/pipeline_%A_%a.err
 #SBATCH --mail-user=syedomer@buffalo.edu
@@ -39,7 +39,7 @@ SCINT_RADIAL_MM="${SCINT_RADIAL_MM:-6.0}"
 RING_THICKNESS_MM="${RING_THICKNESS_MM:-2.5}"
 N_DET_RING1="${N_DET_RING1:-480}"
 N_DET_RING2="${N_DET_RING2:-720}"
-MAX_PARALLEL=12
+MAX_PARALLEL=16
 
 mkdir -p "${WORK_DIR}"
 cd "${WORK_DIR}"
@@ -198,23 +198,26 @@ rm -f "${WORK_DIR}"/beams_properties_configuration_*.hdf5
 rm -f "${WORK_DIR}"/asci_histogram_*.hdf5
 
 for layout_idx in 0 1; do
-  echo "  Layout ${layout_idx}: extracting masks..."
-  python "${CODE_DIR}/optimization/sai_extract_masks.py" \
-    --layout_idx "${layout_idx}" \
-    --work_dir "${WORK_DIR}" \
-    --tensor_file "${TENSOR_FILE}"
+  (
+    echo "  Layout ${layout_idx}: extracting masks..."
+    python "${CODE_DIR}/optimization/sai_extract_masks.py" \
+      --layout_idx "${layout_idx}" \
+      --work_dir "${WORK_DIR}" \
+      --tensor_file "${TENSOR_FILE}"
 
-  echo "  Layout ${layout_idx}: extracting properties..."
-  python "${CODE_DIR}/optimization/sai_extract_props.py" \
-    --layout_idx "${layout_idx}" \
-    --work_dir "${WORK_DIR}" \
-    --tensor_file "${TENSOR_FILE}"
+    echo "  Layout ${layout_idx}: extracting properties..."
+    python "${CODE_DIR}/optimization/sai_extract_props.py" \
+      --layout_idx "${layout_idx}" \
+      --work_dir "${WORK_DIR}" \
+      --tensor_file "${TENSOR_FILE}"
 
-  echo "  Layout ${layout_idx}: computing ASCI histogram..."
-  python "${CODE_DIR}/optimization/sai_analyze_asci.py" \
-    --layout_idx "${layout_idx}" \
-    --work_dir "${WORK_DIR}"
+    echo "  Layout ${layout_idx}: computing ASCI histogram..."
+    python "${CODE_DIR}/optimization/sai_analyze_asci.py" \
+      --layout_idx "${layout_idx}" \
+      --work_dir "${WORK_DIR}"
+  ) &
 done
+wait
 
 # -------------------------------------------------------
 # Step 3: Compute JI and append to results CSV
