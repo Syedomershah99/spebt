@@ -44,7 +44,7 @@ from matplotlib.gridspec import GridSpec
 # =====================
 IMG_DIM = 200
 SFOV = IMG_DIM * IMG_DIM
-SPROJ = 3360
+SPROJ = None  # auto-detected from first HDF5 file
 N_ITERATIONS = 150
 SAVE_EVERY = 5
 CONVERGENCE_TOL = 1e-4
@@ -135,10 +135,12 @@ def forward_project(flist, phantom_path, output_dir, device, T_sec=10.0, e_hot=1
     print(f"[Step 2]   hot voxels: {int(hot_mask.sum())}, bg voxels: {int((~hot_mask).sum())}")
 
     all_projs = []
+    sproj = None
     for i, fname in enumerate(flist):
         with h5py.File(fname, "r") as h5f:
             m = torch.from_numpy(h5f["ppdfs"][:]).to(device=device, dtype=torch.float32)
-            m = m.view(SPROJ, SFOV)
+            sproj = m.numel() // SFOV
+            m = m.view(sproj, SFOV)
 
         # Forward project -> expected counts per detector bin
         p = torch.matmul(m, phantom_flat).clamp(min=1e-12)
@@ -148,6 +150,7 @@ def forward_project(flist, phantom_path, output_dir, device, T_sec=10.0, e_hot=1
 
         if (i + 1) % 4 == 0:
             print(f"  Projected {i + 1}/{len(flist)} files  (max expected={p.max():.1f} counts)")
+    print(f"  Detected SPROJ={sproj} from PPDF files")
 
     projs = torch.cat(all_projs, dim=0)
 
@@ -181,9 +184,10 @@ def run_mlem(flist, projs_path, output_dir, device):
         for i, fname in enumerate(flist):
             with h5py.File(fname, "r") as h5f:
                 m = torch.from_numpy(h5f["ppdfs"][:]).to(device=device, dtype=torch.float32)
-                m = m.view(1, SPROJ, SFOV)
+                sproj = m.numel() // SFOV
+                m = m.view(1, sproj, SFOV)
 
-            p = pdata[i].view(1, SPROJ)
+            p = pdata[i].view(1, sproj)
             y = torch.clamp(torch.matmul(m, estimate), min=1e-12)
             r = p / y
             back_projection += torch.matmul(m.transpose(1, 2), r.unsqueeze(-1)).squeeze()
