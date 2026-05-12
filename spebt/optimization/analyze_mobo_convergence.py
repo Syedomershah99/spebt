@@ -91,7 +91,8 @@ def compute_hypervolume_nd(points, ref_point):
         pareto_pts = points[pareto_mask]
         if len(pareto_pts) == 0:
             return 0.0
-        return hv_calculator.compute(torch.tensor(pareto_pts, dtype=torch.double)).item()
+        result = hv_calculator.compute(torch.tensor(pareto_pts, dtype=torch.double))
+        return float(result)
     except ImportError:
         # Fallback: product of ranges (crude approximation)
         pareto_mask = is_pareto_optimal(points)
