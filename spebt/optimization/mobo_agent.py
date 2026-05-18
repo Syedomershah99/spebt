@@ -194,15 +194,15 @@ def get_next_candidate(results_csv: str):
     def feasible_ic_generator(acq_function, bounds, num_restarts, raw_samples, options=None, **kwargs):
         """Generate feasible initial conditions for constrained acquisition optimization."""
         # Use Sobol sequence for better coverage of the 4D space
-        n_candidates = 4096
+        n_candidates = 2048
         sobol = torch.quasirandom.SobolEngine(dimension=DIM, scramble=True)
         X_rnd = sobol.draw(n_candidates, dtype=bounds.dtype).unsqueeze(1)
         feasible_mask = is_feasible_norm(X_rnd.squeeze(1))
         X_feasible = X_rnd[feasible_mask]
         if len(X_feasible) < num_restarts:
             raise RuntimeError(f"Only {len(X_feasible)} feasible ICs found, need {num_restarts}")
-        # Evaluate acquisition on feasible candidates
-        n_eval = min(len(X_feasible), 512)
+        # Evaluate acquisition in batches to limit memory
+        n_eval = min(len(X_feasible), 256)
         with torch.no_grad():
             acq_values = acq_function(X_feasible[:n_eval])
         top_indices = torch.argsort(acq_values, descending=True)[:num_restarts]
@@ -212,8 +212,8 @@ def get_next_candidate(results_csv: str):
         acq_function=acqf,
         bounds=torch.stack([torch.zeros(DIM), torch.ones(DIM)]).double(),
         q=1,
-        num_restarts=15,
-        raw_samples=512,
+        num_restarts=10,
+        raw_samples=256,
         ic_generator=feasible_ic_generator,
     )
 
