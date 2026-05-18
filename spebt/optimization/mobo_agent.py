@@ -194,15 +194,15 @@ def get_next_candidate(results_csv: str):
     def feasible_ic_generator(acq_function, bounds, num_restarts, raw_samples, options=None, **kwargs):
         """Generate feasible initial conditions for constrained acquisition optimization."""
         # Use Sobol sequence for better coverage of the 4D space
-        n_candidates = 8192
+        n_candidates = 4096
         sobol = torch.quasirandom.SobolEngine(dimension=DIM, scramble=True)
         X_rnd = sobol.draw(n_candidates, dtype=bounds.dtype).unsqueeze(1)
         feasible_mask = is_feasible_norm(X_rnd.squeeze(1))
         X_feasible = X_rnd[feasible_mask]
         if len(X_feasible) < num_restarts:
             raise RuntimeError(f"Only {len(X_feasible)} feasible ICs found, need {num_restarts}")
-        # Evaluate acquisition on all feasible candidates
-        n_eval = min(len(X_feasible), 1024)
+        # Evaluate acquisition on feasible candidates
+        n_eval = min(len(X_feasible), 512)
         with torch.no_grad():
             acq_values = acq_function(X_feasible[:n_eval])
         top_indices = torch.argsort(acq_values, descending=True)[:num_restarts]
@@ -212,8 +212,8 @@ def get_next_candidate(results_csv: str):
         acq_function=acqf,
         bounds=torch.stack([torch.zeros(DIM), torch.ones(DIM)]).double(),
         q=1,
-        num_restarts=20,
-        raw_samples=1024,
+        num_restarts=15,
+        raw_samples=512,
         ic_generator=feasible_ic_generator,
     )
 
@@ -246,9 +246,9 @@ def get_next_candidate(results_csv: str):
     if min_dist < 0.02:  # less than 2% of design space away = duplicate
         logger.warning(f"Candidate too close to existing config (dist={min_dist:.4f}), searching for diverse alternative")
 
-        # Generate a large Sobol set, filter for feasibility + distance from all existing
+        # Generate Sobol set, filter for feasibility + distance from all existing
         sobol_dedup = torch.quasirandom.SobolEngine(dimension=DIM, scramble=True)
-        n_dedup = 4096
+        n_dedup = 2048
         X_sobol = sobol_dedup.draw(n_dedup, dtype=torch.double)
         # Unnormalize
         X_phys = X_sobol * ranges + bounds[0]
@@ -281,7 +281,7 @@ def get_next_candidate(results_csv: str):
 
                 # Normalize for acquisition evaluation
                 X_diverse_norm = ((X_diverse - bounds[0]) / ranges).unsqueeze(1)
-                n_eval = min(len(X_diverse_norm), 512)
+                n_eval = min(len(X_diverse_norm), 256)
                 with torch.no_grad():
                     acq_vals = acqf(X_diverse_norm[:n_eval])
                 # Pick candidate with best acquisition value
