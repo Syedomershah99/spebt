@@ -193,15 +193,16 @@ def get_next_candidate(results_csv: str):
 
     def feasible_ic_generator(acq_function, bounds, num_restarts, raw_samples, options=None, **kwargs):
         """Generate feasible initial conditions for constrained acquisition optimization."""
-        # Generate feasible candidates (lightweight — filter before acqf eval)
-        n_candidates = 2000
-        X_rnd = torch.rand(n_candidates, 1, DIM, dtype=bounds.dtype, device=bounds.device)
+        # Use Sobol sequence for better coverage of the 4D space
+        n_candidates = 8192
+        sobol = torch.quasirandom.SobolEngine(dimension=DIM, scramble=True)
+        X_rnd = sobol.draw(n_candidates, dtype=bounds.dtype).unsqueeze(1)
         feasible_mask = is_feasible_norm(X_rnd.squeeze(1))
         X_feasible = X_rnd[feasible_mask]
         if len(X_feasible) < num_restarts:
             raise RuntimeError(f"Only {len(X_feasible)} feasible ICs found, need {num_restarts}")
-        # Evaluate acquisition in small batches to limit memory
-        n_eval = min(len(X_feasible), 256)
+        # Evaluate acquisition on all feasible candidates
+        n_eval = min(len(X_feasible), 1024)
         with torch.no_grad():
             acq_values = acq_function(X_feasible[:n_eval])
         top_indices = torch.argsort(acq_values, descending=True)[:num_restarts]
@@ -211,8 +212,8 @@ def get_next_candidate(results_csv: str):
         acq_function=acqf,
         bounds=torch.stack([torch.zeros(DIM), torch.ones(DIM)]).double(),
         q=1,
-        num_restarts=10,
-        raw_samples=256,
+        num_restarts=20,
+        raw_samples=1024,
         ic_generator=feasible_ic_generator,
     )
 
@@ -243,32 +244,63 @@ def get_next_candidate(results_csv: str):
     min_dist = norm_dists.min().item() if len(norm_dists) > 0 else 1.0
 
     if min_dist < 0.02:  # less than 2% of design space away = duplicate
-        logger.warning(f"Candidate too close to existing config (dist={min_dist:.4f}), adding exploration noise")
-        import random
-        for _attempt in range(50):
-            # Random feasible perturbation
-            noise_diam = next_diam + random.uniform(-0.2, 0.2)
-            noise_n_ap = next_n_ap + random.randint(-60, 60)
-            noise_n_det1 = next_n_det1 + random.choice([-100, -50, 0, 50, 100])
-            noise_n_det2 = next_n_det2 + random.choice([-100, -50, 0, 50, 100])
-            # Clamp to bounds
-            noise_diam = max(BOUNDS_MIN[0], min(BOUNDS_MAX[0], noise_diam))
-            noise_n_ap = max(int(BOUNDS_MIN[1]), min(int(BOUNDS_MAX[1]), noise_n_ap))
-            noise_n_det1 = max(int(BOUNDS_MIN[2]), min(int(BOUNDS_MAX[2]), noise_n_det1))
-            noise_n_det2 = max(int(BOUNDS_MIN[3]), min(int(BOUNDS_MAX[3]), noise_n_det2))
-            if noise_n_det1 % 2 != 0:
-                noise_n_det1 += 1
-            if noise_n_det2 % 2 != 0:
-                noise_n_det2 += 1
-            if is_feasible(noise_diam, noise_n_ap):
-                perturbed_vec = torch.tensor([noise_diam, float(noise_n_ap),
-                                              float(noise_n_det1), float(noise_n_det2)], dtype=torch.double)
-                new_dists = ((all_x - perturbed_vec) / ranges).norm(dim=1)
-                if new_dists.min().item() >= 0.02:
-                    next_diam, next_n_ap = noise_diam, noise_n_ap
-                    next_n_det1, next_n_det2 = noise_n_det1, noise_n_det2
-                    logger.info(f"Perturbed to: d={next_diam:.4f} n={next_n_ap} nd1={next_n_det1} nd2={next_n_det2}")
-                    break
+        logger.warning(f"Candidate too close to existing config (dist={min_dist:.4f}), searching for diverse alternative")
+
+        # Generate a large Sobol set, filter for feasibility + distance from all existing
+        sobol_dedup = torch.quasirandom.SobolEngine(dimension=DIM, scramble=True)
+        n_dedup = 4096
+        X_sobol = sobol_dedup.draw(n_dedup, dtype=torch.double)
+        # Unnormalize
+        X_phys = X_sobol * ranges + bounds[0]
+
+        # Filter feasible
+        feasible_mask = torch.tensor(
+            [is_feasible(X_phys[i, 0].item(), X_phys[i, 1].item()) for i in range(n_dedup)]
+        )
+        X_feasible = X_phys[feasible_mask]
+        if len(X_feasible) == 0:
+            logger.warning("No feasible candidates for dedup — keeping original")
+        else:
+            # Compute min distance from each candidate to all existing configs
+            all_x_norm = (all_x - bounds[0]) / ranges
+            X_feas_norm = (X_feasible - bounds[0]) / ranges
+            # Pairwise distances
+            dists_to_existing = torch.cdist(X_feas_norm, all_x_norm)  # (n_feasible, n_existing)
+            min_dists = dists_to_existing.min(dim=1).values  # (n_feasible,)
+
+            # Evaluate acquisition on candidates with min_dist >= 0.02
+            diverse_mask = min_dists >= 0.02
+            if diverse_mask.sum() == 0:
+                # Relax threshold
+                diverse_mask = min_dists >= 0.01
+                logger.warning("Relaxed dedup threshold to 0.01")
+
+            if diverse_mask.sum() > 0:
+                X_diverse = X_feasible[diverse_mask]
+                diverse_dists = min_dists[diverse_mask]
+
+                # Normalize for acquisition evaluation
+                X_diverse_norm = ((X_diverse - bounds[0]) / ranges).unsqueeze(1)
+                n_eval = min(len(X_diverse_norm), 512)
+                with torch.no_grad():
+                    acq_vals = acqf(X_diverse_norm[:n_eval])
+                # Pick candidate with best acquisition value
+                best_idx = acq_vals.argmax()
+                best_cand = X_diverse[best_idx]
+
+                next_diam = best_cand[0].item()
+                next_n_ap = int(round(best_cand[1].item()))
+                next_n_det1 = int(round(best_cand[2].item()))
+                next_n_det2 = int(round(best_cand[3].item()))
+                if next_n_det1 % 2 != 0:
+                    next_n_det1 += 1
+                if next_n_det2 % 2 != 0:
+                    next_n_det2 += 1
+                logger.info(f"Dedup: selected diverse candidate (acq={acq_vals[best_idx]:.4f}, "
+                            f"dist={diverse_dists[best_idx]:.4f}): "
+                            f"d={next_diam:.4f} n={next_n_ap} nd1={next_n_det1} nd2={next_n_det2}")
+            else:
+                logger.warning("No diverse candidates found — keeping original")
 
     logger.info(f"Acquisition value: {acq_value.item():.6f}")
     logger.info(f"SUGGESTION -> aperture_diam={next_diam:.4f} mm | "
