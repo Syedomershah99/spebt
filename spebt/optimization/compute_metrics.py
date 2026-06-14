@@ -160,14 +160,103 @@ def compute_mpxi(work_dir: str):
     return float(np.mean(all_k))
 
 
+def compute_ppds(work_dir: str) -> float:
+    """
+    Compute PPDS (Projection Probability Density Sensitivity), following the
+    SPEBT project-strategy document (Eq. 6):
+
+        PPDS_j = sum_i { PPDF_{i,j} / sum_b V_{i,b} }   for i where PPDF_{i,j} > 0
+
+    V_{i,b} is the effective (FWHM-based) volume of beam b within PPDF i.
+    In 2D, V_{i,b} = FWHM_tangential * FWHM_radial; we read this directly
+    from the beam mask as the number of pixels assigned to beam b (its
+    footprint on the FOV). The constant pixel-area factor cancels when
+    taking the mean across configurations, so we keep V in pixel units.
+
+    The denominator sum_b V_{i,b} therefore equals the number of non-zero
+    pixels in the row mask[i, :]: a single one-liner per detector.
+
+    PPDFs are aggregated per layout (across the 8 T8 sub-poses) and matched
+    to that layout's beam mask, then PPDS is averaged across layouts.
+
+    Returns mean PPDS over the FOV. Returns NaN if files are missing.
+    """
+    ppdf_files = sorted(glob.glob(os.path.join(work_dir, "position_*_ppdfs_t8_*.hdf5")))
+    mask_files = sorted(glob.glob(os.path.join(work_dir, "beams_masks_configuration_*.hdf5")))
+    if not ppdf_files or not mask_files:
+        return float("nan")
+
+    def _layout_id(path: str):
+        """Extract the 3-digit layout id embedded in a file name."""
+        for part in os.path.basename(path).replace(".hdf5", "").split("_"):
+            if part.isdigit() and len(part) == 3:
+                return part
+        return None
+
+    # Aggregate T8 PPDFs per layout.
+    layout_ppdfs = {}
+    for ppdf_file in ppdf_files:
+        lid = _layout_id(ppdf_file)
+        if lid is None:
+            continue
+        try:
+            with h5py.File(ppdf_file, "r") as h:
+                arr = h["ppdfs"][:].astype(np.float64)
+        except Exception as e:
+            print(f"  [warn] PPDS: failed to read {ppdf_file}: {e}")
+            continue
+        if lid not in layout_ppdfs:
+            layout_ppdfs[lid] = arr
+        else:
+            layout_ppdfs[lid] += arr
+
+    if not layout_ppdfs:
+        return float("nan")
+
+    ppds_per_layout = []
+    for mask_file in mask_files:
+        try:
+            with h5py.File(mask_file, "r") as h:
+                masks = h["beam_mask"][:]   # (n_det, n_pix), int beam IDs (0 = background)
+        except Exception as e:
+            print(f"  [warn] PPDS: failed to read {mask_file}: {e}")
+            continue
+
+        mlid = _layout_id(mask_file)
+        ppdfs = layout_ppdfs.get(mlid)
+        if ppdfs is None and len(layout_ppdfs) == 1:
+            # only one layout — fall back unambiguously
+            ppdfs = next(iter(layout_ppdfs.values()))
+        if ppdfs is None:
+            print(f"  [warn] PPDS: no PPDF match for {os.path.basename(mask_file)}")
+            continue
+        if ppdfs.shape[0] != masks.shape[0]:
+            print(f"  [warn] PPDS: n_det mismatch (mask={masks.shape[0]}, ppdf={ppdfs.shape[0]})")
+            continue
+
+        # sum_b V_{i,b} = count of non-zero mask pixels for detector i
+        sumV = (masks > 0).sum(axis=1).astype(np.float64)              # (n_det,)
+        valid = sumV > 0
+        # Safe normalization: detectors with no beams contribute 0
+        denom = np.where(valid, sumV, 1.0)
+        weighted = ppdfs / denom[:, None]                              # (n_det, n_pix)
+        weighted[~valid, :] = 0.0
+        ppds_j = weighted.sum(axis=0)                                  # (n_pix,)
+        ppds_per_layout.append(float(ppds_j.mean()))
+
+    return float(np.mean(ppds_per_layout)) if ppds_per_layout else float("nan")
+
+
 def compute_metrics(work_dir: str) -> dict:
     """
-    Compute all 4 metrics for a single configuration.
-    Returns: fwhm_mean, sensitivity_total, sensitivity_mean, asci_pct, mpxi_mean.
+    Compute all metrics for a single configuration.
+    Returns: fwhm_mean, sensitivity_total, sensitivity_mean, asci_pct,
+             mpxi_mean, ppds_mean, n_ppdf_files.
     """
     sens_total, sens_mean, n_files = compute_sensitivity(work_dir)
     fwhm_mean, asci_pct = compute_fwhm_and_asci(work_dir)
     mpxi_mean = compute_mpxi(work_dir)
+    ppds_mean = compute_ppds(work_dir)
 
     return {
         "fwhm_mean": fwhm_mean,
@@ -176,6 +265,7 @@ def compute_metrics(work_dir: str) -> dict:
         "asci_pct": asci_pct,
         "n_ppdf_files": n_files,
         "mpxi_mean": mpxi_mean,
+        "ppds_mean": ppds_mean,
     }
 
 
@@ -206,6 +296,7 @@ def main():
             "asci_pct": float("nan"),
             "n_ppdf_files": 0,
             "mpxi_mean": float("nan"),
+            "ppds_mean": float("nan"),
         }
         print(f"[{args.config_name}] FORCE_ZERO: {args.reason}")
     else:
@@ -234,6 +325,7 @@ def main():
           f"ASCI={results['asci_pct']:.2f}%  "
           f"Sens={results['sensitivity_mean']:.4e}  "
           f"MPXI={results['mpxi_mean']:.4f}  "
+          f"PPDS={results['ppds_mean']:.4e}  "
           f"({results['n_ppdf_files']} PPDF files)")
 
 

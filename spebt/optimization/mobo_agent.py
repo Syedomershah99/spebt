@@ -2,11 +2,15 @@
 """
 Multi-Objective Bayesian Optimization Agent for SAI SC-SPECT.
 
-4 objectives (all maximized internally via negation where needed):
+3 objectives (all maximized internally via negation where needed):
   1. FWHM          — minimize (negate)
   2. ASCI          — maximize
-  3. sensitivity   — maximize
-  4. MPXI          — minimize (negate)
+  3. PPDS          — maximize  (Projection Probability Density Sensitivity;
+                                replaces both sensitivity and MPXI, since
+                                PPDS = PPDF intensity weighted by per-beam
+                                effective volume — captures detection
+                                efficiency × beam sharpness in one index.
+                                Per Dr. Yao's project-strategy document.)
 
 Uses ModelListGP (one SingleTaskGP per objective) + qLogNEHVI.
 
@@ -63,10 +67,11 @@ def is_feasible(diam, n_ap):
 
 
 # --- Objective columns (as they appear in the CSV) ---
-OBJ_COLUMNS = ["fwhm_mean", "asci_pct", "sensitivity_mean", "mpxi_mean"]
+# PPDS replaces both sensitivity and MPXI per Dr. Yao's strategy doc.
+OBJ_COLUMNS = ["fwhm_mean", "asci_pct", "ppds_mean"]
 # Directions: +1 = maximize, -1 = minimize (we negate minimization objectives)
-OBJ_DIRECTIONS = [-1.0, 1.0, 1.0, -1.0]
-OBJ_NAMES = ["FWHM (min)", "ASCI (max)", "Sensitivity (max)", "MPXI (min)"]
+OBJ_DIRECTIONS = [-1.0, 1.0, 1.0]
+OBJ_NAMES = ["FWHM (min)", "ASCI (max)", "PPDS (max)"]
 
 
 def get_next_candidate(results_csv: str):
