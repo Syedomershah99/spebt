@@ -10,6 +10,7 @@ Usage:
   python compute_metrics.py --work_dir <path> --out_csv results/results_summary_mobo.csv --config_name config_0001
 """
 import argparse
+import math
 import os
 import glob
 import h5py
@@ -22,8 +23,13 @@ N_LAYOUTS = 2       # 2 collimator rotations (0° and 1°)
 N_T8_POSES = 8      # 8 bed positions per layout
 N_TOTAL_FILES = N_LAYOUTS * N_T8_POSES  # 16
 FOV_NPIX = (200, 200)
+MM_PER_PX = 0.05    # 200 px x 0.05 mm = 10 mm FOV (matches recon)
 ASCI_NBINS_ANGULAR = 360
 TOTAL_ASCI_BINS = FOV_NPIX[0] * FOV_NPIX[1] * ASCI_NBINS_ANGULAR
+
+# Precompute pixel-coordinate arrays once (flattened to match PPDF/mask layout)
+_PX_ROW = np.repeat(np.arange(FOV_NPIX[0]), FOV_NPIX[1]).astype(np.float64) * MM_PER_PX
+_PX_COL = np.tile(np.arange(FOV_NPIX[1]), FOV_NPIX[0]).astype(np.float64) * MM_PER_PX
 
 
 def compute_sensitivity(work_dir: str):
@@ -160,6 +166,35 @@ def compute_mpxi(work_dir: str):
     return float(np.mean(all_k))
 
 
+def _per_beam_radial_fwhm(mask_row, ppdf_row, beam_id, angle):
+    """
+    Measure the radial FWHM of a single beam in one PPDF row.
+
+    The beam's "Angle (rad)" stored in beam_properties is the direction from
+    the beam's weighted centre to the detector centre, i.e. the radial
+    direction of the beam in the FOV. We:
+      1. Take the pixels labelled with this beam_id in mask_row.
+      2. Project their (x, y) positions onto the unit vector (cos a, sin a).
+      3. Compute the PPDF-weighted variance of that 1D projection.
+      4. Return 2.355 * sigma (FWHM under Gaussian approximation).
+
+    Returns 0.0 if the beam is too small or its weighted variance is non-positive.
+    """
+    pix_idx = np.flatnonzero(mask_row == beam_id)
+    if pix_idx.size < 3:
+        return 0.0
+    r = _PX_COL[pix_idx] * math.cos(angle) + _PX_ROW[pix_idx] * math.sin(angle)
+    w = ppdf_row[pix_idx].astype(np.float64)
+    wsum = w.sum()
+    if wsum <= 0.0:
+        return 0.0
+    mean_r = np.dot(w, r) / wsum
+    var_r = np.dot(w, (r - mean_r) ** 2) / wsum
+    if var_r <= 0.0:
+        return 0.0
+    return 2.355 * math.sqrt(var_r)
+
+
 def compute_ppds(work_dir: str) -> float:
     """
     Compute PPDS (Projection Probability Density Sensitivity), following the
@@ -167,100 +202,138 @@ def compute_ppds(work_dir: str) -> float:
 
         PPDS_j = sum_i { PPDF_{i,j} / sum_b V_{i,b} }   for i where PPDF_{i,j} > 0
 
-    V_{i,b} is the effective FWHM-based volume of beam b within PPDF i. In
-    2D the strategy doc gives V_{i,b} = FWHM_tangential * FWHM_radial. The
-    beam_properties HDF5 stores the tangential FWHM per beam (column 4),
-    and we use the circular-beam approximation V_{i,b} ≈ FWHM^2 so that
-    high-multiplexing / wide-beam detectors get penalized in the denominator.
-    Any constant pre-factor cancels in the per-config mean and so does not
-    affect ranking.
+    V_{i,b} = FWHM_tangential * FWHM_radial (2D form from the strategy doc).
+    FWHM_tangential is the per-beam FWHM stored in beam_properties (column 4).
+    FWHM_radial is measured here from the beam mask, by projecting the beam's
+    masked pixels onto the radial direction (cos(angle), sin(angle)) and
+    fitting a Gaussian-equivalent FWHM (2.355 * weighted sigma) using the
+    PPDF intensities as weights.
 
-    (An earlier draft used the beam-mask pixel area as V, which under-
-    penalized multiplexed designs because masks saturate at the FOV size
-    when projections overlap; the FWHM-based form fixes that.)
+    Earlier implementations used (a) the beam-mask pixel area or (b) a
+    circular-beam approximation V ≈ FWHM_tang^2; both saturated or
+    under-penalised wide-beam configurations and did not correlate with CNR.
+    This version respects the elongated geometry of pinhole projections and
+    matches the strategy-doc formula exactly.
 
     PPDFs are aggregated per layout (across the 8 T8 sub-poses) and matched
-    to that layout's beams_properties_configuration_*.hdf5, then PPDS is
-    averaged across layouts.
+    to that layout's beams_properties_*.hdf5 and beams_masks_*.hdf5 by the
+    3-digit layout id embedded in each filename. PPDS is then averaged
+    across layouts.
 
-    Returns mean PPDS over the FOV. Returns NaN if files are missing.
+    Returns mean PPDS over the FOV. Returns NaN if any required file is missing.
     """
     ppdf_files = sorted(glob.glob(os.path.join(work_dir, "position_*_ppdfs_t8_*.hdf5")))
     prop_files = sorted(glob.glob(os.path.join(work_dir, "beams_properties_configuration_*.hdf5")))
-    if not ppdf_files or not prop_files:
+    mask_files = sorted(glob.glob(os.path.join(work_dir, "beams_masks_configuration_*.hdf5")))
+    if not ppdf_files or not prop_files or not mask_files:
         return float("nan")
 
-    def _layout_id(path: str):
-        """Extract the 3-digit layout id embedded in a file name."""
+    def _layout_id(path):
         for part in os.path.basename(path).replace(".hdf5", "").split("_"):
             if part.isdigit() and len(part) == 3:
                 return part
         return None
 
-    # Aggregate T8 PPDFs per layout.
+    # Aggregate T8 PPDFs per layout
     layout_ppdfs = {}
-    for ppdf_file in ppdf_files:
-        lid = _layout_id(ppdf_file)
+    for f in ppdf_files:
+        lid = _layout_id(f)
         if lid is None:
             continue
         try:
-            with h5py.File(ppdf_file, "r") as h:
+            with h5py.File(f, "r") as h:
                 arr = h["ppdfs"][:].astype(np.float64)
         except Exception as e:
-            print(f"  [warn] PPDS: failed to read {ppdf_file}: {e}")
+            print(f"  [warn] PPDS: failed to read {f}: {e}")
             continue
-        if lid not in layout_ppdfs:
-            layout_ppdfs[lid] = arr
-        else:
+        if lid in layout_ppdfs:
             layout_ppdfs[lid] += arr
-
+        else:
+            layout_ppdfs[lid] = arr
     if not layout_ppdfs:
         return float("nan")
 
+    # Index prop and mask files by layout id (so we can pair them with PPDFs)
+    prop_by_lid = {}
+    for f in prop_files:
+        lid = _layout_id(f)
+        if lid is not None:
+            prop_by_lid[lid] = f
+    mask_by_lid = {}
+    for f in mask_files:
+        lid = _layout_id(f)
+        if lid is not None:
+            mask_by_lid[lid] = f
+
     ppds_per_layout = []
-    for prop_file in prop_files:
+    for lid, ppdfs in layout_ppdfs.items():
+        prop_file = prop_by_lid.get(lid) or (
+            next(iter(prop_by_lid.values())) if len(prop_by_lid) == 1 else None
+        )
+        mask_file = mask_by_lid.get(lid) or (
+            next(iter(mask_by_lid.values())) if len(mask_by_lid) == 1 else None
+        )
+        if prop_file is None or mask_file is None:
+            continue
         try:
             with h5py.File(prop_file, "r") as h:
                 bp = h["beam_properties"][:]
+            with h5py.File(mask_file, "r") as h:
+                masks = h["beam_mask"][:]                          # (n_det, n_pix)
         except Exception as e:
-            print(f"  [warn] PPDS: failed to read {prop_file}: {e}")
+            print(f"  [warn] PPDS: failed reading prop/mask for layout {lid}: {e}")
+            continue
+
+        n_det, n_pix = ppdfs.shape
+        if masks.shape[0] != n_det or masks.shape[1] != n_pix:
+            print(f"  [warn] PPDS: shape mismatch ppdfs={ppdfs.shape}, masks={masks.shape}")
             continue
         if bp.shape[0] == 0:
             continue
 
-        plid = _layout_id(prop_file)
-        ppdfs = layout_ppdfs.get(plid)
-        if ppdfs is None and len(layout_ppdfs) == 1:
-            # only one layout — fall back unambiguously
-            ppdfs = next(iter(layout_ppdfs.values()))
-        if ppdfs is None:
-            print(f"  [warn] PPDS: no PPDF match for {os.path.basename(prop_file)}")
-            continue
+        det_ids   = bp[:, 1].astype(np.int64)
+        beam_ids  = bp[:, 2].astype(np.int64)
+        angles    = bp[:, 3].astype(np.float64)
+        fwhms     = bp[:, 4].astype(np.float64)
 
-        n_det = ppdfs.shape[0]
-        det_ids = bp[:, 1].astype(np.int64)
-        fwhms = bp[:, 4].astype(np.float64)
-        # V_b ≈ FWHM^2 (circular-beam approximation in 2D)
-        v_per_beam = np.where(np.isfinite(fwhms) & (fwhms > 0.0), fwhms * fwhms, 0.0)
-
-        # Auto-detect 1-indexed detector ids and normalize to 0-indexed.
-        finite = det_ids.size > 0
-        if finite and det_ids.min() >= 1 and det_ids.max() <= n_det:
+        # Auto-detect 1-indexed detector ids
+        if det_ids.size > 0 and det_ids.min() >= 1 and det_ids.max() <= n_det:
             det_ids = det_ids - 1
 
-        in_range = (det_ids >= 0) & (det_ids < n_det)
-        sumV = np.bincount(det_ids[in_range],
-                           weights=v_per_beam[in_range],
-                           minlength=n_det).astype(np.float64)
+        # (det_id, beam_id) -> (fwhm_tang, angle); skip invalid entries
+        info = {}
+        for d, b, a, f_ in zip(det_ids, beam_ids, angles, fwhms):
+            if not (0 <= d < n_det):
+                continue
+            if not (np.isfinite(a) and np.isfinite(f_) and f_ > 0.0):
+                continue
+            info[(int(d), int(b))] = (float(f_), float(a))
+
+        # Per-detector: sum V_{i,b} = FWHM_tang * FWHM_rad over its beams
+        sumV = np.zeros(n_det, dtype=np.float64)
+        for det_i in range(n_det):
+            mask_row = masks[det_i, :]
+            unique_beams = np.unique(mask_row[mask_row > 0])
+            if unique_beams.size == 0:
+                continue
+            ppdf_row = ppdfs[det_i, :]
+            for b in unique_beams:
+                key = (det_i, int(b))
+                params = info.get(key)
+                if params is None:
+                    continue
+                fwhm_t, angle = params
+                fwhm_r = _per_beam_radial_fwhm(mask_row, ppdf_row, int(b), angle)
+                if fwhm_r > 0.0:
+                    sumV[det_i] += fwhm_t * fwhm_r
 
         valid = sumV > 0
         if not valid.any():
             continue
-        # Safe normalization: detectors with no beam volume contribute 0
         denom = np.where(valid, sumV, 1.0)
-        weighted = ppdfs / denom[:, None]                              # (n_det, n_pix)
+        weighted = ppdfs / denom[:, None]                          # (n_det, n_pix)
         weighted[~valid, :] = 0.0
-        ppds_j = weighted.sum(axis=0)                                  # (n_pix,)
+        ppds_j = weighted.sum(axis=0)                              # (n_pix,)
         ppds_per_layout.append(float(ppds_j.mean()))
 
     return float(np.mean(ppds_per_layout)) if ppds_per_layout else float("nan")
