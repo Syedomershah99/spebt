@@ -167,23 +167,27 @@ def compute_ppds(work_dir: str) -> float:
 
         PPDS_j = sum_i { PPDF_{i,j} / sum_b V_{i,b} }   for i where PPDF_{i,j} > 0
 
-    V_{i,b} is the effective (FWHM-based) volume of beam b within PPDF i.
-    In 2D, V_{i,b} = FWHM_tangential * FWHM_radial; we read this directly
-    from the beam mask as the number of pixels assigned to beam b (its
-    footprint on the FOV). The constant pixel-area factor cancels when
-    taking the mean across configurations, so we keep V in pixel units.
+    V_{i,b} is the effective FWHM-based volume of beam b within PPDF i. In
+    2D the strategy doc gives V_{i,b} = FWHM_tangential * FWHM_radial. The
+    beam_properties HDF5 stores the tangential FWHM per beam (column 4),
+    and we use the circular-beam approximation V_{i,b} ≈ FWHM^2 so that
+    high-multiplexing / wide-beam detectors get penalized in the denominator.
+    Any constant pre-factor cancels in the per-config mean and so does not
+    affect ranking.
 
-    The denominator sum_b V_{i,b} therefore equals the number of non-zero
-    pixels in the row mask[i, :]: a single one-liner per detector.
+    (An earlier draft used the beam-mask pixel area as V, which under-
+    penalized multiplexed designs because masks saturate at the FOV size
+    when projections overlap; the FWHM-based form fixes that.)
 
     PPDFs are aggregated per layout (across the 8 T8 sub-poses) and matched
-    to that layout's beam mask, then PPDS is averaged across layouts.
+    to that layout's beams_properties_configuration_*.hdf5, then PPDS is
+    averaged across layouts.
 
     Returns mean PPDS over the FOV. Returns NaN if files are missing.
     """
     ppdf_files = sorted(glob.glob(os.path.join(work_dir, "position_*_ppdfs_t8_*.hdf5")))
-    mask_files = sorted(glob.glob(os.path.join(work_dir, "beams_masks_configuration_*.hdf5")))
-    if not ppdf_files or not mask_files:
+    prop_files = sorted(glob.glob(os.path.join(work_dir, "beams_properties_configuration_*.hdf5")))
+    if not ppdf_files or not prop_files:
         return float("nan")
 
     def _layout_id(path: str):
@@ -214,30 +218,45 @@ def compute_ppds(work_dir: str) -> float:
         return float("nan")
 
     ppds_per_layout = []
-    for mask_file in mask_files:
+    for prop_file in prop_files:
         try:
-            with h5py.File(mask_file, "r") as h:
-                masks = h["beam_mask"][:]   # (n_det, n_pix), int beam IDs (0 = background)
+            with h5py.File(prop_file, "r") as h:
+                bp = h["beam_properties"][:]
         except Exception as e:
-            print(f"  [warn] PPDS: failed to read {mask_file}: {e}")
+            print(f"  [warn] PPDS: failed to read {prop_file}: {e}")
+            continue
+        if bp.shape[0] == 0:
             continue
 
-        mlid = _layout_id(mask_file)
-        ppdfs = layout_ppdfs.get(mlid)
+        plid = _layout_id(prop_file)
+        ppdfs = layout_ppdfs.get(plid)
         if ppdfs is None and len(layout_ppdfs) == 1:
             # only one layout — fall back unambiguously
             ppdfs = next(iter(layout_ppdfs.values()))
         if ppdfs is None:
-            print(f"  [warn] PPDS: no PPDF match for {os.path.basename(mask_file)}")
-            continue
-        if ppdfs.shape[0] != masks.shape[0]:
-            print(f"  [warn] PPDS: n_det mismatch (mask={masks.shape[0]}, ppdf={ppdfs.shape[0]})")
+            print(f"  [warn] PPDS: no PPDF match for {os.path.basename(prop_file)}")
             continue
 
-        # sum_b V_{i,b} = count of non-zero mask pixels for detector i
-        sumV = (masks > 0).sum(axis=1).astype(np.float64)              # (n_det,)
+        n_det = ppdfs.shape[0]
+        det_ids = bp[:, 1].astype(np.int64)
+        fwhms = bp[:, 4].astype(np.float64)
+        # V_b ≈ FWHM^2 (circular-beam approximation in 2D)
+        v_per_beam = np.where(np.isfinite(fwhms) & (fwhms > 0.0), fwhms * fwhms, 0.0)
+
+        # Auto-detect 1-indexed detector ids and normalize to 0-indexed.
+        finite = det_ids.size > 0
+        if finite and det_ids.min() >= 1 and det_ids.max() <= n_det:
+            det_ids = det_ids - 1
+
+        in_range = (det_ids >= 0) & (det_ids < n_det)
+        sumV = np.bincount(det_ids[in_range],
+                           weights=v_per_beam[in_range],
+                           minlength=n_det).astype(np.float64)
+
         valid = sumV > 0
-        # Safe normalization: detectors with no beams contribute 0
+        if not valid.any():
+            continue
+        # Safe normalization: detectors with no beam volume contribute 0
         denom = np.where(valid, sumV, 1.0)
         weighted = ppdfs / denom[:, None]                              # (n_det, n_pix)
         weighted[~valid, :] = 0.0
