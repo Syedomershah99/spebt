@@ -40,6 +40,9 @@ RING_THICKNESS_MM="${RING_THICKNESS_MM:-2.5}"
 N_DET_RING1="${N_DET_RING1:-480}"
 N_DET_RING2="${N_DET_RING2:-720}"
 MAX_PARALLEL=16
+# Phantom + ML-EM settings for the in-loop CNR step (Section 4 below)
+PHANTOM_PATH="${PHANTOM_PATH:-/vscratch/grp-rutaoyao/Omer/spebt/spebt/data/sai_10mm/hot_rods_phantom_10.0_mm_x_10.0_mm.pt}"
+CNR_ITERATIONS="${CNR_ITERATIONS:-150}"
 
 mkdir -p "${WORK_DIR}"
 cd "${WORK_DIR}"
@@ -74,6 +77,13 @@ write_zero_ji() {
     --n_det_ring1 "${N_DET_RING1}" \
     --n_det_ring2 "${N_DET_RING2}" \
     --force_zero --reason "${reason}"
+  # Also write NaN for cnr_mean so the CSV row is complete for MOBO
+  python "${CODE_DIR}/optimization/compute_cnr.py" \
+    --work_dir "${WORK_DIR}" \
+    --phantom_path "${PHANTOM_PATH}" \
+    --out_csv "${RESULTS_CSV}" \
+    --config_name "${CONFIG_NAME}" \
+    --force_nan --reason "${reason}"
   echo "=================================================="
   echo "PIPELINE COMPLETE (infeasible) | $(date)"
   echo "=================================================="
@@ -87,9 +97,9 @@ shopt -s nullglob
 TENSORS=("${WORK_DIR}"/*.tensor)
 if [ ${#TENSORS[@]} -gt 0 ]; then
   TENSOR_FILE="${TENSORS[0]}"
-  echo "[0/3] Geometry already exists: ${TENSOR_FILE}"
+  echo "[0/4] Geometry already exists: ${TENSOR_FILE}"
 else
-  echo "[0/3] Generating scanner geometry..."
+  echo "[0/4] Generating scanner geometry..."
   if ! python "${CODE_DIR}/geometry/generate_mph_scanner_circularfov.py" \
     --aperture_diam "${APERTURE_DIAM}" \
     --n_apertures "${N_APERTURES}" \
@@ -114,7 +124,7 @@ echo "  Tensor file: ${TENSOR_FILE}"
 #   - Validates existing HDF5 files (deletes corrupt ones)
 #   - Parallelizes up to MAX_PARALLEL poses
 # -------------------------------------------------------
-echo "[1/3] Computing PPDFs (2 layouts × 8 T8 poses, parallel)..."
+echo "[1/4] Computing PPDFs (2 layouts × 8 T8 poses, parallel)..."
 
 # Validate existing HDF5 files — delete corrupt ones
 echo "  Checking existing HDF5 integrity..."
@@ -189,7 +199,7 @@ echo "  Step 1 complete at $(date)"
 # Step 2: Beam analysis (masks, properties, ASCI)
 # Clean stale outputs first, then run per-layout
 # -------------------------------------------------------
-echo "[2/3] Beam analysis (masks -> properties -> ASCI)..."
+echo "[2/4] Beam analysis (masks -> properties -> ASCI)..."
 export PYTHONPATH="${CODE_DIR}/pymatana/ppdf-analysis/beam-analysis:${PYTHONPATH:-}"
 
 # Remove stale beam analysis files (force fresh computation)
@@ -220,9 +230,9 @@ done
 wait
 
 # -------------------------------------------------------
-# Step 3: Compute JI and append to results CSV
+# Step 3: Compute metrics (FWHM, ASCI, sensitivity, MPXI, PPDS) and append to CSV
 # -------------------------------------------------------
-echo "[3/3] Computing metrics..."
+echo "[3/4] Computing metrics..."
 python "${CODE_DIR}/optimization/compute_metrics.py" \
   --work_dir "${WORK_DIR}" \
   --out_csv "${RESULTS_CSV}" \
@@ -231,6 +241,20 @@ python "${CODE_DIR}/optimization/compute_metrics.py" \
   --n_apertures "${N_APERTURES}" \
   --n_det_ring1 "${N_DET_RING1}" \
   --n_det_ring2 "${N_DET_RING2}"
+
+# -------------------------------------------------------
+# Step 4: In-loop CNR — forward-project + ML-EM + CNR, append to CSV row
+# Adds ~5-10 min per config on CPU (much less on GPU). Uses 150 ML-EM
+# iterations by default (see CNR_ITERATIONS env var), which is enough for
+# ranking; 500 is only needed for clean publication images.
+# -------------------------------------------------------
+echo "[4/4] Computing in-loop CNR (${CNR_ITERATIONS} ML-EM iterations)..."
+python "${CODE_DIR}/optimization/compute_cnr.py" \
+  --work_dir "${WORK_DIR}" \
+  --phantom_path "${PHANTOM_PATH}" \
+  --out_csv "${RESULTS_CSV}" \
+  --config_name "${CONFIG_NAME}" \
+  --iterations "${CNR_ITERATIONS}"
 
 echo "=================================================="
 echo "PIPELINE COMPLETE | $(date)"

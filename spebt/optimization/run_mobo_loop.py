@@ -25,10 +25,17 @@ from rich.table import Table
 from rich.panel import Panel
 
 # =========================
-# PATHS (edit for your HPC setup)
+# PATHS (overridable via env; defaults to the current 3-spebt repo layout
+# on CCR: /vscratch/grp-rutaoyao/Omer/spebt/spebt/spebt/)
 # =========================
-CODE_DIR = "/vscratch/grp-rutaoyao/Omer/spebt/spebt"
-RESULTS_DIR = os.path.join(CODE_DIR, "optimization", "results")
+CODE_DIR = os.environ.get(
+    "MOBO_CODE_DIR",
+    "/vscratch/grp-rutaoyao/Omer/spebt/spebt/spebt",
+)
+RESULTS_DIR = os.environ.get(
+    "MOBO_RESULTS_DIR",
+    os.path.join(CODE_DIR, "optimization", "results"),
+)
 MANIFEST_FILE = os.path.join(RESULTS_DIR, "mobo_manifest.csv")
 RESULTS_CSV = os.path.join(RESULTS_DIR, "results_summary_mobo.csv")
 SLURM_SCRIPT = os.path.join(CODE_DIR, "optimization", "run_sai_pipeline.sh")
