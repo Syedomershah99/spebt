@@ -3,8 +3,7 @@
 Sequential MOBO Controller for SAI SC-SPECT.
 
 Multi-objective BO loop: propose one config, evaluate on HPC, collect metrics, repeat.
-Objectives: FWHM (min), ASCI (max), PPDS (max).
-PPDS replaces both sensitivity and MPXI per the SPEBT project-strategy document.
+Objectives: FWHM (min), ASCI (max), sensitivity (max), MPXI (min).
 Uses mobo_agent (ModelListGP + qLogNEHVI).
 
 Usage:
@@ -35,7 +34,7 @@ RESULTS_CSV = os.path.join(RESULTS_DIR, "results_summary_mobo.csv")
 SLURM_SCRIPT = os.path.join(CODE_DIR, "optimization", "run_sai_pipeline.sh")
 LOG_DIR = os.path.join(RESULTS_DIR, "slurm_logs")
 
-OBJ_COLUMNS = ["fwhm_mean", "asci_pct", "ppds_mean"]
+OBJ_COLUMNS = ["fwhm_mean", "asci_pct", "sensitivity_mean", "mpxi_mean"]
 
 console = Console()
 
@@ -100,7 +99,7 @@ def assert_initial_data():
     if n < 3:
         console.print(f"[bold red]ERROR:[/bold red] Need >= 3 feasible points for MOBO, got {n}.")
         sys.exit(1)
-    console.print(f"[green]Loaded {n} feasible data points with all 3 objectives.[/green]")
+    console.print(f"[green]Loaded {n} feasible data points with all 4 objectives.[/green]")
     return n
 
 
@@ -116,12 +115,13 @@ def print_status(idx, config_name):
         for col, label, direction in [
             ("fwhm_mean", "FWHM (mm)", "min"),
             ("asci_pct", "ASCI (%)", "max"),
-            ("ppds_mean", "PPDS", "max"),
+            ("sensitivity_mean", "Sensitivity", "max"),
+            ("mpxi_mean", "MPXI", "min"),
         ]:
             vals = df[col]
             best = vals.min() if direction == "min" else vals.max()
             worst = vals.max() if direction == "min" else vals.min()
-            fmt = ".4f" if col != "ppds_mean" else ".4e"
+            fmt = ".4f" if col != "sensitivity_mean" else ".4e"
             t.add_row(label, f"{best:{fmt}}", f"{worst:{fmt}}", f"{vals.mean():{fmt}}")
         t.add_row("Total configs", str(len(df)), "", "")
         console.print(t)
@@ -140,7 +140,7 @@ def main():
     console.print(Panel.fit(
         "[bold green]SAI SC-SPECT MOBO Controller[/bold green]\n"
         "Design: (aperture_diam, n_apertures, n_det_ring1, n_det_ring2)\n"
-        "3 objectives: FWHM (min), ASCI (max), PPDS (max)\n"
+        "4 objectives: FWHM (min), ASCI (max), Sensitivity (max), MPXI (min)\n"
         "ModelListGP + qLogNEHVI | Sequential q=1",
         subtitle=f"Max iterations: {TOTAL_ITERATIONS}"
     ))

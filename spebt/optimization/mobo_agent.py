@@ -2,15 +2,17 @@
 """
 Multi-Objective Bayesian Optimization Agent for SAI SC-SPECT.
 
-3 objectives (all maximized internally via negation where needed):
+4 objectives (all maximized internally via negation where needed):
   1. FWHM          — minimize (negate)
   2. ASCI          — maximize
-  3. PPDS          — maximize  (Projection Probability Density Sensitivity;
-                                replaces both sensitivity and MPXI, since
-                                PPDS = PPDF intensity weighted by per-beam
-                                effective volume — captures detection
-                                efficiency × beam sharpness in one index.
-                                Per Dr. Yao's project-strategy document.)
+  3. sensitivity   — maximize
+  4. MPXI          — minimize (negate)
+
+(PPDS was evaluated and put on hold — Spearman ρ vs reconstructed CNR was
+not positive across 16 validated configurations, and per Dr. Yao the
+individual metrics MOBO already tracks make a compound index unnecessary.
+The PPDS computation remains available in compute_metrics.py but is not
+used as an objective here.)
 
 Uses ModelListGP (one SingleTaskGP per objective) + qLogNEHVI.
 
@@ -67,11 +69,10 @@ def is_feasible(diam, n_ap):
 
 
 # --- Objective columns (as they appear in the CSV) ---
-# PPDS replaces both sensitivity and MPXI per Dr. Yao's strategy doc.
-OBJ_COLUMNS = ["fwhm_mean", "asci_pct", "ppds_mean"]
+OBJ_COLUMNS = ["fwhm_mean", "asci_pct", "sensitivity_mean", "mpxi_mean"]
 # Directions: +1 = maximize, -1 = minimize (we negate minimization objectives)
-OBJ_DIRECTIONS = [-1.0, 1.0, 1.0]
-OBJ_NAMES = ["FWHM (min)", "ASCI (max)", "PPDS (max)"]
+OBJ_DIRECTIONS = [-1.0, 1.0, 1.0, -1.0]
+OBJ_NAMES = ["FWHM (min)", "ASCI (max)", "Sensitivity (max)", "MPXI (min)"]
 
 
 def get_next_candidate(results_csv: str):
