@@ -26,20 +26,53 @@ import numpy as np
 import pandas as pd
 
 
+def _pick_best(candidates):
+    """Pick the best cnr_results.npz among candidates. Prefer 500-iter recons."""
+    for c in candidates:
+        if "500iter" in c:
+            return c
+    return candidates[0]
+
+
 def _find_cnr_npz(recon_root: str, config_name: str):
-    """Look for a cnr_results.npz under recon_root/<config>/ or recon_root/<config>_*."""
+    """Look for a cnr_results.npz for this config.
+
+    Handles three matching layers, in order:
+      1. Exact folder name.
+      2. Prefix glob (config_name + wildcard) — picks up 500iter suffix runs.
+      3. Design-signature match — matches on family (e.g. `lhs4d`, `mobo`) plus
+         the {nap, nd1, nd2} tuple, which is unique per configuration and
+         invariant across minor naming discrepancies (zero-padded vs unpadded
+         index, aperture-diameter precision, etc.). This is what recovers LHS
+         runs whose recon folders were named e.g. `lhs4d_0003_ap0.3400_...`
+         while the CSV holds `lhs4d_3_ap0.340036_...`.
+    """
+    import glob
+    import re
+
+    # 1. Exact match
     direct = os.path.join(recon_root, config_name, "cnr_results.npz")
     if os.path.exists(direct):
         return direct
-    # Some recon dirs use a slightly different name suffix (500iter, etc.)
-    import glob
+
+    # 2. Prefix glob
     candidates = sorted(glob.glob(os.path.join(recon_root, f"{config_name}*", "cnr_results.npz")))
     if candidates:
-        # Prefer the longest-iteration run when multiple exist
-        for c in candidates:
-            if "500iter" in c:
-                return c
-        return candidates[0]
+        return _pick_best(candidates)
+
+    # 3. Design-signature match
+    m = re.match(r"^([a-z0-9]+)_\d+_ap[\d.]+_nap(\d+)_nd1_(\d+)_nd2_(\d+)", config_name)
+    if m:
+        family, nap, nd1, nd2 = m.groups()
+        pattern = os.path.join(
+            recon_root,
+            f"{family}_*_nap{nap}_nd1_{nd1}_nd2_{nd2}",
+            "cnr_results.npz",
+        )
+        candidates = sorted(glob.glob(pattern))
+        if candidates:
+            return _pick_best(candidates)
+
     return None
 
 
