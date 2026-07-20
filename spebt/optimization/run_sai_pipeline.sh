@@ -40,8 +40,9 @@ RING_THICKNESS_MM="${RING_THICKNESS_MM:-2.5}"
 N_DET_RING1="${N_DET_RING1:-480}"
 N_DET_RING2="${N_DET_RING2:-720}"
 MAX_PARALLEL=16
-# Phantom + ML-EM settings for the in-loop CNR step (Section 4 below)
-PHANTOM_PATH="${PHANTOM_PATH:-/vscratch/grp-rutaoyao/Omer/spebt/spebt/data/sai_10mm/hot_rods_phantom_10.0_mm_x_10.0_mm.pt}"
+# Phantom + ML-EM settings for the in-loop CNR step (Section 4 below).
+# Default matches the current 3-spebt repo layout on CCR after the recovery.
+PHANTOM_PATH="${PHANTOM_PATH:-/vscratch/grp-rutaoyao/Omer/spebt/spebt/spebt/data/sai_10mm/hot_rods_phantom_10.0_mm_x_10.0_mm.pt}"
 CNR_ITERATIONS="${CNR_ITERATIONS:-150}"
 
 mkdir -p "${WORK_DIR}"
