@@ -405,9 +405,19 @@ def main():
     if args.n_det_ring2 is not None:
         results["n_det_ring2"] = args.n_det_ring2
 
-    # Append to CSV (create with header if new)
+    # Append to CSV (create with header if new). We MUST align to the
+    # existing header's column order — the CSV may have extra columns
+    # (added by later backfills, e.g. cnr_mean) that this script doesn't
+    # produce, and its own results-dict order may differ from the header.
+    # Writing with mode="a" without alignment produces shifted rows that
+    # crash pandas readers downstream.
     df_new = pd.DataFrame([results])
     if os.path.exists(args.out_csv):
+        existing_cols = pd.read_csv(args.out_csv, nrows=0).columns.tolist()
+        for col in existing_cols:
+            if col not in df_new.columns:
+                df_new[col] = float("nan")
+        df_new = df_new.reindex(columns=existing_cols)
         df_new.to_csv(args.out_csv, mode="a", header=False, index=False)
     else:
         os.makedirs(os.path.dirname(args.out_csv) or ".", exist_ok=True)
