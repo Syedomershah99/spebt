@@ -3,7 +3,8 @@
 Sequential MOBO Controller for SAI SC-SPECT.
 
 Multi-objective BO loop: propose one config, evaluate on HPC, collect metrics, repeat.
-Objectives: FWHM (min), ASCI (max), sensitivity (max), MPXI (min).
+Objectives: FWHM (min), ASCI (max), sensitivity (max), MPXI (min), CNR (max).
+CNR is produced in-loop by compute_cnr.py step [4/4] of run_sai_pipeline.sh.
 Uses mobo_agent (ModelListGP + qLogNEHVI).
 
 Usage:
@@ -41,7 +42,7 @@ RESULTS_CSV = os.path.join(RESULTS_DIR, "results_summary_mobo.csv")
 SLURM_SCRIPT = os.path.join(CODE_DIR, "optimization", "run_sai_pipeline.sh")
 LOG_DIR = os.path.join(RESULTS_DIR, "slurm_logs")
 
-OBJ_COLUMNS = ["fwhm_mean", "asci_pct", "sensitivity_mean", "mpxi_mean"]
+OBJ_COLUMNS = ["fwhm_mean", "asci_pct", "sensitivity_mean", "mpxi_mean", "cnr_mean"]
 
 console = Console()
 
@@ -74,22 +75,58 @@ def append_manifest_row(idx, config_name, diam, n_ap, n_det1, n_det2, work_dir, 
 
 
 def patch_manifest_status(idx, job_id, status):
+    """Update the manifest row whose first column equals `idx`.
+
+    Previously this patched whichever row was last, which happened to be correct
+    only because the caller always appends immediately before patching. Anchoring
+    on `idx` makes the function robust to controller restarts, orphan rows, or
+    any future concurrent update.
+    """
     with open(MANIFEST_FILE, "r") as f:
         lines = f.readlines()
-    last_i = max(i for i, ln in enumerate(lines) if ln.strip())
-    parts = lines[last_i].rstrip("\n").split(",")
+    target = str(idx)
+    target_i = None
+    # Iterate in reverse: if multiple rows share the same idx (should not happen,
+    # but see previous stuck-row bugs), the most recent one wins.
+    for i in range(len(lines) - 1, -1, -1):
+        ln = lines[i].strip()
+        if not ln or ln.startswith("idx,"):
+            continue
+        if ln.split(",", 1)[0] == target:
+            target_i = i
+            break
+    if target_i is None:
+        # Fallback: patch the last non-empty row (legacy behaviour) and warn
+        console.print(f"[yellow]patch_manifest_status: no row with idx={idx}, "
+                      f"falling back to last row[/yellow]")
+        target_i = max(i for i, ln in enumerate(lines) if ln.strip())
+
+    parts = lines[target_i].rstrip("\n").split(",")
     if len(parts) >= 9:
         parts[7] = str(job_id)
         parts[8] = status
-        lines[last_i] = ",".join(parts) + "\n"
+        lines[target_i] = ",".join(parts) + "\n"
         with open(MANIFEST_FILE, "w") as f:
             f.writelines(lines)
 
 
 def is_job_running(job_id: str) -> bool:
+    """Return True if the given SLURM job id is still in the queue.
+
+    Uses a word-boundary check so that job 12345 does not match against 123456
+    when substring-scanning squeue output. squeue itself already filters by
+    `--job`, so under normal operation r.stdout contains only that job's line;
+    the word-boundary check just makes the failure mode explicit.
+    """
+    import re
     try:
-        r = subprocess.run(["squeue", "--job", str(job_id)], capture_output=True, text=True)
-        return str(job_id) in r.stdout
+        r = subprocess.run(
+            ["squeue", "--job", str(job_id), "--noheader", "-o", "%i"],
+            capture_output=True, text=True,
+        )
+        # Each line of stdout is a plain job id; match on word boundaries
+        pattern = rf"(?<!\d){re.escape(str(job_id))}(?!\d)"
+        return re.search(pattern, r.stdout) is not None
     except Exception:
         return True
 
@@ -106,7 +143,7 @@ def assert_initial_data():
     if n < 3:
         console.print(f"[bold red]ERROR:[/bold red] Need >= 3 feasible points for MOBO, got {n}.")
         sys.exit(1)
-    console.print(f"[green]Loaded {n} feasible data points with all 4 objectives.[/green]")
+    console.print(f"[green]Loaded {n} feasible data points with all 5 objectives.[/green]")
     return n
 
 
@@ -124,6 +161,7 @@ def print_status(idx, config_name):
             ("asci_pct", "ASCI (%)", "max"),
             ("sensitivity_mean", "Sensitivity", "max"),
             ("mpxi_mean", "MPXI", "min"),
+            ("cnr_mean", "CNR", "max"),
         ]:
             vals = df[col]
             best = vals.min() if direction == "min" else vals.max()
@@ -147,7 +185,7 @@ def main():
     console.print(Panel.fit(
         "[bold green]SAI SC-SPECT MOBO Controller[/bold green]\n"
         "Design: (aperture_diam, n_apertures, n_det_ring1, n_det_ring2)\n"
-        "4 objectives: FWHM (min), ASCI (max), Sensitivity (max), MPXI (min)\n"
+        "5 objectives: FWHM (min), ASCI (max), Sensitivity (max), MPXI (min), CNR (max)\n"
         "ModelListGP + qLogNEHVI | Sequential q=1",
         subtitle=f"Max iterations: {TOTAL_ITERATIONS}"
     ))

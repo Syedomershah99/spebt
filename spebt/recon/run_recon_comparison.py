@@ -44,7 +44,9 @@ from matplotlib.gridspec import GridSpec
 # =====================
 IMG_DIM = 200
 SFOV = IMG_DIM * IMG_DIM
-SPROJ = None  # auto-detected from first HDF5 file
+# SPROJ (number of projection bins per PPDF file) is auto-detected per HDF5
+# inside forward_project / run_mlem — it is NOT constant across configs because
+# n_det_ring1 and n_det_ring2 vary between configs.
 N_ITERATIONS = 150
 SAVE_EVERY = 5
 CONVERGENCE_TOL = 1e-4
@@ -383,12 +385,10 @@ def plot_comparison(baseline_dir, bo_dir, output_dir, baseline_label="Baseline",
     print(f"\n{'='*60}")
     print(f"RECONSTRUCTION COMPARISON SUMMARY")
     print(f"{'='*60}")
-    print(f"  Baseline  CNR: {float(base_cnr['overall_cnr']):.2f}")
-    print(f"  BO-Opt    CNR: {float(bo_cnr['overall_cnr']):.2f}")
+    print(f"  {baseline_label:<20} CNR: {float(base_cnr['overall_cnr']):.2f}")
+    print(f"  {bo_label:<20} CNR: {float(bo_cnr['overall_cnr']):.2f}")
     cnr_change = (float(bo_cnr['overall_cnr']) - float(base_cnr['overall_cnr'])) / float(base_cnr['overall_cnr']) * 100
-    print(f"  Change:        {cnr_change:+.1f}%")
-    print(f"\n  If CNR improved -> JI is a valid proxy metric")
-    print(f"  If CNR didn't improve -> 83% JI gain is reward hacking")
+    print(f"  Change:                   {cnr_change:+.1f}%")
     print(f"{'='*60}")
 
 
@@ -397,8 +397,11 @@ def plot_comparison(baseline_dir, bo_dir, output_dir, baseline_label="Baseline",
 # =====================
 def main():
     parser = argparse.ArgumentParser(description="Reconstruction Comparison Pipeline")
-    parser.add_argument("--config", type=str, choices=["baseline", "bo_optimized"],
-                        help="Which config to reconstruct")
+    # --config used to switch between baseline/bo_optimized but both branches did
+    # the same thing; kept for backward compatibility with older shell scripts,
+    # but the value is not read anywhere.
+    parser.add_argument("--config", type=str, default=None,
+                        help="Legacy identifier (ignored). Retained so old scripts don't fail on unknown arg.")
     parser.add_argument("--ppdf_dir", type=str,
                         help="Directory containing PPDF HDF5 files")
     parser.add_argument("--phantom_path", type=str,
@@ -437,9 +440,12 @@ def main():
     # Find phantom
     phantom_path = args.phantom_path
     if phantom_path is None:
-        # Try common locations
+        # Try common locations. First entry is the current 3-spebt repo layout on
+        # CCR after the vscratch recovery; second entry is the old 2-spebt path
+        # kept for backward compatibility with any leftover ad-hoc runs.
         for candidate in [
             os.path.join(args.ppdf_dir, "hot_rods_phantom_10.0_mm_x_10.0_mm.pt"),
+            "/vscratch/grp-rutaoyao/Omer/spebt/spebt/spebt/data/sai_10mm/hot_rods_phantom_10.0_mm_x_10.0_mm.pt",
             "/vscratch/grp-rutaoyao/Omer/spebt/spebt/data/sai_10mm/hot_rods_phantom_10.0_mm_x_10.0_mm.pt",
         ]:
             if os.path.exists(candidate):

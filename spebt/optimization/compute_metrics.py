@@ -2,9 +2,12 @@
 """
 Compute metrics for SAI SC-SPECT configurations.
 
-Metrics: FWHM, ASCI, sensitivity, MPXI
+Metrics: FWHM, ASCI, sensitivity_mean, sensitivity_total, MPXI, PPDS
   - 200×200 FOV (0.05 mm/px)
   - 16 HDF5 files per config (2 layouts × 8 T8 poses)
+  - PPDS is available in compute_metrics but is NOT currently used as a MOBO
+    objective (see mobo_agent.py docstring for the history). CNR is added by
+    a separate step (compute_cnr.py) invoked after this script.
 
 Usage:
   python compute_metrics.py --work_dir <path> --out_csv results/results_summary_mobo.csv --config_name config_0001
@@ -96,7 +99,10 @@ def compute_fwhm_and_asci(work_dir: str):
             with h5py.File(prop_file, "r") as f:
                 data = f["beam_properties"][:]
                 if data.shape[0] > 0:
-                    # Column 4 is FWHM (angle, width/FWHM, size, rel_sens, abs_sens)
+                    # 11-column schema from pymatana/scanner_modeling/beam_property_io.py:
+                    #   0 position_id, 1 detector_id, 2 beam_id, 3 angle (rad),
+                    #   4 FWHM (mm), 5 weighted_center_x, 6 weighted_center_y,
+                    #   7 sensitivity, 8 relative_sensitivity, 9-10 (padding).
                     fwhm_data = data[:, 4]
                     valid = fwhm_data[~np.isnan(fwhm_data)]
                     if len(valid) > 0:

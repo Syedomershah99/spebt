@@ -2,21 +2,28 @@
 """
 Multi-Objective Bayesian Optimization Agent for SAI SC-SPECT.
 
-4 objectives (all maximized internally via negation where needed):
+5 objectives (all maximized internally via negation where needed):
   1. FWHM          — minimize (negate)
   2. ASCI          — maximize
   3. sensitivity   — maximize
   4. MPXI          — minimize (negate)
+  5. CNR           — maximize  (reconstructed contrast-to-noise ratio from
+                                the in-loop 150-iter ML-EM run on the hot-rod
+                                phantom; computed by compute_cnr.py and
+                                appended to each row by run_sai_pipeline.sh
+                                step [4/4]. Direct reconstruction quality
+                                objective per Dr. Yao's guidance — the four
+                                proxy metrics did not always align with
+                                CNR in the tested regime.)
 
-(PPDS was evaluated and put on hold — Spearman ρ vs reconstructed CNR was
-not positive across 16 validated configurations, and per Dr. Yao the
-individual metrics MOBO already tracks make a compound index unnecessary.
-The PPDS computation remains available in compute_metrics.py but is not
-used as an objective here.)
+(PPDS was evaluated earlier and put on hold — Spearman ρ vs reconstructed
+CNR was not positive across 16 validated configurations. The PPDS
+computation remains available in compute_metrics.py but is not used as
+an objective here.)
 
 Uses ModelListGP (one SingleTaskGP per objective) + qLogNEHVI.
 
-Design vector: (aperture_diam_mm, n_apertures, scint_radial_thickness_mm, ring_thickness_mm)
+Design vector: (aperture_diam_mm, n_apertures, n_det_ring1, n_det_ring2)
 
 Usage:
   python mobo_agent.py --results_csv results/results_summary.csv
@@ -34,7 +41,6 @@ from botorch.utils.transforms import normalize, unnormalize
 from botorch.acquisition.multi_objective.logei import qLogNoisyExpectedHypervolumeImprovement
 from botorch.optim import optimize_acqf
 from gpytorch.mlls import ExactMarginalLogLikelihood
-from gpytorch.mlls.sum_marginal_log_likelihood import SumMarginalLogLikelihood
 
 # --- Logging ---
 logging.basicConfig(
@@ -43,7 +49,15 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 logger = logging.getLogger("MOBO_Agent_SAI")
-warnings.filterwarnings("ignore", category=UserWarning)
+# Selective warning suppression: BoTorch emits an InputDataWarning every fit
+# because our train_x is normalised to [0,1] (which is what it wants but the
+# check misfires). Everything else — numerical warnings from GPyTorch about
+# jitter or ill-conditioning — we want to see.
+warnings.filterwarnings(
+    "ignore",
+    message="Data (input features) is not contained to the unit cube.*",
+    category=UserWarning,
+)
 
 # --- Design space bounds ---
 # 4D: aperture_diam, n_apertures, n_det_ring1, n_det_ring2
@@ -69,15 +83,17 @@ def is_feasible(diam, n_ap):
 
 
 # --- Objective columns (as they appear in the CSV) ---
-OBJ_COLUMNS = ["fwhm_mean", "asci_pct", "sensitivity_mean", "mpxi_mean"]
+# cnr_mean is populated in-loop by compute_cnr.py (150-iter ML-EM) and by
+# backfill_cnr.py for the 16 already-reconstructed configs.
+OBJ_COLUMNS = ["fwhm_mean", "asci_pct", "sensitivity_mean", "mpxi_mean", "cnr_mean"]
 # Directions: +1 = maximize, -1 = minimize (we negate minimization objectives)
-OBJ_DIRECTIONS = [-1.0, 1.0, 1.0, -1.0]
-OBJ_NAMES = ["FWHM (min)", "ASCI (max)", "Sensitivity (max)", "MPXI (min)"]
+OBJ_DIRECTIONS = [-1.0, 1.0, 1.0, -1.0, 1.0]
+OBJ_NAMES = ["FWHM (min)", "ASCI (max)", "Sensitivity (max)", "MPXI (min)", "CNR (max)"]
 
 
 def get_next_candidate(results_csv: str):
     """
-    1. Load results CSV with all 4 objectives.
+    1. Load results CSV with all OBJ_COLUMNS objectives.
     2. Fit ModelListGP (one GP per objective).
     3. Optimize qLogNEHVI, q=1.
     4. Return next design point.
@@ -101,10 +117,21 @@ def get_next_candidate(results_csv: str):
         raise ValueError(f"Need at least 3 feasible points for MOBO, got {n_valid}")
 
     # --- Assign penalty values to failed configs so the GP learns to avoid them ---
-    # Use worst observed value (in the "maximize" direction) with a margin
+    # Use worst observed value (in the "maximize" direction) with a margin.
+    #
+    # IMPORTANT: this multiplicative scheme assumes every metric in OBJ_COLUMNS
+    # is strictly positive across the observed data. All our current metrics
+    # (fwhm_mean, asci_pct, sensitivity_mean, mpxi_mean, cnr_mean) satisfy that.
+    # If a future metric can go negative, "col.min() * 0.5" would make the
+    # penalty MORE favourable than the worst observation — subtract-a-margin
+    # would be needed instead. Asserting positivity guards against a silent
+    # regression here.
     if n_failed > 0 and len(df_failed[PARAM_NAMES].dropna()) > 0:
         valid_vals = df_valid[OBJ_COLUMNS].values
-        # Penalty: for each objective, assign worst-feasible value made 20% worse
+        assert (valid_vals >= 0).all(), (
+            "penalty calculation assumes strictly non-negative objective values; "
+            "negative value detected — rework the penalty scheme before proceeding"
+        )
         penalty_row = []
         for i, d in enumerate(OBJ_DIRECTIONS):
             col = valid_vals[:, i]
@@ -321,7 +348,8 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="MOBO Agent for SAI SC-SPECT")
     parser.add_argument("--results_csv", type=str, required=True,
-                        help="Path to results CSV with fwhm_mean, asci_pct, sensitivity_mean, mpxi_mean columns")
+                        help="Path to results CSV with all OBJ_COLUMNS "
+                             "(fwhm_mean, asci_pct, sensitivity_mean, mpxi_mean, cnr_mean)")
     args = parser.parse_args()
 
     diam, n_ap, n_det1, n_det2 = get_next_candidate(args.results_csv)
