@@ -25,4 +25,4 @@ mkdir -p results/slurm_logs/out results/slurm_logs/err
 
 # Bump this ceiling as needed. Controller no-ops once the manifest already has
 # --max_iters rows, so it's safe to set higher than we plan to run in one go.
-python run_mobo_loop.py --max_iters 120
+python run_mobo_loop.py --max_iters 180
