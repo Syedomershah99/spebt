@@ -7,7 +7,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=36
-#SBATCH --mem=64G
+#SBATCH --mem=32G
 #SBATCH --output=slurm_logs/out/pipeline_%A_%a.out
 #SBATCH --error=slurm_logs/err/pipeline_%A_%a.err
 #SBATCH --mail-user=syedomer@buffalo.edu
