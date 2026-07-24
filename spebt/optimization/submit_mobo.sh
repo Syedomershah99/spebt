@@ -10,7 +10,7 @@
 #SBATCH --partition=general-compute
 #SBATCH --qos=general-compute
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=32G
+#SBATCH --mem=96G
 #SBATCH --time=12:00:00
 #SBATCH --job-name=mobo_loop
 #SBATCH --output=results/slurm_logs/out/mobo_%j.out

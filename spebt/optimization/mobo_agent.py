@@ -208,7 +208,7 @@ def get_next_candidate(results_csv: str):
         ref_point=ref_point_std.tolist(),
         X_baseline=train_x_norm,
         prune_baseline=True,
-        cache_root=True,
+        cache_root=False,
     )
 
     # Feasibility constraint in normalized space:
