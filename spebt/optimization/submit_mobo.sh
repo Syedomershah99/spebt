@@ -11,7 +11,7 @@
 #SBATCH --qos=general-compute
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=96G
-#SBATCH --time=12:00:00
+#SBATCH --time=72:00:00
 #SBATCH --job-name=mobo_loop
 #SBATCH --output=results/slurm_logs/out/mobo_%j.out
 #SBATCH --error=results/slurm_logs/err/mobo_%j.err
