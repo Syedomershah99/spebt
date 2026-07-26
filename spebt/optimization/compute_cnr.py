@@ -49,13 +49,23 @@ def compute_cnr_for_work_dir(
     e_hot: float = 10.0,
     e_bg: float = 2.0,
     out_subdir: str = "cnr_inloop",
+    seed: int = None,
 ) -> float:
     """Run forward project -> ML-EM -> CNR for one work_dir, return overall CNR.
 
     Returns NaN if PPDF files are missing (e.g. infeasible config).
+
+    The forward projection applies Poisson noise (rrc.forward_project ->
+    torch.poisson), so CNR is a random variable: repeat runs of the same
+    design differ by ~0.1 CNR. Pass `seed` to fix the noise realisation and
+    make a run reproducible; leave it None (the in-loop default) so the GP
+    sees honest observation noise rather than one frozen draw.
     """
     out_dir = os.path.join(work_dir, out_subdir)
     os.makedirs(out_dir, exist_ok=True)
+
+    if seed is not None:
+        torch.manual_seed(int(seed))
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -125,6 +135,13 @@ def main():
     parser.add_argument("--force_nan", action="store_true",
                         help="Write NaN row (for infeasible configs flagged upstream)")
     parser.add_argument("--reason", type=str, default="")
+    parser.add_argument("--out_subdir", type=str, default="cnr_inloop",
+                        help="Subdirectory of --work_dir for recon artefacts "
+                             "(default: cnr_inloop). Use a distinct value for "
+                             "repeat runs so they do not overwrite each other.")
+    parser.add_argument("--seed", type=int, default=None,
+                        help="Seed the Poisson noise in forward projection. Omit "
+                             "for the in-loop default (fresh noise each run).")
     args = parser.parse_args()
 
     if args.force_nan:
@@ -137,6 +154,7 @@ def main():
         args.work_dir, args.phantom_path,
         iterations=args.iterations,
         T_sec=args.T_sec, e_hot=args.e_hot, e_bg=args.e_bg,
+        out_subdir=args.out_subdir, seed=args.seed,
     )
     elapsed = time.time() - t0
 
