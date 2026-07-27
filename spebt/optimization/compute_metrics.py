@@ -201,7 +201,42 @@ def _per_beam_radial_fwhm(mask_row, ppdf_row, beam_id, angle):
     return 2.355 * math.sqrt(var_r)
 
 
-def compute_ppds(work_dir: str) -> float:
+# Detector counts on rings 3 and 4 are fixed in the geometry generator
+# (generate_mph_scanner_circularfov.py: DETS_PER_RING = [n1, n2, 40*12*2, 40*15*2]).
+# Only rings 1 and 2 are design variables.
+N_DET_RING3 = 40 * 12 * 2   # 960
+N_DET_RING4 = 40 * 15 * 2   # 1200
+
+# Ring weights for the weighted PPDS variant, innermost -> outermost.
+# Rationale (RY, Jul 2026): outer rings sit further from the aperture, so their
+# PPDFs are better collimated (narrower). Weighting them more strongly rewards
+# designs whose counts come from the well-collimated rings, rather than
+# rewarding raw sensitivity, which is maximised by wide, blurring PPDFs.
+DEFAULT_RING_WEIGHTS = (1.0, 2.0, 3.0, 4.0)
+
+
+def _ring_weight_vector(n_det: int, n_det_ring1: int,
+                        ring_weights=DEFAULT_RING_WEIGHTS) -> "np.ndarray":
+    """Per-detector ring weights, or None if the ring layout cannot be resolved.
+
+    Detectors are laid out ring-by-ring by build_sc_spect_detector_rings, so
+    ring membership is just the cumulative counts [n1, n2, 960, 1200]. n2 is
+    inferred from the total rather than passed in, since the PPDF row count is
+    always the ground truth for how many detectors the simulation actually had.
+    """
+    if n_det_ring1 is None:
+        return None
+    n_det_ring2 = n_det - int(n_det_ring1) - N_DET_RING3 - N_DET_RING4
+    if n_det_ring2 <= 0:
+        print(f"  [warn] PPDS: ring layout does not add up "
+              f"(n_det={n_det}, n_det_ring1={n_det_ring1} -> n_det_ring2={n_det_ring2})")
+        return None
+    sizes = [int(n_det_ring1), int(n_det_ring2), N_DET_RING3, N_DET_RING4]
+    return np.repeat(np.asarray(ring_weights, dtype=np.float64), sizes)
+
+
+def compute_ppds(work_dir: str, n_det_ring1: int = None,
+                 ring_weights=DEFAULT_RING_WEIGHTS) -> float:
     """
     Compute PPDS (Projection Probability Density Sensitivity), following the
     SPEBT project-strategy document (Eq. 6):
@@ -220,6 +255,12 @@ def compute_ppds(work_dir: str) -> float:
     under-penalised wide-beam configurations and did not correlate with CNR.
     This version respects the elongated geometry of pinhole projections and
     matches the strategy-doc formula exactly.
+
+    If `n_det_ring1` is given, each detector's contribution is additionally
+    scaled by its ring weight (see DEFAULT_RING_WEIGHTS), giving the weighted
+    variant. Omit it to get the original unweighted PPDS -- the two are kept in
+    one function so both are computed from identical beam geometry, which is
+    what makes the correlation comparison against CNR meaningful.
 
     PPDFs are aggregated per layout (across the 8 T8 sub-poses) and matched
     to that layout's beams_properties_*.hdf5 and beams_masks_*.hdf5 by the
@@ -338,6 +379,12 @@ def compute_ppds(work_dir: str) -> float:
             continue
         denom = np.where(valid, sumV, 1.0)
         weighted = ppdfs / denom[:, None]                          # (n_det, n_pix)
+
+        # Optional ring weighting: scale each detector row by its ring weight.
+        ring_w = _ring_weight_vector(n_det, n_det_ring1, ring_weights)
+        if ring_w is not None:
+            weighted = weighted * ring_w[:, None]
+
         weighted[~valid, :] = 0.0
         ppds_j = weighted.sum(axis=0)                              # (n_pix,)
         ppds_per_layout.append(float(ppds_j.mean()))
@@ -345,16 +392,23 @@ def compute_ppds(work_dir: str) -> float:
     return float(np.mean(ppds_per_layout)) if ppds_per_layout else float("nan")
 
 
-def compute_metrics(work_dir: str) -> dict:
+def compute_metrics(work_dir: str, n_det_ring1: int = None) -> dict:
     """
     Compute all metrics for a single configuration.
     Returns: fwhm_mean, sensitivity_total, sensitivity_mean, asci_pct,
-             mpxi_mean, ppds_mean, n_ppdf_files.
+             mpxi_mean, ppds_mean, ppds_weighted_mean, n_ppdf_files.
+
+    ppds_weighted_mean is only produced when n_det_ring1 is supplied, since
+    ring membership cannot be resolved without it.
     """
     sens_total, sens_mean, n_files = compute_sensitivity(work_dir)
     fwhm_mean, asci_pct = compute_fwhm_and_asci(work_dir)
     mpxi_mean = compute_mpxi(work_dir)
     ppds_mean = compute_ppds(work_dir)
+    ppds_weighted_mean = (
+        compute_ppds(work_dir, n_det_ring1=n_det_ring1)
+        if n_det_ring1 is not None else float("nan")
+    )
 
     return {
         "fwhm_mean": fwhm_mean,
@@ -364,6 +418,7 @@ def compute_metrics(work_dir: str) -> dict:
         "n_ppdf_files": n_files,
         "mpxi_mean": mpxi_mean,
         "ppds_mean": ppds_mean,
+        "ppds_weighted_mean": ppds_weighted_mean,
     }
 
 
@@ -395,10 +450,11 @@ def main():
             "n_ppdf_files": 0,
             "mpxi_mean": float("nan"),
             "ppds_mean": float("nan"),
+            "ppds_weighted_mean": float("nan"),
         }
         print(f"[{args.config_name}] FORCE_ZERO: {args.reason}")
     else:
-        results = compute_metrics(args.work_dir)
+        results = compute_metrics(args.work_dir, n_det_ring1=args.n_det_ring1)
     results["config"] = args.config_name
     results["work_dir"] = args.work_dir
 
@@ -434,6 +490,7 @@ def main():
           f"Sens={results['sensitivity_mean']:.4e}  "
           f"MPXI={results['mpxi_mean']:.4f}  "
           f"PPDS={results['ppds_mean']:.4e}  "
+          f"PPDSw={results['ppds_weighted_mean']:.4e}  "
           f"({results['n_ppdf_files']} PPDF files)")
 
 
