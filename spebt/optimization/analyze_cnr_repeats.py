@@ -54,13 +54,73 @@ def collect(results_dir: str, config: str):
     )
 
 
+def correlate_with_metrics(results_dir, stats_by_config, metrics_csv):
+    """Test what design metric predicts CNR reproducibility.
+
+    The three top designs ranked identically by MPXI, ASCI and n_det_ring2 as
+    they did by CNR std, suggesting worse-conditioned (more multiplexed) systems
+    amplify Poisson noise more. With only three designs that ordering is worth
+    a third of a coin flip, so this runs the comparison over whatever set of
+    designs has repeat runs.
+    """
+    if not os.path.exists(metrics_csv):
+        print(f"\n(metrics CSV not found at {metrics_csv}; skipping correlation)")
+        return
+    import pandas as pd
+
+    df = pd.read_csv(metrics_csv)
+    rows = []
+    for config, std in stats_by_config.items():
+        m = df[df["config"] == config]
+        if m.empty:
+            continue
+        r = m.iloc[0]
+        rows.append({
+            "config": short_name(config), "cnr_std": std,
+            "mpxi": r.get("mpxi_mean"), "asci": r.get("asci_pct"),
+            "sensitivity": r.get("sensitivity_mean"), "fwhm": r.get("fwhm_mean"),
+            "n_det_ring2": r.get("n_det_ring2"),
+        })
+    if len(rows) < 3:
+        print("\n(need >= 3 designs with repeat runs to correlate; skipping)")
+        return
+
+    d = pd.DataFrame(rows)
+    print()
+    print("=" * 72)
+    print("WHAT PREDICTS CNR REPRODUCIBILITY?")
+    print("=" * 72)
+    print()
+    print(d.sort_values("cnr_std").to_string(index=False))
+    print()
+    print(f"Spearman rank correlation of each metric against CNR std (n={len(d)}):")
+    for col in ["mpxi", "asci", "sensitivity", "fwhm", "n_det_ring2"]:
+        if col not in d or d[col].isna().any():
+            continue
+        rho = d["cnr_std"].corr(d[col], method="spearman")
+        print(f"  {col:<14} rho = {rho:+.3f}")
+    if len(d) < 6:
+        print("\nNOTE: with fewer than ~6 designs these correlations are not")
+        print("      evidence. Re-run with a wider spread of designs.")
+
+
 def main():
     ap = argparse.ArgumentParser(description="Summarise repeat-run CNR measurements")
     ap.add_argument("--results_dir", default="results",
                     help="Directory holding the per-config work dirs (default: results)")
+    ap.add_argument("--config_list", default=None,
+                    help="File with one config name per line (default: the built-in top designs)")
+    ap.add_argument("--metrics_csv", default="results/results_summary_mobo.csv",
+                    help="Campaign CSV, used to correlate CNR std against design metrics")
     args = ap.parse_args()
 
+    global CONFIGS
+    if args.config_list:
+        with open(args.config_list) as f:
+            CONFIGS = [ln.strip() for ln in f if ln.strip()]
+
     stats = {}
+    std_by_config = {}
 
     print("=" * 72)
     print("PER-DESIGN CNR ACROSS SEEDS")
@@ -75,6 +135,7 @@ def main():
 
         mean, std = overall.mean(), overall.std(ddof=1) if overall.size > 1 else 0.0
         stats[name] = (mean, std, overall.size)
+        std_by_config[config] = std
 
         print(f"\n{name}  (n={overall.size})")
         print(f"  seeds:   {seeds}")
@@ -119,6 +180,8 @@ def main():
             print(f"  {a} vs {b}:")
             print(f"    gap = {gap:+.4f}   SE(diff) = {se:.4f}   |gap|/SE = {se_str}")
             print(f"    -> {verdict}")
+
+    correlate_with_metrics(args.results_dir, std_by_config, args.metrics_csv)
 
     print()
     print("=" * 72)

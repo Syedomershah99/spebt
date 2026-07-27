@@ -35,13 +35,19 @@ PHANTOM_PATH="/vscratch/grp-rutaoyao/Omer/spebt/spebt/spebt/data/sai_10mm/hot_ro
 mkdir -p results/cnr_repeats
 OUT_CSV="results/cnr_repeats/task_${SLURM_ARRAY_TASK_ID}.csv"
 
-# Top designs from the 180-iteration campaign (all within ~0.17 CNR of each other)
-CONFIGS=(
-  "mobo_0069_ap0.3138_nap124_nd1_612_nd2_230"
-  "mobo_0177_ap0.3512_nap97_nd1_604_nd2_584"
-  "mobo_0173_ap0.3500_nap117_nd1_446_nd2_236"
-)
-N_SEEDS=5
+# Configs to repeat. Override with CONFIG_LIST=<file> (one config name per line)
+# and size the array to match: --array=0-$((n_configs*N_SEEDS - 1)).
+# Default: the top designs from the 180-iteration campaign.
+if [[ -n "${CONFIG_LIST:-}" ]]; then
+  mapfile -t CONFIGS < <(grep -v '^\s*$' "${CONFIG_LIST}")
+else
+  CONFIGS=(
+    "mobo_0069_ap0.3138_nap124_nd1_612_nd2_230"
+    "mobo_0177_ap0.3512_nap97_nd1_604_nd2_584"
+    "mobo_0173_ap0.3500_nap117_nd1_446_nd2_236"
+  )
+fi
+N_SEEDS="${N_SEEDS:-5}"
 
 cfg_idx=$(( SLURM_ARRAY_TASK_ID / N_SEEDS ))
 seed=$(( SLURM_ARRAY_TASK_ID % N_SEEDS ))
