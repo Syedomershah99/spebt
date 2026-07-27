@@ -467,6 +467,64 @@ class TestRingWeightedPpds:
         w = cm._ring_weight_vector(3002, 612, ring_weights=(1.0, 2.0, 4.0, 8.0))
         assert w[0] == 1.0 and w[612] == 2.0 and w[842] == 4.0 and w[-1] == 8.0
 
+    @pytest.fixture
+    def four_ring_work_dir(self, tmp_path):
+        """A work_dir whose detector count actually resolves into four rings.
+
+        n_det = n1 + n2 + 960 + 1200. Uses a tiny FOV (n_pix=10) since PPDS reads
+        n_pix from the PPDF array rather than assuming 200x200, which keeps a
+        2000+ detector case small enough to test.
+        """
+        wd = tmp_path / "fourring"
+        wd.mkdir()
+        n1, n2 = 2, 4
+        n_det = n1 + n2 + 960 + 1200
+        n_pix = 10
+
+        rng = np.random.default_rng(7)
+        ppdfs = np.zeros((n_det, n_pix), dtype=np.float32)
+        masks = np.zeros((n_det, n_pix), dtype=np.int32)
+        # Light one detector in each ring so every ring contributes something
+        lit = [0, n1, n1 + n2, n1 + n2 + 960]
+        for d in lit:
+            ppdfs[d, :4] = rng.uniform(0.5, 1.5, 4)
+            masks[d, :4] = 1
+        with h5py.File(wd / "position_000_ppdfs_t8_00.hdf5", "w") as h:
+            h.create_dataset("ppdfs", data=ppdfs)
+        with h5py.File(wd / "beams_masks_configuration_000.hdf5", "w") as h:
+            h.create_dataset("beam_mask", data=masks)
+
+        bp = np.zeros((len(lit), 11), dtype=np.float32)
+        for i, d in enumerate(lit):
+            bp[i] = [0, d, 1, 0.3 * i, 0.4 + 0.1 * i, 0, 0, 1.0, 0, 0, 0]
+        with h5py.File(wd / "beams_properties_configuration_000.hdf5", "w") as h:
+            h.create_dataset("beam_properties", data=bp)
+        return wd, n1
+
+    def test_components_sum_to_unweighted_total(self, four_ring_work_dir):
+        """The decomposition must be exact -- otherwise weightings computed as a
+        dot product of stored components would not match a direct computation."""
+        import compute_metrics as cm
+        wd, n1 = four_ring_work_dir
+        comps = cm.compute_ppds_per_ring(str(wd), n_det_ring1=n1)
+        total = cm.compute_ppds(str(wd))
+        assert comps is not None and len(comps) == 4
+        assert np.isclose(comps.sum(), total, rtol=1e-12)
+
+    def test_dot_product_matches_direct_weighting(self, four_ring_work_dir):
+        """Any weighting must be reproducible from the stored components."""
+        import compute_metrics as cm
+        wd, n1 = four_ring_work_dir
+        comps = cm.compute_ppds_per_ring(str(wd), n_det_ring1=n1)
+        for w in [(1, 2, 3, 4), (4, 3, 2, 1), (1, 0, 0, 0), (0.5, 1.5, 2.5, 3.5)]:
+            direct = cm.compute_ppds(str(wd), n_det_ring1=n1, ring_weights=w)
+            assert np.isclose(float(np.dot(w, comps)), direct, rtol=1e-12), w
+
+    def test_per_ring_none_without_ring1(self, four_ring_work_dir):
+        import compute_metrics as cm
+        wd, _ = four_ring_work_dir
+        assert cm.compute_ppds_per_ring(str(wd), n_det_ring1=None) is None
+
     def test_weighting_changes_ppds(self, tmp_path):
         """Weighted and unweighted PPDS must differ when detectors span rings.
 
@@ -509,6 +567,95 @@ class TestRingWeightedPpds:
             "ring layout should not resolve for a 2-detector synthetic case, "
             "so weighted must fall back to plain PPDS"
         )
+
+
+# =============================================================================
+# FWHM-windowed ASCI
+# =============================================================================
+class TestWindowedAsci:
+    """ASCI restricted to beams narrower than a threshold. The existing metric
+    saturates (64% of configs at exactly 100%), so the window has to actually
+    exclude beams for it to discriminate."""
+
+    @pytest.fixture
+    def work_dir(self, tmp_path):
+        """One layout, 3 detectors, one beam each, with FWHM 0.5 / 1.0 / 2.0 mm.
+
+        Each beam lights a distinct block of pixels at a distinct angle, so the
+        coverage contributed by each is independent and easy to reason about.
+        """
+        wd = tmp_path / "asci"
+        wd.mkdir()
+        n_det, n_pix = 3, 200 * 200
+
+        masks = np.zeros((n_det, n_pix), dtype=np.int32)
+        masks[0, 0:100] = 1
+        masks[1, 100:200] = 1
+        masks[2, 200:300] = 1
+        with h5py.File(wd / "beams_masks_configuration_000.hdf5", "w") as h:
+            h.create_dataset("beam_mask", data=masks)
+
+        # 11-column schema: 1 det_id, 2 beam_id, 3 angle, 4 FWHM, 7 sensitivity
+        bp = np.zeros((3, 11), dtype=np.float32)
+        bp[0] = [0, 0, 1, 0.10, 0.5, 0, 0, 1.0, 0, 0, 0]
+        bp[1] = [0, 1, 1, 0.50, 1.0, 0, 0, 1.0, 0, 0, 0]
+        bp[2] = [0, 2, 1, 1.00, 2.0, 0, 0, 1.0, 0, 0, 0]
+        with h5py.File(wd / "beams_properties_configuration_000.hdf5", "w") as h:
+            h.create_dataset("beam_properties", data=bp)
+        return wd
+
+    def test_window_is_monotonic(self, work_dir):
+        import analyze_asci_window as aw
+        res = aw.windowed_asci(str(work_dir), (0.6, 1.5, 3.0))
+        assert res[0.6] < res[1.5] < res[3.0], res
+
+    def test_threshold_excludes_wider_beams(self, work_dir):
+        """Each beam lights 100 pixels in 1 angular bin, so coverage is additive."""
+        import analyze_asci_window as aw
+        res = aw.windowed_asci(str(work_dir), (0.6, 1.5, 3.0))
+        total = 200 * 200 * 360
+        # 0.6 keeps only the 0.5mm beam; 1.5 keeps two; 3.0 keeps all three
+        assert np.isclose(res[0.6], 100 / total * 100)
+        assert np.isclose(res[1.5], 200 / total * 100)
+        assert np.isclose(res[3.0], 300 / total * 100)
+
+    def test_threshold_below_all_beams_gives_zero(self, work_dir):
+        import analyze_asci_window as aw
+        assert aw.windowed_asci(str(work_dir), (0.1,))[0.1] == 0.0
+
+    def test_nan_when_files_missing(self, tmp_path):
+        import analyze_asci_window as aw
+        wd = tmp_path / "empty"
+        wd.mkdir()
+        res = aw.windowed_asci(str(wd), (1.0,))
+        assert np.isnan(res[1.0])
+
+    def test_sensitivity_floor_still_applied(self, tmp_path):
+        """Beams under 1% of the layout peak are dropped, as in sai_analyze_asci."""
+        import analyze_asci_window as aw
+        wd = tmp_path / "sens"
+        wd.mkdir()
+        n_det, n_pix = 2, 200 * 200
+        masks = np.zeros((n_det, n_pix), dtype=np.int32)
+        masks[0, 0:100] = 1
+        masks[1, 100:200] = 1
+        with h5py.File(wd / "beams_masks_configuration_000.hdf5", "w") as h:
+            h.create_dataset("beam_mask", data=masks)
+        bp = np.zeros((2, 11), dtype=np.float32)
+        bp[0] = [0, 0, 1, 0.10, 0.5, 0, 0, 1.0, 0, 0, 0]      # strong
+        bp[1] = [0, 1, 1, 0.50, 0.5, 0, 0, 0.001, 0, 0, 0]    # 0.1% of peak
+        with h5py.File(wd / "beams_properties_configuration_000.hdf5", "w") as h:
+            h.create_dataset("beam_properties", data=bp)
+        res = aw.windowed_asci(str(wd), (3.0,))
+        total = 200 * 200 * 360
+        # Only the strong beam's 100 pixels should count
+        assert np.isclose(res[3.0], 100 / total * 100)
+
+    def test_column_names_are_filesystem_safe(self):
+        import analyze_asci_window as aw
+        assert aw.col_for(1.0) == "asci_pct_fwhm1"
+        assert aw.col_for(0.6) == "asci_pct_fwhm0p6"
+        assert "." not in aw.col_for(1.5)
 
 
 # =============================================================================

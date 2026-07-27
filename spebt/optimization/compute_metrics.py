@@ -215,9 +215,8 @@ N_DET_RING4 = 40 * 15 * 2   # 1200
 DEFAULT_RING_WEIGHTS = (1.0, 2.0, 3.0, 4.0)
 
 
-def _ring_weight_vector(n_det: int, n_det_ring1: int,
-                        ring_weights=DEFAULT_RING_WEIGHTS) -> "np.ndarray":
-    """Per-detector ring weights, or None if the ring layout cannot be resolved.
+def _ring_slices(n_det: int, n_det_ring1: int):
+    """(start, stop) index pairs for rings 1-4, or None if the layout is unresolvable.
 
     Detectors are laid out ring-by-ring by build_sc_spect_detector_rings, so
     ring membership is just the cumulative counts [n1, n2, 960, 1200]. n2 is
@@ -232,11 +231,21 @@ def _ring_weight_vector(n_det: int, n_det_ring1: int,
               f"(n_det={n_det}, n_det_ring1={n_det_ring1} -> n_det_ring2={n_det_ring2})")
         return None
     sizes = [int(n_det_ring1), int(n_det_ring2), N_DET_RING3, N_DET_RING4]
+    edges = np.cumsum([0] + sizes)
+    return [(int(edges[i]), int(edges[i + 1])) for i in range(4)]
+
+
+def _ring_weight_vector(n_det: int, n_det_ring1: int,
+                        ring_weights=DEFAULT_RING_WEIGHTS) -> "np.ndarray":
+    """Per-detector ring weights, or None if the ring layout cannot be resolved."""
+    slices = _ring_slices(n_det, n_det_ring1)
+    if slices is None:
+        return None
+    sizes = [hi - lo for lo, hi in slices]
     return np.repeat(np.asarray(ring_weights, dtype=np.float64), sizes)
 
 
-def compute_ppds(work_dir: str, n_det_ring1: int = None,
-                 ring_weights=DEFAULT_RING_WEIGHTS) -> float:
+def _ppds_components(work_dir: str, n_det_ring1: int = None):
     """
     Compute PPDS (Projection Probability Density Sensitivity), following the
     SPEBT project-strategy document (Eq. 6):
@@ -256,24 +265,20 @@ def compute_ppds(work_dir: str, n_det_ring1: int = None,
     This version respects the elongated geometry of pinhole projections and
     matches the strategy-doc formula exactly.
 
-    If `n_det_ring1` is given, each detector's contribution is additionally
-    scaled by its ring weight (see DEFAULT_RING_WEIGHTS), giving the weighted
-    variant. Omit it to get the original unweighted PPDS -- the two are kept in
-    one function so both are computed from identical beam geometry, which is
-    what makes the correlation comparison against CNR meaningful.
-
     PPDFs are aggregated per layout (across the 8 T8 sub-poses) and matched
     to that layout's beams_properties_*.hdf5 and beams_masks_*.hdf5 by the
     3-digit layout id embedded in each filename. PPDS is then averaged
     across layouts.
 
-    Returns mean PPDS over the FOV. Returns NaN if any required file is missing.
+    Returns a length-4 array of per-ring contributions when `n_det_ring1` is
+    given, a length-1 array with the total otherwise, or None if any required
+    file is missing. Callers should use compute_ppds / compute_ppds_per_ring.
     """
     ppdf_files = sorted(glob.glob(os.path.join(work_dir, "position_*_ppdfs_t8_*.hdf5")))
     prop_files = sorted(glob.glob(os.path.join(work_dir, "beams_properties_configuration_*.hdf5")))
     mask_files = sorted(glob.glob(os.path.join(work_dir, "beams_masks_configuration_*.hdf5")))
     if not ppdf_files or not prop_files or not mask_files:
-        return float("nan")
+        return None
 
     def _layout_id(path):
         for part in os.path.basename(path).replace(".hdf5", "").split("_"):
@@ -298,7 +303,7 @@ def compute_ppds(work_dir: str, n_det_ring1: int = None,
         else:
             layout_ppdfs[lid] = arr
     if not layout_ppdfs:
-        return float("nan")
+        return None
 
     # Index prop and mask files by layout id (so we can pair them with PPDFs)
     prop_by_lid = {}
@@ -378,18 +383,51 @@ def compute_ppds(work_dir: str, n_det_ring1: int = None,
         if not valid.any():
             continue
         denom = np.where(valid, sumV, 1.0)
-        weighted = ppdfs / denom[:, None]                          # (n_det, n_pix)
+        contrib = ppdfs / denom[:, None]                           # (n_det, n_pix)
+        contrib[~valid, :] = 0.0
 
-        # Optional ring weighting: scale each detector row by its ring weight.
-        ring_w = _ring_weight_vector(n_det, n_det_ring1, ring_weights)
-        if ring_w is not None:
-            weighted = weighted * ring_w[:, None]
+        # PPDS is a plain sum over detectors and ring weights are constant within
+        # a ring, so the per-ring partial sums fully determine the weighted value
+        # for ANY weighting. Returning them lets weightings be compared without
+        # recomputing from the HDF5 files each time (~20 s per config).
+        slices = _ring_slices(n_det, n_det_ring1)
+        if slices is None:
+            ppds_per_layout.append([float(contrib.sum(axis=0).mean())])
+        else:
+            ppds_per_layout.append(
+                [float(contrib[lo:hi].sum(axis=0).mean()) for lo, hi in slices]
+            )
 
-        weighted[~valid, :] = 0.0
-        ppds_j = weighted.sum(axis=0)                              # (n_pix,)
-        ppds_per_layout.append(float(ppds_j.mean()))
+    if not ppds_per_layout:
+        return None
+    return np.asarray(ppds_per_layout, dtype=np.float64).mean(axis=0)
 
-    return float(np.mean(ppds_per_layout)) if ppds_per_layout else float("nan")
+
+def compute_ppds(work_dir: str, n_det_ring1: int = None,
+                 ring_weights=DEFAULT_RING_WEIGHTS) -> float:
+    """Mean PPDS over the FOV, optionally ring-weighted. NaN if files are missing.
+
+    With `n_det_ring1` the per-ring contributions are combined using
+    `ring_weights`; without it the plain unweighted total is returned.
+    """
+    comps = _ppds_components(work_dir, n_det_ring1)
+    if comps is None:
+        return float("nan")
+    if comps.size == 1:
+        return float(comps[0])
+    return float(np.dot(np.asarray(ring_weights, dtype=np.float64), comps))
+
+
+def compute_ppds_per_ring(work_dir: str, n_det_ring1: int):
+    """Per-ring PPDS contributions (length 4), or None if unavailable.
+
+    Storing these lets any ring weighting be evaluated as a dot product, instead
+    of re-reading gigabytes of HDF5 per candidate weighting.
+    """
+    comps = _ppds_components(work_dir, n_det_ring1)
+    if comps is None or comps.size != 4:
+        return None
+    return comps
 
 
 def compute_metrics(work_dir: str, n_det_ring1: int = None) -> dict:
