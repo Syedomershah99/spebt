@@ -122,9 +122,15 @@ def plot_hypervolume_convergence(df, n_lhs, out_dir):
     ax.plot(range(1, len(hvs) + 1), hvs, "b-o", markersize=3, linewidth=1.5)
     ax.axvline(x=n_lhs + 0.5, color="red", linestyle="--", alpha=0.6,
                label=f"LHS ({n_lhs}) → MOBO")
-    ax.set_xlabel("Total Evaluations", fontsize=11)
+    # NB: this is the running hypervolume over configs that have ALL objectives,
+    # in CSV (chronological) order. Configs missing any objective -- e.g. the
+    # 4-objective-era runs with no CNR -- are absent, so the x axis is not the
+    # MOBO iteration number.
+    ax.set_xlabel(f"Configs with all {len(METRIC_COLS)} objectives "
+                  f"(chronological order)", fontsize=11)
     ax.set_ylabel("Hypervolume", fontsize=11)
-    ax.set_title("MOBO Convergence: Hypervolume vs Iteration", fontsize=13)
+    ax.set_title(f"MOBO Convergence: {len(METRIC_COLS)}-Objective Hypervolume",
+                 fontsize=13)
     ax.legend(fontsize=10)
     ax.grid(True, alpha=0.3)
 
@@ -166,10 +172,15 @@ def plot_pareto_expansion(df, n_lhs, out_dir):
                        edgecolors="white", linewidth=0.5, marker="D",
                        label=f"MOBO ({len(mobo_obj)})", zorder=3)
 
-        # Mark Pareto-optimal points (combined)
+        # Mark Pareto-optimal points (combined). With 5 objectives a point is
+        # dominated only if another beats it on all five, which is rare -- the
+        # front typically covers most of the data, so the count is in the label
+        # to keep that visible rather than implied.
         pareto_pts = obj_max[all_pareto]
+        pct = 100.0 * all_pareto.sum() / len(all_pareto)
         ax.scatter(pareto_pts[:, i], pareto_pts[:, j], facecolors="none",
-                   edgecolors="gold", s=100, linewidth=2, label="Pareto front", zorder=4)
+                   edgecolors="gold", s=100, linewidth=2, zorder=4,
+                   label=f"Pareto front ({all_pareto.sum()}/{len(all_pareto)}, {pct:.0f}%)")
 
         ax.set_xlabel(xlabel, fontsize=11)
         ax.set_ylabel(ylabel, fontsize=11)
