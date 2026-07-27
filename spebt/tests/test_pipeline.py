@@ -588,7 +588,9 @@ class TestWindowedAsci:
         wd.mkdir()
         n_det, n_pix = 3, 200 * 200
 
-        masks = np.zeros((n_det, n_pix), dtype=np.int32)
+        # float32, matching the real beams_masks HDF5 files -- an int32 fixture
+        # hid a dtype bug where beam ids were used directly as lookup indices.
+        masks = np.zeros((n_det, n_pix), dtype=np.float32)
         masks[0, 0:100] = 1
         masks[1, 100:200] = 1
         masks[2, 200:300] = 1
@@ -636,7 +638,9 @@ class TestWindowedAsci:
         wd = tmp_path / "sens"
         wd.mkdir()
         n_det, n_pix = 2, 200 * 200
-        masks = np.zeros((n_det, n_pix), dtype=np.int32)
+        # float32, matching the real beams_masks HDF5 files -- an int32 fixture
+        # hid a dtype bug where beam ids were used directly as lookup indices.
+        masks = np.zeros((n_det, n_pix), dtype=np.float32)
         masks[0, 0:100] = 1
         masks[1, 100:200] = 1
         with h5py.File(wd / "beams_masks_configuration_000.hdf5", "w") as h:

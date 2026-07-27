@@ -145,7 +145,9 @@ def windowed_asci(work_dir: str, thresholds) -> dict:
             lit = np.nonzero(row)[0]
             if lit.size == 0:
                 continue
-            row_beams = row[lit]
+            # beam_mask is stored as float in the real HDF5 files, so cast before
+            # using the ids as lookup indices.
+            row_beams = row[lit].astype(np.int64)
 
             # Lookup arrays indexed by beam id for this detector
             max_bid = int(max(kb[lo:hi].max(), row_beams.max()))
@@ -156,7 +158,7 @@ def windowed_asci(work_dir: str, thresholds) -> dict:
             bin_lut[bids[in_range]] = kbin[lo:hi][in_range]
             fwhm_lut[bids[in_range]] = kf[lo:hi][in_range]
 
-            valid_beam = row_beams <= max_bid
+            valid_beam = (row_beams >= 0) & (row_beams <= max_bid)
             if not valid_beam.any():
                 continue
             pix = lit[valid_beam]
