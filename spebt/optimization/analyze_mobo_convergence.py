@@ -22,9 +22,9 @@ from matplotlib.lines import Line2D
 from itertools import combinations
 
 
-METRIC_COLS = ["fwhm_mean", "asci_pct", "sensitivity_mean", "mpxi_mean"]
-METRIC_LABELS = ["FWHM (mm)", "ASCI (%)", "Sensitivity", "MPXI"]
-METRIC_DIRS = [-1, 1, 1, -1]  # -1 = minimize, +1 = maximize
+METRIC_COLS = ["fwhm_mean", "asci_pct", "sensitivity_mean", "mpxi_mean", "cnr_mean"]
+METRIC_LABELS = ["FWHM (mm)", "ASCI (%)", "Sensitivity", "MPXI", "CNR"]
+METRIC_DIRS = [-1, 1, 1, -1, 1]  # -1 = minimize, +1 = maximize
 
 DESIGN_COLS = ["aperture_diam_mm", "n_apertures", "n_det_ring1", "n_det_ring2"]
 DESIGN_LABELS = ["Aperture Diam (mm)", "N Apertures", "N Det Ring 1", "N Det Ring 2"]
@@ -36,6 +36,7 @@ REF_POINT_PHYSICAL = {
     "asci_pct": 40.0,        # worst ASCI
     "sensitivity_mean": 0.01, # worst sensitivity
     "mpxi_mean": 15.0,       # worst MPXI (will be negated)
+    "cnr_mean": 1.0,         # worst CNR (observed minimum is ~1.41)
 }
 
 
@@ -106,11 +107,10 @@ def compute_hypervolume_nd(points, ref_point):
 def plot_hypervolume_convergence(df, n_lhs, out_dir):
     """Plot 1: Hypervolume vs iteration number."""
     obj_max = to_maximization(df)
+    # Build the reference point in maximization space straight from METRIC_COLS
+    # so adding an objective does not require editing this list too.
     ref = np.array([
-        -REF_POINT_PHYSICAL["fwhm_mean"],
-        REF_POINT_PHYSICAL["asci_pct"],
-        REF_POINT_PHYSICAL["sensitivity_mean"],
-        -REF_POINT_PHYSICAL["mpxi_mean"],
+        d * REF_POINT_PHYSICAL[c] for c, d in zip(METRIC_COLS, METRIC_DIRS)
     ])
 
     hvs = []
@@ -146,11 +146,14 @@ def plot_pareto_expansion(df, n_lhs, out_dir):
     # Combined Pareto
     all_pareto = is_pareto_optimal(obj_max)
 
-    # Pick the two most conflicting pairs for visualization
+    # Pick the most conflicting pairs for visualization. The last two panels
+    # carry CNR, which is the objective added for the 5-objective campaign.
     pairs = [(0, 2, "FWHM (neg.)", "Sensitivity"),
-             (1, 3, "ASCI", "MPXI (neg.)")]
+             (1, 3, "ASCI", "MPXI (neg.)"),
+             (3, 4, "MPXI (neg.)", "CNR"),
+             (2, 4, "Sensitivity", "CNR")]
 
-    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+    fig, axes = plt.subplots(1, len(pairs), figsize=(7 * len(pairs), 6))
 
     for ax, (i, j, xlabel, ylabel) in zip(axes, pairs):
         # LHS points
