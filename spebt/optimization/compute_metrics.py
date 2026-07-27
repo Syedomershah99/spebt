@@ -435,6 +435,10 @@ def main():
     parser.add_argument("--n_apertures", type=int, default=None)
     parser.add_argument("--n_det_ring1", type=int, default=None)
     parser.add_argument("--n_det_ring2", type=int, default=None)
+    parser.add_argument("--d2_inner_mm", type=float, default=None,
+                        help="Inner diameter of detector ring 2 (D2/D3 design variable)")
+    parser.add_argument("--d3_inner_mm", type=float, default=None,
+                        help="Inner diameter of detector ring 3 (D2/D3 design variable)")
     parser.add_argument("--force_zero", action="store_true",
                         help="Write NaN row (for infeasible configs)")
     parser.add_argument("--reason", type=str, default="",
@@ -466,6 +470,10 @@ def main():
         results["n_det_ring1"] = args.n_det_ring1
     if args.n_det_ring2 is not None:
         results["n_det_ring2"] = args.n_det_ring2
+    if args.d2_inner_mm is not None:
+        results["d2_inner_mm"] = args.d2_inner_mm
+    if args.d3_inner_mm is not None:
+        results["d3_inner_mm"] = args.d3_inner_mm
 
     # Append to CSV (create with header if new). We MUST align to the
     # existing header's column order — the CSV may have extra columns

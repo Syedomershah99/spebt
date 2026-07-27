@@ -39,6 +39,11 @@ SCINT_RADIAL_MM="${SCINT_RADIAL_MM:-6.0}"
 RING_THICKNESS_MM="${RING_THICKNESS_MM:-2.5}"
 N_DET_RING1="${N_DET_RING1:-480}"
 N_DET_RING2="${N_DET_RING2:-720}"
+# Inner diameters of detector rings 2 and 3 (MOBO design variables from the D2/D3
+# expansion). Defaults reproduce the original fixed [260, 390, 520, 650] layout,
+# so a run without these set behaves exactly as before.
+D2_INNER="${D2_INNER:-390.0}"
+D3_INNER="${D3_INNER:-520.0}"
 MAX_PARALLEL=16
 # Phantom + ML-EM settings for the in-loop CNR step (Section 4 below).
 # Default matches the current 3-spebt repo layout on CCR after the recovery.
@@ -55,6 +60,8 @@ echo "  aperture_diam    = ${APERTURE_DIAM} mm"
 echo "  n_apertures      = ${N_APERTURES}"
 echo "  n_det_ring1      = ${N_DET_RING1}"
 echo "  n_det_ring2      = ${N_DET_RING2}"
+echo "  d2_inner         = ${D2_INNER} mm"
+echo "  d3_inner         = ${D3_INNER} mm"
 echo "  scint_radial_mm  = ${SCINT_RADIAL_MM} mm (fixed)"
 echo "  ring_thickness   = ${RING_THICKNESS_MM} mm (fixed)"
 echo "  a_mm=${A_MM}  b_mm=${B_MM}"
@@ -77,6 +84,8 @@ write_zero_ji() {
     --n_apertures "${N_APERTURES}" \
     --n_det_ring1 "${N_DET_RING1}" \
     --n_det_ring2 "${N_DET_RING2}" \
+    --d2_inner_mm "${D2_INNER}" \
+    --d3_inner_mm "${D3_INNER}" \
     --force_zero --reason "${reason}"
   # Also write NaN for cnr_mean so the CSV row is complete for MOBO
   python "${CODE_DIR}/optimization/compute_cnr.py" \
@@ -108,8 +117,10 @@ else
     --ring_thickness "${RING_THICKNESS_MM}" \
     --n_det_ring1 "${N_DET_RING1}" \
     --n_det_ring2 "${N_DET_RING2}" \
+    --d2_inner "${D2_INNER}" \
+    --d3_inner "${D3_INNER}" \
     --output_dir "${WORK_DIR}" 2>&1; then
-    write_zero_ji "Geometry generation failed (likely aperture too wide for n_apertures)"
+    write_zero_ji "Geometry generation failed (aperture too wide for n_apertures, or ring ordering violated)"
   fi
 
   TENSORS=("${WORK_DIR}"/*.tensor)
@@ -241,7 +252,9 @@ python "${CODE_DIR}/optimization/compute_metrics.py" \
   --aperture_diam_mm "${APERTURE_DIAM}" \
   --n_apertures "${N_APERTURES}" \
   --n_det_ring1 "${N_DET_RING1}" \
-  --n_det_ring2 "${N_DET_RING2}"
+  --n_det_ring2 "${N_DET_RING2}" \
+  --d2_inner_mm "${D2_INNER}" \
+  --d3_inner_mm "${D3_INNER}"
 
 # -------------------------------------------------------
 # Step 4: In-loop CNR — forward-project + ML-EM + CNR, append to CSV row

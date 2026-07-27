@@ -179,6 +179,10 @@ if __name__ == "__main__":
                         help="Number of crystals on detector ring 1 (default: 480, must be even)")
     parser.add_argument("--n_det_ring2", type=int, default=720,
                         help="Number of crystals on detector ring 2 (default: 720, must be even)")
+    parser.add_argument("--d2_inner", type=float, default=390.0,
+                        help="Inner diameter of detector ring 2 in mm (default: 390.0)")
+    parser.add_argument("--d3_inner", type=float, default=520.0,
+                        help="Inner diameter of detector ring 3 in mm (default: 520.0)")
     parser.add_argument("--output_dir", type=str, default=None,
                         help="Output directory for .tensor file (default: current dir)")
     cli_args = parser.parse_args()
@@ -194,7 +198,28 @@ if __name__ == "__main__":
     SEED = int(os.getenv("HR_APERTURE_SEED", "2025"))
 
     # ===== Detector ring parameters =====
-    RING_INNER_DIAMS_MM = [260.0, 390.0, 520.0, 650.0]
+    # Rings 1 and 4 are fixed; rings 2 and 3 are MOBO design variables. Defaults
+    # reproduce the original fixed [260, 390, 520, 650] layout exactly, so
+    # existing invocations are unaffected.
+    D1_INNER_MM = 260.0
+    D4_INNER_MM = 650.0
+    MIN_RING_GAP_MM = 10.0   # RY, Jul 2026: 10 mm covers mounting and cooling
+    RING_INNER_DIAMS_MM = [D1_INNER_MM, cli_args.d2_inner, cli_args.d3_inner, D4_INNER_MM]
+
+    # Ordering must hold: D1 < D2 < D3 < D4 with a minimum radial gap. MOBO
+    # enforces this as a feasibility constraint, but the generator can also be
+    # driven by hand, so check here rather than silently building a bad scanner.
+    for lo, hi, lo_name, hi_name in (
+        (D1_INNER_MM, cli_args.d2_inner, "D1", "D2"),
+        (cli_args.d2_inner, cli_args.d3_inner, "D2", "D3"),
+        (cli_args.d3_inner, D4_INNER_MM, "D3", "D4"),
+    ):
+        if hi - lo < MIN_RING_GAP_MM:
+            raise ValueError(
+                f"Ring ordering violated: {hi_name}={hi:.1f} mm is not at least "
+                f"{MIN_RING_GAP_MM:.0f} mm beyond {lo_name}={lo:.1f} mm"
+            )
+
     N_DET_RING1 = cli_args.n_det_ring1
     N_DET_RING2 = cli_args.n_det_ring2
     if N_DET_RING1 % 2 != 0:

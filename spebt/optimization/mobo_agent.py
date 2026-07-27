@@ -23,7 +23,8 @@ an objective here.)
 
 Uses ModelListGP (one SingleTaskGP per objective) + qLogNEHVI.
 
-Design vector: (aperture_diam_mm, n_apertures, n_det_ring1, n_det_ring2)
+Design vector: (aperture_diam_mm, n_apertures, n_det_ring1, n_det_ring2,
+                d2_inner_mm, d3_inner_mm)
 
 Usage:
   python mobo_agent.py --results_csv results/results_summary.csv
@@ -60,26 +61,94 @@ warnings.filterwarnings(
 )
 
 # --- Design space bounds ---
-# 4D: aperture_diam, n_apertures, n_det_ring1, n_det_ring2
+# 6D: aperture_diam, n_apertures, n_det_ring1, n_det_ring2, d2_inner, d3_inner
 # n_det values must be even (2 crystals per cell). Rounded after acquisition.
 # n_apertures max: geometry generator enforces MIN_SPACING=0.8mm between
 # aperture centers → chord = 2*R*sin(π/n) >= 0.8 → n_max ≈ 274 at R=35mm.
 # Use 270 with safety margin.
-PARAM_NAMES = ["aperture_diam_mm", "n_apertures", "n_det_ring1", "n_det_ring2"]
-BOUNDS_MIN = [0.2, 60.0, 120.0, 180.0]
-BOUNDS_MAX = [1.0, 270.0, 660.0, 960.0]
+# d2_inner / d3_inner are the inner diameters of detector rings 2 and 3; rings 1
+# and 4 stay fixed at 260 / 650 mm.
+# d3 lower bound is NOT the ring gap -- ring 3 carries a fixed 960 crystals, and
+# below ~379 mm those cells overlap (see max_crystals_on_ring). 385 leaves a
+# small margin over that hard floor.
+PARAM_NAMES = ["aperture_diam_mm", "n_apertures", "n_det_ring1", "n_det_ring2",
+               "d2_inner_mm", "d3_inner_mm"]
+BOUNDS_MIN = [0.2, 60.0, 120.0, 180.0, 270.0, 385.0]
+BOUNDS_MAX = [1.0, 270.0, 660.0, 960.0, 540.0, 640.0]
 DIM = len(PARAM_NAMES)
 
-# --- Feasibility constraint ---
-# Aperture overlap: aperture_diam < circumference / n_apertures
+# --- Feasibility constraints ---
+# 1) Aperture overlap: aperture_diam < circumference / n_apertures
 HR_R_CENTER = 67.5 / 2.0 + 2.5 / 2.0  # 35.0 mm
 HR_CIRCUMFERENCE = 2.0 * math.pi * HR_R_CENTER  # ~219.9 mm
 SAFETY_MARGIN = 0.95
+
+# 2) Detector ring ordering: D1 < D2 < D3 < D4 with a minimum radial gap.
+# RY (Jul 2026): 10 mm is reasonable given mechanical mounting and cooling.
+# Rings stay concentric and share an axial extent — he wants the method
+# established before more variables are added, so there is no axial term here.
+D1_INNER_MM = 260.0
+D4_INNER_MM = 650.0
+MIN_RING_GAP_MM = 10.0
+
+# 3) Detector cell packing. Each ring holds n_scint/2 cells, and every cell needs
+# 2*W + gap of arc length. Shrinking a ring while keeping its crystal count
+# raises the packing density, so diameter and detector count interact: the
+# geometry generator raises ValueError once clearance reaches zero, which would
+# burn a whole MOBO iteration on a config that could never be built. These
+# constants mirror build_sc_spect_detector_rings in the geometry generator.
+SCINT_TANGENTIAL_MM = 0.84
+INTRA_CELL_GAP_MM = 0.84
+SCINT_RADIAL_MM = 6.0
+CELL_SPAN_MM = 2.0 * SCINT_TANGENTIAL_MM + INTRA_CELL_GAP_MM  # 2.52 mm
+# Rings 3 and 4 carry fixed crystal counts (geometry generator: 40*12*2, 40*15*2)
+N_DET_RING3 = 960
+N_DET_RING4 = 1200
 
 
 def is_feasible(diam, n_ap):
     """Check if aperture config fits on the HR ring without overlap."""
     return diam < SAFETY_MARGIN * HR_CIRCUMFERENCE / n_ap
+
+
+def is_ring_ordering_ok(d2_inner, d3_inner):
+    """Check D1 < D2 < D3 < D4 with at least MIN_RING_GAP_MM between rings."""
+    return (
+        d2_inner - D1_INNER_MM >= MIN_RING_GAP_MM
+        and d3_inner - d2_inner >= MIN_RING_GAP_MM
+        and D4_INNER_MM - d3_inner >= MIN_RING_GAP_MM
+    )
+
+
+def max_crystals_on_ring(inner_diam_mm):
+    """Largest crystal count a ring of this diameter can hold without overlap."""
+    r_center = inner_diam_mm / 2.0 + SCINT_RADIAL_MM / 2.0
+    return 4.0 * math.pi * r_center / CELL_SPAN_MM
+
+
+def is_ring_packing_ok(n_det1, n_det2, d2_inner, d3_inner):
+    """Check every ring's crystals fit at its diameter.
+
+    Ring 1 is fixed at 260 mm, which caps n_det_ring1 at ~663 -- the reason the
+    existing bound is 660. Ring 4 is fixed in both diameter and count. Only
+    ring 2 (both variable) and ring 3 (fixed count, variable diameter) can be
+    driven infeasible by the D2/D3 expansion.
+    """
+    return (
+        n_det1 < max_crystals_on_ring(D1_INNER_MM)
+        and n_det2 < max_crystals_on_ring(d2_inner)
+        and N_DET_RING3 < max_crystals_on_ring(d3_inner)
+        and N_DET_RING4 < max_crystals_on_ring(D4_INNER_MM)
+    )
+
+
+def is_feasible_full(diam, n_ap, n_det1, n_det2, d2_inner, d3_inner):
+    """All design constraints together."""
+    return (
+        is_feasible(diam, n_ap)
+        and is_ring_ordering_ok(d2_inner, d3_inner)
+        and is_ring_packing_ok(n_det1, n_det2, d2_inner, d3_inner)
+    )
 
 
 # --- Objective columns (as they appear in the CSV) ---
@@ -216,13 +285,36 @@ def get_next_candidate(results_csv: str):
     # Physical: diam * n_ap < 0.95 * circumference = threshold
     diam_min, diam_range = BOUNDS_MIN[0], BOUNDS_MAX[0] - BOUNDS_MIN[0]
     nap_min, nap_range = BOUNDS_MIN[1], BOUNDS_MAX[1] - BOUNDS_MIN[1]
+    nd2_min, nd2_range = BOUNDS_MIN[3], BOUNDS_MAX[3] - BOUNDS_MIN[3]
+    d2_min, d2_range = BOUNDS_MIN[4], BOUNDS_MAX[4] - BOUNDS_MIN[4]
+    d3_min, d3_range = BOUNDS_MIN[5], BOUNDS_MAX[5] - BOUNDS_MIN[5]
     threshold = SAFETY_MARGIN * HR_CIRCUMFERENCE
 
     def is_feasible_norm(x_norm):
-        """Check feasibility in normalized [0,1] space. x_norm shape: (..., DIM)"""
+        """Check feasibility in normalized [0,1] space. x_norm shape: (..., DIM)
+
+        Three constraints:
+          1. apertures must not overlap on the HR ring
+          2. the detector rings must stay ordered with the minimum radial gap
+          3. ring 2's crystals must fit at its proposed diameter
+
+        The bounds already guarantee d2 >= D1 + gap, d3 <= D4 - gap, and that
+        ring 3's fixed 960 crystals fit (d3 >= 385), so only the middle ordering
+        inequality and ring 2's packing need checking here.
+        """
         diam = diam_min + x_norm[..., 0] * diam_range
         n_ap = nap_min + x_norm[..., 1] * nap_range
-        return diam * n_ap < threshold
+        aperture_ok = diam * n_ap < threshold
+
+        d2 = d2_min + x_norm[..., 4] * d2_range
+        d3 = d3_min + x_norm[..., 5] * d3_range
+        ordering_ok = (d3 - d2) >= MIN_RING_GAP_MM
+
+        n_det2 = nd2_min + x_norm[..., 3] * nd2_range
+        max_nd2 = 4.0 * math.pi * (d2 / 2.0 + SCINT_RADIAL_MM / 2.0) / CELL_SPAN_MM
+        packing_ok = n_det2 < max_nd2
+
+        return aperture_ok & ordering_ok & packing_ok
 
     def feasible_ic_generator(acq_function, bounds, num_restarts, raw_samples, options=None, **kwargs):
         """Generate feasible initial conditions for constrained acquisition optimization."""
@@ -256,6 +348,8 @@ def get_next_candidate(results_csv: str):
     next_n_ap = int(round(candidate_physical[0, 1].item()))
     next_n_det1 = int(round(candidate_physical[0, 2].item()))
     next_n_det2 = int(round(candidate_physical[0, 3].item()))
+    next_d2 = candidate_physical[0, 4].item()
+    next_d3 = candidate_physical[0, 5].item()
     # n_det values must be even (2 crystals per cell)
     if next_n_det1 % 2 != 0:
         next_n_det1 += 1
@@ -266,10 +360,26 @@ def get_next_candidate(results_csv: str):
     if not is_feasible(next_diam, next_n_ap):
         logger.warning(f"Candidate infeasible (d={next_diam:.4f}, n={next_n_ap}), clamping aperture_diam")
         next_diam = min(next_diam, SAFETY_MARGIN * HR_CIRCUMFERENCE / next_n_ap - 0.01)
+    if not is_ring_ordering_ok(next_d2, next_d3):
+        logger.warning(f"Candidate violates ring ordering (d2={next_d2:.1f}, d3={next_d3:.1f}), "
+                       f"pushing d3 out to keep the {MIN_RING_GAP_MM:.0f} mm gap")
+        next_d3 = min(next_d2 + MIN_RING_GAP_MM, D4_INNER_MM - MIN_RING_GAP_MM)
+        next_d2 = min(next_d2, next_d3 - MIN_RING_GAP_MM)
+    if not is_ring_packing_ok(next_n_det1, next_n_det2, next_d2, next_d3):
+        # Trim ring 2's crystal count to what actually fits, rounding down to an
+        # even number. Better a slightly smaller ring than a geometry crash that
+        # costs the whole iteration.
+        max_nd2 = int(max_crystals_on_ring(next_d2))
+        trimmed = min(next_n_det2, max_nd2 - 2)
+        trimmed -= trimmed % 2
+        logger.warning(f"Ring 2 packing infeasible (n_det2={next_n_det2} at d2={next_d2:.1f} mm, "
+                       f"max {max_nd2}); trimming n_det_ring2 to {trimmed}")
+        next_n_det2 = max(int(BOUNDS_MIN[3]), trimmed)
 
     # --- Deduplication: reject if too close to a previously tried config ---
     all_x = torch.tensor(df[PARAM_NAMES].dropna().values, dtype=torch.double)
-    candidate_vec = torch.tensor([next_diam, float(next_n_ap), float(next_n_det1), float(next_n_det2)],
+    candidate_vec = torch.tensor([next_diam, float(next_n_ap), float(next_n_det1),
+                                  float(next_n_det2), next_d2, next_d3],
                                  dtype=torch.double)
     # Normalize distances by parameter ranges to compare fairly
     ranges = bounds[1] - bounds[0]
@@ -286,9 +396,12 @@ def get_next_candidate(results_csv: str):
         # Unnormalize
         X_phys = X_sobol * ranges + bounds[0]
 
-        # Filter feasible
+        # Filter feasible (aperture overlap, ring ordering, ring packing)
         feasible_mask = torch.tensor(
-            [is_feasible(X_phys[i, 0].item(), X_phys[i, 1].item()) for i in range(n_dedup)]
+            [is_feasible_full(X_phys[i, 0].item(), X_phys[i, 1].item(),
+                              X_phys[i, 2].item(), X_phys[i, 3].item(),
+                              X_phys[i, 4].item(), X_phys[i, 5].item())
+             for i in range(n_dedup)]
         )
         X_feasible = X_phys[feasible_mask]
         if len(X_feasible) == 0:
@@ -325,22 +438,26 @@ def get_next_candidate(results_csv: str):
                 next_n_ap = int(round(best_cand[1].item()))
                 next_n_det1 = int(round(best_cand[2].item()))
                 next_n_det2 = int(round(best_cand[3].item()))
+                next_d2 = best_cand[4].item()
+                next_d3 = best_cand[5].item()
                 if next_n_det1 % 2 != 0:
                     next_n_det1 += 1
                 if next_n_det2 % 2 != 0:
                     next_n_det2 += 1
                 logger.info(f"Dedup: selected diverse candidate (acq={acq_vals[best_idx]:.4f}, "
                             f"dist={diverse_dists[best_idx]:.4f}): "
-                            f"d={next_diam:.4f} n={next_n_ap} nd1={next_n_det1} nd2={next_n_det2}")
+                            f"d={next_diam:.4f} n={next_n_ap} nd1={next_n_det1} "
+                            f"nd2={next_n_det2} d2={next_d2:.1f} d3={next_d3:.1f}")
             else:
                 logger.warning("No diverse candidates found — keeping original")
 
     logger.info(f"Acquisition value: {acq_value.item():.6f}")
     logger.info(f"SUGGESTION -> aperture_diam={next_diam:.4f} mm | "
                 f"n_apertures={next_n_ap} | "
-                f"n_det_ring1={next_n_det1} | n_det_ring2={next_n_det2}")
+                f"n_det_ring1={next_n_det1} | n_det_ring2={next_n_det2} | "
+                f"d2_inner={next_d2:.1f} mm | d3_inner={next_d3:.1f} mm")
 
-    return next_diam, next_n_ap, next_n_det1, next_n_det2
+    return next_diam, next_n_ap, next_n_det1, next_n_det2, next_d2, next_d3
 
 
 if __name__ == "__main__":
@@ -352,9 +469,11 @@ if __name__ == "__main__":
                              "(fwhm_mean, asci_pct, sensitivity_mean, mpxi_mean, cnr_mean)")
     args = parser.parse_args()
 
-    diam, n_ap, n_det1, n_det2 = get_next_candidate(args.results_csv)
+    diam, n_ap, n_det1, n_det2, d2_inner, d3_inner = get_next_candidate(args.results_csv)
     print(f"\nSuggested next config:")
     print(f"  aperture_diam   = {diam:.4f} mm")
     print(f"  n_apertures     = {n_ap}")
     print(f"  n_det_ring1     = {n_det1}")
     print(f"  n_det_ring2     = {n_det2}")
+    print(f"  d2_inner        = {d2_inner:.1f} mm")
+    print(f"  d3_inner        = {d3_inner:.1f} mm")

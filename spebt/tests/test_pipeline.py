@@ -151,6 +151,105 @@ class TestMoboAgentFeasibility:
 # =============================================================================
 # compute_metrics._per_beam_radial_fwhm — projection math
 # =============================================================================
+class TestRingOrdering:
+    """D1 < D2 < D3 < D4 with a 10 mm minimum gap (RY, Jul 2026).
+
+    The bounds guarantee the outer two inequalities, so the acquisition-time
+    check only enforces d3 - d2; these tests pin down the full check that the
+    geometry generator and the dedup path use.
+    """
+
+    def test_nominal_layout_is_feasible(self):
+        import mobo_agent as ma
+        # The legacy fixed layout [260, 390, 520, 650] must remain feasible,
+        # otherwise every historical config becomes an infeasible training point.
+        assert ma.is_ring_ordering_ok(390.0, 520.0)
+
+    def test_exactly_at_gap_is_feasible(self):
+        import mobo_agent as ma
+        assert ma.is_ring_ordering_ok(270.0, 280.0)      # D1+10, D2+10
+        assert ma.is_ring_ordering_ok(630.0, 640.0)      # D3+10 == D4-10
+
+    def test_rejects_d3_too_close_to_d2(self):
+        import mobo_agent as ma
+        assert not ma.is_ring_ordering_ok(400.0, 405.0)  # 5 mm gap
+
+    def test_rejects_out_of_order(self):
+        import mobo_agent as ma
+        assert not ma.is_ring_ordering_ok(520.0, 390.0)  # D3 inside D2
+
+    def test_rejects_crowding_fixed_rings(self):
+        import mobo_agent as ma
+        assert not ma.is_ring_ordering_ok(265.0, 400.0)  # D2 only 5 mm past D1
+        assert not ma.is_ring_ordering_ok(400.0, 645.0)  # D3 only 5 mm short of D4
+
+    def test_bounds_admit_the_gap(self):
+        """Every bound corner must be reachable without violating the fixed rings."""
+        import mobo_agent as ma
+        d2_lo, d3_hi = ma.BOUNDS_MIN[4], ma.BOUNDS_MAX[5]
+        assert d2_lo - ma.D1_INNER_MM >= ma.MIN_RING_GAP_MM
+        assert ma.D4_INNER_MM - d3_hi >= ma.MIN_RING_GAP_MM
+
+    def test_is_feasible_full_combines_all_constraints(self):
+        import mobo_agent as ma
+        # Everything OK
+        assert ma.is_feasible_full(0.4, 100, 480, 720, 390.0, 520.0)
+        # Ring ordering bad
+        assert not ma.is_feasible_full(0.4, 100, 480, 720, 400.0, 405.0)
+        # Aperture bad (0.4 * 900 far exceeds the ~220 mm circumference)
+        assert not ma.is_feasible_full(0.4, 900, 480, 720, 390.0, 520.0)
+        # Ring 2 packing bad: 960 crystals cannot fit at a 270 mm diameter
+        assert not ma.is_feasible_full(0.4, 100, 480, 960, 270.0, 520.0)
+
+
+class TestRingPacking:
+    """Ring diameter and crystal count interact: shrinking a ring while keeping
+    its crystals raises packing density until cells overlap, at which point the
+    geometry generator raises and the MOBO iteration is wasted. These bounds and
+    checks exist to keep the optimizer out of that region.
+    """
+
+    def test_max_crystals_matches_generator_formula(self):
+        """max_crystals_on_ring must mirror build_sc_spect_detector_rings."""
+        import math
+        import mobo_agent as ma
+        # Generator: arc_per_cell = r_c * 2*pi / (n_scint/2) must exceed 2*W+gap
+        for d in (260.0, 390.0, 520.0, 650.0):
+            r_c = d / 2.0 + ma.SCINT_RADIAL_MM / 2.0
+            n_max = ma.max_crystals_on_ring(d)
+            arc_at_max = r_c * 2.0 * math.pi / (n_max / 2.0)
+            assert math.isclose(arc_at_max, ma.CELL_SPAN_MM, rel_tol=1e-9)
+
+    def test_nominal_layout_packs(self):
+        """The legacy [260,390,520,650] / [480,720,960,1200] layout must pass."""
+        import mobo_agent as ma
+        assert ma.is_ring_packing_ok(480, 720, 390.0, 520.0)
+
+    def test_ring1_bound_is_justified(self):
+        """n_det_ring1 max of 660 exists because ring 1 caps at ~663 crystals."""
+        import mobo_agent as ma
+        cap = ma.max_crystals_on_ring(ma.D1_INNER_MM)
+        assert ma.BOUNDS_MAX[2] < cap
+        assert cap < ma.BOUNDS_MAX[2] + 10   # the bound is tight, not arbitrary
+
+    def test_d3_lower_bound_admits_fixed_ring3(self):
+        """Ring 3 carries a fixed 960 crystals, so d3 cannot go arbitrarily low."""
+        import mobo_agent as ma
+        assert ma.N_DET_RING3 < ma.max_crystals_on_ring(ma.BOUNDS_MIN[5])
+        # And the bound is near the true floor rather than needlessly generous
+        assert ma.N_DET_RING3 > ma.max_crystals_on_ring(ma.BOUNDS_MIN[5] - 10.0)
+
+    def test_ring2_infeasible_at_small_diameter(self):
+        import mobo_agent as ma
+        # 960 crystals need ~379 mm; at 270 mm only ~688 fit
+        assert not ma.is_ring_packing_ok(480, 960, 270.0, 520.0)
+        assert ma.is_ring_packing_ok(480, 600, 270.0, 520.0)
+
+    def test_fixed_ring4_always_packs(self):
+        import mobo_agent as ma
+        assert ma.N_DET_RING4 < ma.max_crystals_on_ring(ma.D4_INNER_MM)
+
+
 class TestPerBeamRadialFwhm:
     """Verify the FWHM-along-beam-axis calculation on synthetic beams."""
 
