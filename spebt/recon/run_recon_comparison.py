@@ -289,12 +289,18 @@ def compute_cnr(recon_path, phantom_path, output_dir):
     # Per-sector CNR (approximate: divide phantom into angular sectors)
     sector_cnrs = []
     angles_deg = [30, 90, 150, 210, 270, 330]  # sector centers
+    px_angles = torch.atan2(yy - cx, xx - cy)   # in [-pi, pi]
     for i, (angle, radius_mm) in enumerate(zip(angles_deg, rod_radii_mm)):
-        # Angular mask for this sector (±30 degrees)
+        # Angular mask for this sector (+/- 30 degrees).
+        # The difference must be wrapped into [-pi, pi]: px_angles comes from
+        # atan2 and so is at most pi, while the sector centres run out to 330
+        # deg (5.76 rad). The previous `min(diff, 2*pi - diff)` therefore went
+        # NEGATIVE for centres beyond pi, and a negative value trivially passes
+        # the < 30 deg test -- sector 5 was picking up half the image instead of
+        # a sixth of it, and sectors 3 and 4 were also contaminated.
         angle_rad = np.deg2rad(angle)
-        px_angles = torch.atan2(yy - cx, xx - cy)
-        angle_diff = torch.abs(px_angles - angle_rad)
-        angle_diff = torch.min(angle_diff, 2 * np.pi - angle_diff)
+        delta = px_angles - angle_rad
+        angle_diff = torch.abs((delta + np.pi) % (2 * np.pi) - np.pi)
         sector_mask = (angle_diff < np.deg2rad(30)) & hot_mask
 
         if sector_mask.sum() < 5:

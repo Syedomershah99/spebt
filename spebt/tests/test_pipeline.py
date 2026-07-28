@@ -570,6 +570,53 @@ class TestRingWeightedPpds:
 
 
 # =============================================================================
+# Per-sector CNR angular masking
+# =============================================================================
+class TestCnrSectorMasks:
+    """Sector centres run to 330 deg while atan2 returns [-pi, pi], so the
+    angular difference has to be wrapped. Without it, `2*pi - diff` goes
+    negative for the three centres beyond pi and trivially passes the < 30 deg
+    test -- sector 5 covered half the image. The per-sector CNR values are how
+    we answer questions about rod-size dependence, so they have to be right.
+    """
+
+    @staticmethod
+    def _sector_masks(H=200, W=200):
+        import torch
+        yy, xx = torch.meshgrid(torch.arange(H), torch.arange(W), indexing="ij")
+        cx, cy = (H - 1) / 2.0, (W - 1) / 2.0
+        px_angles = torch.atan2(yy - cx, xx - cy)
+        masks = []
+        for angle in [30, 90, 150, 210, 270, 330]:
+            delta = px_angles - math.radians(angle)
+            diff = torch.abs((delta + math.pi) % (2 * math.pi) - math.pi)
+            masks.append(diff < math.radians(30))
+        return masks
+
+    def test_sectors_are_disjoint(self):
+        import torch
+        stack = torch.stack(self._sector_masks()).sum(0)
+        assert int(stack.max()) == 1, "sectors overlap"
+
+    def test_sectors_cover_the_image(self):
+        masks = self._sector_masks()
+        assert sum(int(m.sum()) for m in masks) == 200 * 200
+
+    def test_no_sector_exceeds_a_quarter_of_the_image(self):
+        """Regression: sector 5 previously covered 50% and sector 4 32%."""
+        masks = self._sector_masks()
+        for i, m in enumerate(masks):
+            frac = float(m.sum()) / (200 * 200)
+            assert frac < 0.25, f"sector {i} covers {frac:.1%} of the image"
+
+    def test_opposite_sectors_are_symmetric(self):
+        """Sectors 180 deg apart must have equal area on a square grid."""
+        masks = self._sector_masks()
+        for a, b in ((0, 3), (1, 4), (2, 5)):
+            assert int(masks[a].sum()) == int(masks[b].sum())
+
+
+# =============================================================================
 # FWHM-windowed ASCI
 # =============================================================================
 class TestWindowedAsci:
