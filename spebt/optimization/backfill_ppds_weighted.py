@@ -63,16 +63,17 @@ def _spearman(a: pd.Series, b: pd.Series) -> float:
     return float(a.corr(b, method="spearman"))
 
 
-def report(df: pd.DataFrame, do_search: bool = False) -> None:
-    if "cnr_mean" not in df.columns:
-        print("\n(no cnr_mean column; skipping correlation report)")
+def report(df: pd.DataFrame, do_search: bool = False,
+           cnr_col: str = "cnr_mean") -> None:
+    if cnr_col not in df.columns:
+        print(f"\n(no {cnr_col} column; skipping correlation report)")
         return
     have = [c for c in RING_COLS if c in df.columns]
     if len(have) != 4:
         print(f"\n(per-ring columns missing: {set(RING_COLS) - set(have)})")
         return
 
-    sub = df[RING_COLS + ["cnr_mean"]].dropna()
+    sub = df[RING_COLS + [cnr_col]].dropna()
     n = len(sub)
     if n < 3:
         print(f"\n(only {n} rows with per-ring PPDS and CNR; nothing to correlate)")
@@ -88,7 +89,7 @@ def report(df: pd.DataFrame, do_search: bool = False) -> None:
     print(f"{'per-ring contribution':<28} {'rho vs CNR':>11}")
     print("-" * 42)
     for i, col in enumerate(RING_COLS, start=1):
-        rho = _spearman(sub[col], sub["cnr_mean"])
+        rho = _spearman(sub[col], sub[cnr_col])
         flag = "" if abs(rho) >= crit else "   (n.s.)"
         print(f"  ring {i} (inner->outer){'':<7} {rho:>+11.3f}{flag}")
 
@@ -97,16 +98,16 @@ def report(df: pd.DataFrame, do_search: bool = False) -> None:
     rows = []
     for label, w in CANDIDATE_WEIGHTS.items():
         combined = sub[RING_COLS].values @ np.asarray(w, dtype=np.float64)
-        rho = _spearman(pd.Series(combined, index=sub.index), sub["cnr_mean"])
+        rho = _spearman(pd.Series(combined, index=sub.index), sub[cnr_col])
         rows.append((rho, label))
         flag = "" if abs(rho) >= crit else "   (n.s.)"
         print(f"  {label:<26} {rho:>+11.3f}{flag}")
 
     if "sensitivity_mean" in df.columns:
-        s = df[["sensitivity_mean", "cnr_mean"]].dropna()
+        s = df[["sensitivity_mean", cnr_col]].dropna()
         if len(s) >= 3:
             print(f"\n  {'sensitivity (incumbent)':<26} "
-                  f"{_spearman(s['sensitivity_mean'], s['cnr_mean']):>+11.3f}")
+                  f"{_spearman(s['sensitivity_mean'], s[cnr_col]):>+11.3f}")
 
     if do_search:
         rng = np.random.default_rng(0)
@@ -115,7 +116,7 @@ def report(df: pd.DataFrame, do_search: bool = False) -> None:
         # over a few hundred rows is instant anyway.
         best_rho, best_w = -2.0, None
         X = sub[RING_COLS].values
-        y = sub["cnr_mean"]
+        y = sub[cnr_col]
         for _ in range(20000):
             w = rng.dirichlet(np.ones(4))
             rho = _spearman(pd.Series(X @ w, index=sub.index), y)
@@ -146,6 +147,8 @@ def main():
     parser = argparse.ArgumentParser(
         description="Store per-ring PPDS and search ring weightings against CNR")
     parser.add_argument("--results_csv", required=True)
+    parser.add_argument("--cnr_col", default="cnr_mean",
+                        help="CNR column to correlate against")
     parser.add_argument("--force", action="store_true",
                         help="Recompute even if the row already has values")
     parser.add_argument("--analyze_only", action="store_true",
@@ -164,7 +167,7 @@ def main():
     print(f"Loaded {len(df)} rows from {args.results_csv}")
 
     if args.analyze_only:
-        report(df, args.search)
+        report(df, args.search, args.cnr_col)
         return
 
     for required in ("work_dir", "n_det_ring1"):
@@ -235,7 +238,7 @@ def main():
     print(f"Updated CSV: {args.results_csv}")
     print(f"Backup:      {backup}")
 
-    report(df, args.search)
+    report(df, args.search, args.cnr_col)
 
 
 if __name__ == "__main__":

@@ -186,12 +186,12 @@ def col_for(t) -> str:
     return f"asci_pct_fwhm{t:g}".replace(".", "p")
 
 
-def report(df: pd.DataFrame, thresholds) -> None:
+def report(df: pd.DataFrame, thresholds, cnr_col: str = "cnr_mean") -> None:
     print()
     print("=" * 78)
     print("WHICH FWHM WINDOW MAKES ASCI USEFUL AGAIN?")
     print("=" * 78)
-    print(f"\n{'metric':<26} {'n':>4} {'mean':>8} {'std':>8} {'%at100':>8} {'rho vs CNR':>11}")
+    print(f"\n{'metric':<26} {'n':>4} {'mean':>8} {'std':>8} {'%at100':>8} {'rho vs ' + cnr_col:>16}")
     print("-" * 70)
 
     rows = [("asci_pct", "ASCI (current, no window)")]
@@ -204,8 +204,8 @@ def report(df: pd.DataFrame, thresholds) -> None:
         if len(vals) == 0:
             continue
         at100 = 100.0 * (vals >= 99.999).sum() / len(vals)
-        sub = df[[col, "cnr_mean"]].dropna() if "cnr_mean" in df.columns else pd.DataFrame()
-        rho = (sub[col].corr(sub["cnr_mean"], method="spearman")
+        sub = df[[col, cnr_col]].dropna() if cnr_col in df.columns else pd.DataFrame()
+        rho = (sub[col].corr(sub[cnr_col], method="spearman")
                if len(sub) >= 3 else float("nan"))
         print(f"{label:<26} {len(vals):>4} {vals.mean():>8.2f} {vals.std():>8.2f} "
               f"{at100:>7.1f}% {rho:>+11.3f}")
@@ -229,6 +229,8 @@ def main():
     ap.add_argument("--thresholds", type=str, default=None,
                     help="Comma-separated FWHM thresholds in mm "
                          f"(default: {','.join(str(t) for t in DEFAULT_THRESHOLDS)})")
+    ap.add_argument("--cnr_col", default="cnr_mean",
+                    help="CNR column to correlate against")
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--limit", type=int, default=None,
                     help="Stop after this many computed rows (for timing)")
@@ -246,7 +248,7 @@ def main():
     print(f"Loaded {len(df)} rows from {args.results_csv}")
 
     if args.analyze_only:
-        report(df, thresholds)
+        report(df, thresholds, args.cnr_col)
         return
 
     print(f"FWHM thresholds (mm): {thresholds}")
@@ -310,7 +312,7 @@ def main():
     print(f"Updated CSV: {args.results_csv}")
     print(f"Backup:      {backup}")
 
-    report(df, thresholds)
+    report(df, thresholds, args.cnr_col)
 
 
 if __name__ == "__main__":

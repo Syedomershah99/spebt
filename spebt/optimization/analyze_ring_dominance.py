@@ -36,6 +36,9 @@ def spearman(a, b):
 def main():
     ap = argparse.ArgumentParser(description="Test the ring-dominance explanation")
     ap.add_argument("--results_csv", required=True)
+    ap.add_argument("--cnr_col", default="cnr_mean",
+                    help="CNR column to correlate against "
+                         "(use cnr_sector_mean for the equally-weighted definition)")
     ap.add_argument("--n_bands", type=int, default=3,
                     help="Number of aperture-size bands to split into (default 3)")
     args = ap.parse_args()
@@ -45,7 +48,8 @@ def main():
         sys.exit(1)
 
     df = pd.read_csv(args.results_csv)
-    need = RING_COLS + ["cnr_mean", "aperture_diam_mm", "n_apertures", "fwhm_mean"]
+    cnr_col = args.cnr_col
+    need = RING_COLS + [cnr_col, "aperture_diam_mm", "n_apertures", "fwhm_mean"]
     missing = [c for c in need if c not in df.columns]
     if missing:
         print(f"ERROR: missing columns: {missing}")
@@ -78,13 +82,13 @@ def main():
               f"{spearman(s, d['n_apertures']):>16.3f} "
               f"{spearman(s, d['open_area']):>14.3f}")
 
-    print("\n2. How does each ring correlate with CNR, and with FWHM?")
+    print(f"\n2. How does each ring correlate with {cnr_col}, and with FWHM?")
     print(f"\n{'':<10} {'rho vs CNR':>12} {'rho vs FWHM':>13}")
     print("-" * 38)
     for i, c in enumerate(RING_COLS, start=1):
-        print(f"  ring {i}   {spearman(d[c], d['cnr_mean']):>12.3f} "
+        print(f"  ring {i}   {spearman(d[c], d[cnr_col]):>12.3f} "
               f"{spearman(d[c], d['fwhm_mean']):>13.3f}")
-    print(f"\n  aperture_diam vs CNR : {spearman(d['aperture_diam_mm'], d['cnr_mean']):.3f}")
+    print(f"\n  aperture_diam vs CNR : {spearman(d['aperture_diam_mm'], d[cnr_col]):.3f}")
     print(f"  aperture_diam vs FWHM: {spearman(d['aperture_diam_mm'], d['fwhm_mean']):.3f}")
 
     print("\n3. Within narrow aperture bands, does the ring signal survive?")
@@ -99,7 +103,7 @@ def main():
             print(f"{str(band):<8} {len(g):>4}   (too few rows)")
             continue
         rng = f"{g['aperture_diam_mm'].min():.2f}-{g['aperture_diam_mm'].max():.2f}"
-        rhos = " ".join(f"{spearman(g[c], g['cnr_mean']):>7.3f}" for c in RING_COLS)
+        rhos = " ".join(f"{spearman(g[c], g[cnr_col]):>7.3f}" for c in RING_COLS)
         print(f"{str(band):<8} {len(g):>4} {rng:>18} {rhos}")
 
     print(f"""
