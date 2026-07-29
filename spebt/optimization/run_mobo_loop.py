@@ -194,7 +194,8 @@ def main():
     console.print(Panel.fit(
         "[bold green]SAI SC-SPECT MOBO Controller[/bold green]\n"
         "Design: (aperture_diam, n_apertures, n_det_ring1, n_det_ring2, d2_inner, d3_inner)\n"
-        "5 objectives: FWHM (min), ASCI (max), Sensitivity (max), MPXI (min), CNR (max)\n"
+        "5 objectives: FWHM (min), ASCI@0.45mm (max), PPDS ring1 (max), "
+        "MPXI (min), CNR sector-mean (max)\n"
         "ModelListGP + qLogNEHVI | Sequential q=1",
         subtitle=f"Max iterations: {TOTAL_ITERATIONS}"
     ))
