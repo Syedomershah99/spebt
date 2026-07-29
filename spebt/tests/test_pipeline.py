@@ -615,6 +615,55 @@ class TestCnrSectorMasks:
         for a, b in ((0, 3), (1, 4), (2, 5)):
             assert int(masks[a].sum()) == int(masks[b].sum())
 
+    def test_sector_centres_match_the_phantom_layout(self):
+        """Each sector must hold exactly one rod size, not straddle two.
+
+        The centres were once [30, 90, 150, ...], which sat on the boundaries
+        between rod-size groups, so every per-size CNR was a mixture of two
+        sizes. This measures the phantom directly rather than trusting a
+        hardcoded list: it groups rods by area, takes each group's mean angle,
+        and checks the sector centres line up with those.
+        """
+        phantom = os.path.join(os.path.dirname(__file__), "..", "data",
+                               "sai_10mm", "hot_rods_phantom_10.0_mm_x_10.0_mm.pt")
+        if not os.path.exists(phantom):
+            pytest.skip("phantom file not available")
+        torch = pytest.importorskip("torch")
+        ndimage = pytest.importorskip("scipy.ndimage")
+
+        d = torch.load(phantom, map_location="cpu", weights_only=False)
+        t = d["Phantom tensor"].numpy()
+        n_sizes = len(d["Metadata"]["rods radii in mm"])
+
+        lab, n = ndimage.label(t > 0.1)
+        H, W = t.shape
+        cy, cx = (H - 1) / 2.0, (W - 1) / 2.0
+
+        # Group rods by pixel area; each area is one rod size
+        by_area = {}
+        for i in range(1, n + 1):
+            ys, xs = np.nonzero(lab == i)
+            ang = math.degrees(math.atan2(ys.mean() - cy, xs.mean() - cx)) % 360
+            by_area.setdefault(int(len(ys)), []).append(ang)
+        assert len(by_area) == n_sizes, f"expected {n_sizes} rod sizes, found {len(by_area)}"
+
+        # Ascending area == ascending radius, matching rod_radii_mm's order
+        centres = []
+        for area in sorted(by_area):
+            angs = np.asarray(by_area[area])
+            # Circular mean, so a group straddling 0 deg does not average to 180
+            rad = np.radians(angs)
+            centres.append(math.degrees(math.atan2(np.sin(rad).mean(),
+                                                   np.cos(rad).mean())) % 360)
+
+        expected = [60, 0, 300, 240, 180, 120]
+        for i, (measured, exp) in enumerate(zip(centres, expected)):
+            delta = abs((measured - exp + 180) % 360 - 180)
+            assert delta < 10, (
+                f"rod size {i}: phantom has it centred at {measured:.1f} deg, "
+                f"but compute_cnr uses {exp} deg (off by {delta:.1f})"
+            )
+
 
 # =============================================================================
 # FWHM-windowed ASCI

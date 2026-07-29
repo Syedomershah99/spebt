@@ -34,7 +34,7 @@ CONFIGS = [
     "mobo_0177_ap0.3512_nap97_nd1_604_nd2_584",
     "mobo_0133_ap0.4008_nap70_nd1_660_nd2_562",
 ]
-ROD_RADII_MM = [0.100, 0.125, 0.150, 0.175, 0.200, 0.225]
+ROD_RADII_MM = [0.100, 0.125, 0.150, 0.175, 0.200, 0.225]  # ascending, matches sector order
 
 
 def short(config):

@@ -288,7 +288,19 @@ def compute_cnr(recon_path, phantom_path, output_dir):
 
     # Per-sector CNR (approximate: divide phantom into angular sectors)
     sector_cnrs = []
-    angles_deg = [30, 90, 150, 210, 270, 330]  # sector centers
+    # Sector centres paired with rod_radii_mm in ascending order.
+    #
+    # These were [30, 90, 150, 210, 270, 330], which landed exactly on the
+    # BOUNDARIES between rod-size groups: measuring the phantom's connected
+    # components shows the groups occupy ~32 deg arcs centred on 0, 60, 120,
+    # 180, 240, 300 deg. Every sector therefore mixed two adjacent rod sizes,
+    # making the per-size values meaningless. (The mean over all six was still
+    # valid, since the six together covered each rod exactly once.)
+    #
+    # The order looks scrambled only because px_angles comes from
+    # atan2(yy - cx, xx - cy), which mirrors the row axis; in the conventional
+    # orientation the sizes increase monotonically counterclockwise from -60 deg.
+    angles_deg = [60, 0, 300, 240, 180, 120]
     px_angles = torch.atan2(yy - cx, xx - cy)   # in [-pi, pi]
     for i, (angle, radius_mm) in enumerate(zip(angles_deg, rod_radii_mm)):
         # Angular mask for this sector (+/- 30 degrees).
