@@ -25,4 +25,6 @@ mkdir -p results/slurm_logs/out results/slurm_logs/err
 
 # Bump this ceiling as needed. Controller no-ops once the manifest already has
 # --max_iters rows, so it's safe to set higher than we plan to run in one go.
-python run_mobo_loop.py --max_iters 180
+# 180 closed out the 4D campaign; 260 gives 80 iterations of 6D search on the
+# revised objective set.
+python run_mobo_loop.py --max_iters 260
