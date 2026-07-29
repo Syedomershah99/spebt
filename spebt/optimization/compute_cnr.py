@@ -73,9 +73,9 @@ def compute_cnr_for_work_dir(
         flist_path, flist = rrc.generate_flist(work_dir, out_dir)
     except FileNotFoundError as e:
         print(f"  [cnr] no PPDF files in {work_dir}: {e}")
-        return float("nan")
+        return float("nan"), float("nan"), np.array([])
     if not flist:
-        return float("nan")
+        return float("nan"), float("nan"), np.array([])
 
     projs_path = rrc.forward_project(
         flist, phantom_path, out_dir, device,
@@ -91,25 +91,47 @@ def compute_cnr_for_work_dir(
         rrc.N_ITERATIONS = saved_iter
 
     results = rrc.compute_cnr(recon_path, phantom_path, out_dir)
-    return float(results["overall_cnr"])
+    sectors = np.asarray(results["sector_cnrs"], dtype=float)
+    # RY (Jul 2026): weight every rod size equally, since the CNR at a size
+    # represents imaging performance for that object size. overall_cnr pools all
+    # hot pixels and is therefore area-weighted, letting the largest rods
+    # dominate. Both are returned so the older column stays reproducible.
+    sector_mean = float(np.nanmean(sectors)) if sectors.size else float("nan")
+    return float(results["overall_cnr"]), sector_mean, sectors
 
 
-def _write_cnr_to_csv(out_csv: str, config_name: str, cnr: float) -> None:
-    """Set cnr_mean for the row matching config_name. Create row/column if needed."""
+def _write_cnr_to_csv(out_csv: str, config_name: str, cnr: float,
+                      sector_mean: float = float("nan"),
+                      sectors=None) -> None:
+    """Set the CNR columns for the row matching config_name.
+
+    cnr_sector_mean is the objective the optimizer reads; cnr_mean is kept so
+    the pre-Jul-2026 numbers stay comparable. Creates rows or columns as needed.
+    """
+    vals = {
+        "cnr_mean": cnr,
+        "cnr_sector_mean": sector_mean,
+    }
+    if sectors is not None:
+        for i, v in enumerate(np.asarray(sectors, dtype=float)):
+            vals[f"cnr_sector{i}"] = float(v)
+
     if not os.path.exists(out_csv):
-        pd.DataFrame([{"config": config_name, "cnr_mean": cnr}]).to_csv(out_csv, index=False)
+        pd.DataFrame([{"config": config_name, **vals}]).to_csv(out_csv, index=False)
         return
 
     df = pd.read_csv(out_csv)
-    if "cnr_mean" not in df.columns:
-        df["cnr_mean"] = float("nan")
+    for col in vals:
+        if col not in df.columns:
+            df[col] = float("nan")
 
     if "config" in df.columns and (df["config"] == config_name).any():
-        df.loc[df["config"] == config_name, "cnr_mean"] = cnr
+        for col, v in vals.items():
+            df.loc[df["config"] == config_name, col] = v
     else:
         new_row = {col: np.nan for col in df.columns}
         new_row["config"] = config_name
-        new_row["cnr_mean"] = cnr
+        new_row.update(vals)
         df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
     df.to_csv(out_csv, index=False)
 
@@ -150,7 +172,7 @@ def main():
         return
 
     t0 = time.time()
-    cnr = compute_cnr_for_work_dir(
+    cnr, sector_mean, sectors = compute_cnr_for_work_dir(
         args.work_dir, args.phantom_path,
         iterations=args.iterations,
         T_sec=args.T_sec, e_hot=args.e_hot, e_bg=args.e_bg,
@@ -161,9 +183,10 @@ def main():
     if np.isnan(cnr):
         print(f"[{args.config_name}] CNR = NaN ({elapsed:.1f} s)")
     else:
-        print(f"[{args.config_name}] CNR = {cnr:.4f}  ({elapsed:.1f} s, {args.iterations} ML-EM iter)")
+        print(f"[{args.config_name}] CNR sector-mean = {sector_mean:.4f}  "
+              f"(pooled {cnr:.4f})  ({elapsed:.1f} s, {args.iterations} ML-EM iter)")
 
-    _write_cnr_to_csv(args.out_csv, args.config_name, cnr)
+    _write_cnr_to_csv(args.out_csv, args.config_name, cnr, sector_mean, sectors)
 
 
 if __name__ == "__main__":

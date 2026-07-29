@@ -720,9 +720,21 @@ class TestWriteCnrToCsv:
         csv = tmp_path / "results.csv"
         _write_cnr_to_csv(str(csv), "mobo_0001", 3.72)
         df = pd.read_csv(csv)
-        assert list(df.columns) == ["config", "cnr_mean"]
+        assert list(df.columns) == ["config", "cnr_mean", "cnr_sector_mean"]
         assert df.loc[0, "config"] == "mobo_0001"
         assert df.loc[0, "cnr_mean"] == pytest.approx(3.72)
+
+    def test_writes_sector_mean_and_sectors(self, tmp_path):
+        """cnr_sector_mean is the objective the optimizer reads; the per-section
+        values are kept alongside it for the rod-size analysis."""
+        from compute_cnr import _write_cnr_to_csv
+        csv = tmp_path / "results.csv"
+        sectors = [2.1, 3.0, 3.6, 3.2, 2.6, 2.2]
+        _write_cnr_to_csv(str(csv), "mobo_0002", 3.72, 2.783, sectors)
+        df = pd.read_csv(csv)
+        assert df.loc[0, "cnr_sector_mean"] == pytest.approx(2.783)
+        for i, v in enumerate(sectors):
+            assert df.loc[0, f"cnr_sector{i}"] == pytest.approx(v)
 
     def test_updates_existing_row(self, tmp_path):
         from compute_cnr import _write_cnr_to_csv

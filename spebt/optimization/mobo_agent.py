@@ -152,12 +152,32 @@ def is_feasible_full(diam, n_ap, n_det1, n_det2, d2_inner, d3_inner):
 
 
 # --- Objective columns (as they appear in the CSV) ---
-# cnr_mean is populated in-loop by compute_cnr.py (150-iter ML-EM) and by
-# backfill_cnr.py for the 16 already-reconstructed configs.
-OBJ_COLUMNS = ["fwhm_mean", "asci_pct", "sensitivity_mean", "mpxi_mean", "cnr_mean"]
+# Revised Jul 2026 after measuring every metric against CNR across 109 designs.
+# Two of the previous five were being MAXIMISED while pulling against image
+# quality; both were replaced (Spearman against section-mean CNR in brackets):
+#
+#   sensitivity_mean (-0.92)  ->  ppds_ring1 (+0.60)
+#       Overall sensitivity rewards wide, poorly collimated PPDFs. Per-ring PPDS
+#       showed the inner ring is the only one that helps; ring 4 is at -0.82 and
+#       is largely re-measuring aperture size.
+#   asci_pct (-0.75)          ->  asci_pct_fwhm0p45 (+0.80)
+#       Unwindowed ASCI saturates at 100% for 64% of designs and was already
+#       maxed before optimization began. Restricting to beams under 0.45 mm
+#       de-saturates it completely.
+#   cnr_mean                  ->  cnr_sector_mean
+#       Equal weight per rod size rather than pooling all hot pixels, which was
+#       area-weighted and let the largest rods dominate. Ranks designs almost
+#       identically (Spearman 0.999) but is the defensible definition.
+#
+# mpxi_mean is retained as the only objective carrying information independent
+# of CNR; its correlation is essentially zero where all others are strongly
+# signed.
+OBJ_COLUMNS = ["fwhm_mean", "asci_pct_fwhm0p45", "ppds_ring1",
+               "mpxi_mean", "cnr_sector_mean"]
 # Directions: +1 = maximize, -1 = minimize (we negate minimization objectives)
 OBJ_DIRECTIONS = [-1.0, 1.0, 1.0, -1.0, 1.0]
-OBJ_NAMES = ["FWHM (min)", "ASCI (max)", "Sensitivity (max)", "MPXI (min)", "CNR (max)"]
+OBJ_NAMES = ["FWHM (min)", "ASCI@0.45mm (max)", "PPDS ring1 (max)",
+             "MPXI (min)", "CNR sector-mean (max)"]
 
 
 def get_next_candidate(results_csv: str):

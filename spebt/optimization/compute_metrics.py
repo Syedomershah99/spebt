@@ -418,6 +418,24 @@ def compute_ppds(work_dir: str, n_det_ring1: int = None,
     return float(np.dot(np.asarray(ring_weights, dtype=np.float64), comps))
 
 
+# FWHM window for the ASCI objective. Chosen by sweeping thresholds against CNR
+# (Jul 2026): 0.45 mm peaks at rho +0.80 with no design saturated at 100%. It
+# falls to +0.62 at 0.50 and +0.31 at 0.60 as saturation returns, and to +0.19 at
+# 0.40 where so few beams pass that the metric goes sparse.
+ASCI_FWHM_WINDOW_MM = 0.45
+ASCI_WINDOW_COL = "asci_pct_fwhm0p45"
+
+
+def compute_windowed_asci(work_dir: str, threshold_mm: float = ASCI_FWHM_WINDOW_MM) -> float:
+    """ASCI counting only beams narrower than `threshold_mm`. NaN if unavailable."""
+    try:
+        from analyze_asci_window import windowed_asci
+        return float(windowed_asci(work_dir, (threshold_mm,))[threshold_mm])
+    except Exception as e:
+        print(f"  [warn] windowed ASCI failed: {e}")
+        return float("nan")
+
+
 def compute_ppds_per_ring(work_dir: str, n_det_ring1: int):
     """Per-ring PPDS contributions (length 4), or None if unavailable.
 
@@ -433,22 +451,24 @@ def compute_ppds_per_ring(work_dir: str, n_det_ring1: int):
 def compute_metrics(work_dir: str, n_det_ring1: int = None) -> dict:
     """
     Compute all metrics for a single configuration.
-    Returns: fwhm_mean, sensitivity_total, sensitivity_mean, asci_pct,
-             mpxi_mean, ppds_mean, ppds_weighted_mean, n_ppdf_files.
 
-    ppds_weighted_mean is only produced when n_det_ring1 is supplied, since
-    ring membership cannot be resolved without it.
+    Includes the three metrics adopted after the Jul 2026 objective review:
+      - ppds_ring1..4: per-ring PPDS. Ring 1 alone is the sensitivity
+        replacement (rho +0.60 against CNR, where sensitivity was -0.92).
+      - asci_pct_fwhm0p45: ASCI restricted to beams narrower than 0.45 mm.
+        Unwindowed ASCI saturates (64% of designs at 100%) and correlates
+        -0.75 with CNR; the window moves it to +0.80 with no saturation.
+      - ppds_weighted_mean is kept only so earlier numbers stay reproducible.
+
+    The per-ring values need n_det_ring1 to resolve ring membership; without it
+    those columns come back NaN and the config will be dropped by the optimizer.
     """
     sens_total, sens_mean, n_files = compute_sensitivity(work_dir)
     fwhm_mean, asci_pct = compute_fwhm_and_asci(work_dir)
     mpxi_mean = compute_mpxi(work_dir)
     ppds_mean = compute_ppds(work_dir)
-    ppds_weighted_mean = (
-        compute_ppds(work_dir, n_det_ring1=n_det_ring1)
-        if n_det_ring1 is not None else float("nan")
-    )
 
-    return {
+    results = {
         "fwhm_mean": fwhm_mean,
         "sensitivity_total": sens_total,
         "sensitivity_mean": sens_mean,
@@ -456,8 +476,21 @@ def compute_metrics(work_dir: str, n_det_ring1: int = None) -> dict:
         "n_ppdf_files": n_files,
         "mpxi_mean": mpxi_mean,
         "ppds_mean": ppds_mean,
-        "ppds_weighted_mean": ppds_weighted_mean,
+        "ppds_weighted_mean": float("nan"),
     }
+
+    for i in range(1, 5):
+        results[f"ppds_ring{i}"] = float("nan")
+    if n_det_ring1 is not None:
+        comps = compute_ppds_per_ring(work_dir, n_det_ring1)
+        if comps is not None:
+            for i, v in enumerate(comps, start=1):
+                results[f"ppds_ring{i}"] = float(v)
+            results["ppds_weighted_mean"] = float(
+                np.dot(DEFAULT_RING_WEIGHTS, comps))
+
+    results[ASCI_WINDOW_COL] = compute_windowed_asci(work_dir)
+    return results
 
 
 def main():
@@ -493,6 +526,8 @@ def main():
             "mpxi_mean": float("nan"),
             "ppds_mean": float("nan"),
             "ppds_weighted_mean": float("nan"),
+            ASCI_WINDOW_COL: float("nan"),
+            **{f"ppds_ring{i}": float("nan") for i in range(1, 5)},
         }
         print(f"[{args.config_name}] FORCE_ZERO: {args.reason}")
     else:
@@ -533,10 +568,9 @@ def main():
 
     print(f"[{args.config_name}] FWHM={results['fwhm_mean']:.4f}  "
           f"ASCI={results['asci_pct']:.2f}%  "
-          f"Sens={results['sensitivity_mean']:.4e}  "
+          f"ASCIw={results[ASCI_WINDOW_COL]:.2f}%  "
           f"MPXI={results['mpxi_mean']:.4f}  "
-          f"PPDS={results['ppds_mean']:.4e}  "
-          f"PPDSw={results['ppds_weighted_mean']:.4e}  "
+          f"PPDSr1={results['ppds_ring1']:.4e}  "
           f"({results['n_ppdf_files']} PPDF files)")
 
 

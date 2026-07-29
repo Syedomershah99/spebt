@@ -42,7 +42,9 @@ RESULTS_CSV = os.path.join(RESULTS_DIR, "results_summary_mobo.csv")
 SLURM_SCRIPT = os.path.join(CODE_DIR, "optimization", "run_sai_pipeline.sh")
 LOG_DIR = os.path.join(RESULTS_DIR, "slurm_logs")
 
-OBJ_COLUMNS = ["fwhm_mean", "asci_pct", "sensitivity_mean", "mpxi_mean", "cnr_mean"]
+# Keep in sync with mobo_agent.OBJ_COLUMNS (revised Jul 2026 objective set).
+OBJ_COLUMNS = ["fwhm_mean", "asci_pct_fwhm0p45", "ppds_ring1",
+               "mpxi_mean", "cnr_sector_mean"]
 
 console = Console()
 
@@ -165,15 +167,15 @@ def print_status(idx, config_name):
         t.add_column("Mean", style="yellow")
         for col, label, direction in [
             ("fwhm_mean", "FWHM (mm)", "min"),
-            ("asci_pct", "ASCI (%)", "max"),
-            ("sensitivity_mean", "Sensitivity", "max"),
+            ("asci_pct_fwhm0p45", "ASCI@0.45mm (%)", "max"),
+            ("ppds_ring1", "PPDS ring1", "max"),
             ("mpxi_mean", "MPXI", "min"),
-            ("cnr_mean", "CNR", "max"),
+            ("cnr_sector_mean", "CNR sector-mean", "max"),
         ]:
             vals = df[col]
             best = vals.min() if direction == "min" else vals.max()
             worst = vals.max() if direction == "min" else vals.min()
-            fmt = ".4f" if col != "sensitivity_mean" else ".4e"
+            fmt = ".4e" if col == "ppds_ring1" else ".4f"
             t.add_row(label, f"{best:{fmt}}", f"{worst:{fmt}}", f"{vals.mean():{fmt}}")
         t.add_row("Total configs", str(len(df)), "", "")
         console.print(t)
