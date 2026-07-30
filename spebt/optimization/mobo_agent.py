@@ -194,13 +194,32 @@ def get_next_candidate(results_csv: str):
 
     df = pd.read_csv(results_csv)
 
-    # Separate feasible and failed rows
+    # Separate feasible, genuinely-failed, and partially-measured rows.
+    #
+    # A row missing SOME objectives is not the same as a failed design. Configs
+    # evaluated before in-loop CNR existed have real FWHM, ASCI, MPXI and PPDS
+    # but no reconstruction, so they carry four good measurements and one gap.
+    # Treating them as failures fabricated penalty values for the four we
+    # actually measured -- at one point 67 of 176 rows had a real FWHM near
+    # 0.5 mm replaced by the penalty value of 9.84, i.e. over a third of the
+    # FWHM surrogate's training data was invented.
+    #
+    # Only rows with EVERY objective missing are genuine failures: the
+    # force_zero path in run_sai_pipeline.sh writes NaN across the board when
+    # geometry cannot be built, and that absence really is information.
     df_valid = df.dropna(subset=OBJ_COLUMNS)
-    df_failed = df[df[OBJ_COLUMNS].isna().any(axis=1)]
+    all_missing = df[OBJ_COLUMNS].isna().all(axis=1)
+    some_missing = df[OBJ_COLUMNS].isna().any(axis=1)
+    df_failed = df[all_missing]
     n_total = len(df)
     n_valid = len(df_valid)
     n_failed = len(df_failed)
-    logger.info(f"Loaded {n_total} rows, {n_valid} feasible, {n_failed} failed")
+    n_partial = int((some_missing & ~all_missing).sum())
+    logger.info(f"Loaded {n_total} rows, {n_valid} complete, {n_failed} failed "
+                f"(all objectives missing), {n_partial} partially measured")
+    if n_partial:
+        logger.info(f"  {n_partial} partially-measured rows are EXCLUDED from training "
+                    f"rather than penalised; reconstruct them to recover their data")
 
     if n_valid < 3:
         raise ValueError(f"Need at least 3 feasible points for MOBO, got {n_valid}")
@@ -209,12 +228,12 @@ def get_next_candidate(results_csv: str):
     # Use worst observed value (in the "maximize" direction) with a margin.
     #
     # IMPORTANT: this multiplicative scheme assumes every metric in OBJ_COLUMNS
-    # is strictly positive across the observed data. All our current metrics
-    # (fwhm_mean, asci_pct, sensitivity_mean, mpxi_mean, cnr_mean) satisfy that.
-    # If a future metric can go negative, "col.min() * 0.5" would make the
-    # penalty MORE favourable than the worst observation — subtract-a-margin
-    # would be needed instead. Asserting positivity guards against a silent
-    # regression here.
+    # is strictly positive across the observed data. All current metrics
+    # (fwhm_mean, asci_pct_fwhm0p45, ppds_ring1, mpxi_mean, cnr_sector_mean)
+    # satisfy that. If a future metric can go negative, "col.min() * 0.5" would
+    # make the penalty MORE favourable than the worst observation —
+    # subtract-a-margin would be needed instead. The assertion below guards
+    # against a silent regression.
     if n_failed > 0 and len(df_failed[PARAM_NAMES].dropna()) > 0:
         valid_vals = df_valid[OBJ_COLUMNS].values
         assert (valid_vals >= 0).all(), (

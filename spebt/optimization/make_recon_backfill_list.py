@@ -34,9 +34,16 @@ def main():
     ap = argparse.ArgumentParser(description="List configs needing reconstruction")
     ap.add_argument("--results_csv", required=True)
     ap.add_argument("--out", default="recon_backfill_configs.txt")
-    ap.add_argument("--require_cnr", action="store_true", default=True,
-                    help="Only include configs that already have a CNR value "
-                         "(these are the ones we would otherwise lose)")
+    # store_true with default=True could never be switched off, so the wider
+    # set of configs -- those with no CNR at all -- was unreachable.
+    ap.add_argument("--require_cnr", dest="require_cnr", action="store_true",
+                    default=True,
+                    help="Only configs that already have a CNR value (default)")
+    ap.add_argument("--all_missing", dest="require_cnr", action="store_false",
+                    help="Also include configs with no CNR at all. These have "
+                         "real FWHM/ASCI/MPXI/PPDS but no reconstruction, so "
+                         "reconstructing them makes their rows fully usable "
+                         "instead of merely excluded from training.")
     args = ap.parse_args()
 
     if not os.path.exists(args.results_csv):

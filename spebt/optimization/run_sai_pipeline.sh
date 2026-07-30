@@ -219,8 +219,16 @@ rm -f "${WORK_DIR}"/beams_masks_configuration_*.hdf5
 rm -f "${WORK_DIR}"/beams_properties_configuration_*.hdf5
 rm -f "${WORK_DIR}"/asci_histogram_*.hdf5
 
+# The three steps are strictly sequential per layout -- properties need masks,
+# ASCI needs both -- so `set -e` inside the subshell stops a failure from
+# cascading into garbage downstream. Exit codes are collected per layout,
+# because a bare `wait` discards them and the metric aggregation downstream
+# globs "whatever files exist", which would silently compute FWHM/ASCI/MPXI
+# from one layout instead of two.
+BEAM_PIDS=()
 for layout_idx in 0 1; do
   (
+    set -e
     echo "  Layout ${layout_idx}: extracting masks..."
     python "${CODE_DIR}/optimization/sai_extract_masks.py" \
       --layout_idx "${layout_idx}" \
@@ -238,8 +246,24 @@ for layout_idx in 0 1; do
       --layout_idx "${layout_idx}" \
       --work_dir "${WORK_DIR}"
   ) &
+  BEAM_PIDS+=("$!")
 done
-wait
+
+BEAM_FAIL=0
+for pid in "${BEAM_PIDS[@]}"; do
+  wait "${pid}" || BEAM_FAIL=$((BEAM_FAIL + 1))
+done
+if [ "${BEAM_FAIL}" -gt 0 ]; then
+  write_zero_ji "${BEAM_FAIL} of 2 beam-analysis layouts failed"
+fi
+
+for layout_idx in 0 1; do
+  for f in "beams_masks_configuration" "beams_properties_configuration" "asci_histogram"; do
+    if [ ! -f "${WORK_DIR}/${f}_$(printf '%03d' "${layout_idx}").hdf5" ]; then
+      write_zero_ji "Missing ${f}_$(printf '%03d' "${layout_idx}").hdf5 after beam analysis"
+    fi
+  done
+done
 
 # -------------------------------------------------------
 # Step 3: Compute metrics (FWHM, ASCI, sensitivity, MPXI, PPDS) and append to CSV

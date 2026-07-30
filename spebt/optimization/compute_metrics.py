@@ -77,6 +77,35 @@ def compute_sensitivity(work_dir: str):
     return sensitivity_total, sensitivity_mean, successful
 
 
+def check_layout_completeness(work_dir: str) -> list:
+    """Return a list of complaints if any per-layout beam file is missing.
+
+    Step 2 of run_sai_pipeline.sh runs the beam analysis for the two layouts in
+    background subshells without checking exit codes, so a failure there leaves
+    a partial set of outputs. Every aggregation below globs "whatever exists",
+    which means metrics silently computed from ONE layout instead of two would be
+    written to the CSV looking perfectly valid -- ASCI most of all, since
+    combining one histogram rather than two directly lowers the coverage count.
+
+    Metrics are still returned when incomplete (a partial number beats crashing
+    the SLURM job), but the caller records the complaint so the row can be found
+    and recomputed rather than silently trusted.
+    """
+    problems = []
+    for label, pattern in (
+        ("beam properties", "beams_properties_configuration_*.hdf5"),
+        ("beam masks", "beams_masks_configuration_*.hdf5"),
+        ("ASCI histograms", "asci_histogram_*.hdf5"),
+    ):
+        found = len(glob.glob(os.path.join(work_dir, pattern)))
+        if found != N_LAYOUTS:
+            problems.append(f"{label}: found {found}, expected {N_LAYOUTS}")
+    n_ppdf = len(glob.glob(os.path.join(work_dir, "position_*_ppdfs_t8_*.hdf5")))
+    if n_ppdf != N_TOTAL_FILES:
+        problems.append(f"PPDF files: found {n_ppdf}, expected {N_TOTAL_FILES}")
+    return problems
+
+
 def compute_fwhm_and_asci(work_dir: str):
     """
     Aggregate FWHM and ASCI from beam analysis outputs across all layouts.
@@ -490,6 +519,16 @@ def compute_metrics(work_dir: str, n_det_ring1: int = None) -> dict:
                 np.dot(DEFAULT_RING_WEIGHTS, comps))
 
     results[ASCI_WINDOW_COL] = compute_windowed_asci(work_dir)
+
+    # Flag incomplete input so a silently-partial row can be found later
+    problems = check_layout_completeness(work_dir)
+    results["inputs_complete"] = int(not problems)
+    if problems:
+        print("  [ERROR] INCOMPLETE INPUTS -- metrics below are computed from a "
+              "partial file set and must not be trusted:")
+        for p in problems:
+            print(f"    - {p}")
+
     return results
 
 

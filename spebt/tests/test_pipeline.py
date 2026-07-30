@@ -250,6 +250,66 @@ class TestRingPacking:
         assert ma.N_DET_RING4 < ma.max_crystals_on_ring(ma.D4_INNER_MM)
 
 
+class TestFailedRowClassification:
+    """Only rows missing EVERY objective are failures.
+
+    A row missing some objectives is a partially-measured design, not a bad one.
+    Penalising those fabricated values for objectives we had actually measured --
+    real FWHM values near 0.5 mm were being replaced by the penalty value of
+    9.84 for a third of the training set.
+    """
+
+    @staticmethod
+    def _classify(df, obj_cols):
+        """Mirrors the classification in mobo_agent.get_next_candidate."""
+        all_missing = df[obj_cols].isna().all(axis=1)
+        some_missing = df[obj_cols].isna().any(axis=1)
+        return {
+            "complete": len(df.dropna(subset=obj_cols)),
+            "failed": int(all_missing.sum()),
+            "partial": int((some_missing & ~all_missing).sum()),
+        }
+
+    def test_partial_rows_are_not_failures(self):
+        import mobo_agent as ma
+        cols = ma.OBJ_COLUMNS
+        rows = [
+            {c: 1.0 for c in cols},                                  # complete
+            {**{c: 1.0 for c in cols}, cols[-1]: float("nan")},       # missing CNR only
+            {c: float("nan") for c in cols},                          # geometry failure
+        ]
+        got = self._classify(pd.DataFrame(rows), cols)
+        assert got == {"complete": 1, "failed": 1, "partial": 1}, got
+
+    def test_row_missing_only_cnr_is_partial(self):
+        """The exact case that was being mis-penalised."""
+        import mobo_agent as ma
+        cols = ma.OBJ_COLUMNS
+        row = {c: 1.0 for c in cols}
+        row["cnr_sector_mean"] = float("nan")
+        got = self._classify(pd.DataFrame([row]), cols)
+        assert got["partial"] == 1 and got["failed"] == 0
+
+    def test_all_nan_row_is_a_failure(self):
+        import mobo_agent as ma
+        cols = ma.OBJ_COLUMNS
+        got = self._classify(pd.DataFrame([{c: float("nan") for c in cols}]), cols)
+        assert got["failed"] == 1 and got["partial"] == 0
+
+    def test_penalty_is_worse_than_every_real_value(self):
+        """Penalty must sit outside the observed range in the correct direction."""
+        import mobo_agent as ma
+        vals = np.array([[0.5, 20.0, 0.1, 2.0, 4.0],
+                         [4.9, 60.0, 0.18, 22.0, 1.35]])
+        for i, d in enumerate(ma.OBJ_DIRECTIONS):
+            col = vals[:, i]
+            penalty = col.min() * 0.5 if d > 0 else col.max() * 2.0
+            if d > 0:
+                assert penalty < col.min(), f"objective {i}: penalty not worse"
+            else:
+                assert penalty > col.max(), f"objective {i}: penalty not worse"
+
+
 class TestPerBeamRadialFwhm:
     """Verify the FWHM-along-beam-axis calculation on synthetic beams."""
 
