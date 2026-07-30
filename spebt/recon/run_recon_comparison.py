@@ -67,6 +67,7 @@ def gaussian_kernel_1d(sigma_px, device, dtype=torch.float32):
 
 
 def gaussian_filter_2d(img_2d, fwhm_mm, mm_per_px):
+    """Separable Gaussian smoothing. NOT used by run_mlem -- see its docstring."""
     device = img_2d.device
     dtype = img_2d.dtype
     sigma_px = (fwhm_mm / 2.355) / mm_per_px
@@ -167,7 +168,13 @@ def forward_project(flist, phantom_path, output_dir, device, T_sec=10.0, e_hot=1
 # Step 3: ML-EM Reconstruction
 # =====================
 def run_mlem(flist, projs_path, output_dir, device):
-    """Run ML-EM with Gaussian post-filter."""
+    """Run unfiltered ML-EM.
+
+    No post-filter is applied: `final` is the raw iterate, and CNR is measured on
+    it. gaussian_filter_2d below is available but deliberately unused, so that
+    the reported CNR reflects the reconstruction itself rather than a smoothing
+    choice. Every design is treated identically, so comparisons are unaffected.
+    """
     pdata = torch.from_numpy(np.load(projs_path)).to(device=device, dtype=torch.float32)
     estimate = torch.ones(SFOV, device=device, dtype=torch.float32)
 
