@@ -300,13 +300,35 @@ def get_next_candidate(results_csv: str):
         fit_gpytorch_mll(mll)
         models.append(gp)
 
-        # Log ARD lengthscales
-        try:
-            ls = gp.covar_module.base_kernel.lengthscale.detach().cpu().numpy().flatten()
+        # Log ARD lengthscales. These are the main diagnostic for whether a
+        # design dimension is being used at all: a lengthscale orders of
+        # magnitude above the others means the GP has concluded the objective
+        # does not vary along it, so the acquisition sees no reason to explore
+        # there. That is exactly what happens when the training data is constant
+        # in a dimension, as ours is in d2_inner_mm / d3_inner_mm.
+        #
+        # The kernel layout differs across BoTorch versions (newer SingleTaskGP
+        # defaults changed the wrapping), so try the known shapes rather than
+        # swallowing the failure -- this was previously `except: pass`, which
+        # silently discarded the diagnostic and made the log look as if the
+        # lengthscales had simply never been computed.
+        ls = None
+        for accessor in (
+            lambda g: g.covar_module.base_kernel.lengthscale,
+            lambda g: g.covar_module.lengthscale,
+        ):
+            try:
+                ls = accessor(gp).detach().cpu().numpy().flatten()
+                break
+            except (AttributeError, RuntimeError):
+                continue
+        if ls is not None and len(ls) == len(PARAM_NAMES):
             ls_str = ", ".join(f"{p}={l:.3f}" for p, l in zip(PARAM_NAMES, ls))
             logger.info(f"  GP[{name}] lengthscales: {ls_str}")
-        except Exception:
-            pass
+        else:
+            logger.warning(f"  GP[{name}] lengthscales unavailable "
+                           f"(kernel layout not recognised); dimension-usage "
+                           f"diagnostic is unavailable for this objective")
 
     model = ModelListGP(*models)
     logger.info("ModelListGP trained successfully.")
