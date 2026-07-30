@@ -109,9 +109,27 @@ def check_layout_completeness(work_dir: str) -> list:
 def compute_fwhm_and_asci(work_dir: str):
     """
     Aggregate FWHM and ASCI from beam analysis outputs across all layouts.
-    Returns (fwhm_mean, asci_pct).
+    Returns (fwhm_mean, fwhm_weighted_mean, asci_pct).
+
+    Two FWHM definitions are produced:
+
+    fwhm_mean            unweighted mean over every beam. This was the original
+                         objective, but it treats a beam carrying 0.1% of the
+                         signal as mattering as much as one carrying all of it.
+                         Measured across 181 designs it correlates -0.83 with
+                         CNR, and its difference from the sensitivity-filtered
+                         mean tracks aperture diameter at -0.69 -- i.e. it
+                         carries an aperture-dependent artifact, and aperture
+                         diameter is itself the strongest CNR predictor.
+    fwhm_weighted_mean   each beam's width weighted by its sensitivity, so a
+                         beam influences the objective in proportion to the
+                         signal it contributes. Correlates -0.93 with CNR and is
+                         the objective the optimizer now uses.
+
+    Both are returned so the earlier column stays reproducible.
     """
     all_fwhm_values = []
+    all_sens_values = []
     combined_asci_hist = None
 
     # Search for beam properties and ASCI histogram files
@@ -132,10 +150,16 @@ def compute_fwhm_and_asci(work_dir: str):
                     #   0 position_id, 1 detector_id, 2 beam_id, 3 angle (rad),
                     #   4 FWHM (mm), 5 weighted_center_x, 6 weighted_center_y,
                     #   7 sensitivity, 8 relative_sensitivity, 9-10 (padding).
-                    fwhm_data = data[:, 4]
-                    valid = fwhm_data[~np.isnan(fwhm_data)]
-                    if len(valid) > 0:
-                        all_fwhm_values.extend(valid.tolist())
+                    fwhm_data = data[:, 4].astype(np.float64)
+                    sens_data = data[:, 7].astype(np.float64)
+                    ok = np.isfinite(fwhm_data) & (fwhm_data > 0)
+                    if ok.any():
+                        all_fwhm_values.extend(fwhm_data[ok].tolist())
+                        # Non-finite sensitivity would poison the weighted mean;
+                        # zero contributes nothing, which is the right default.
+                        s = sens_data[ok]
+                        s[~np.isfinite(s)] = 0.0
+                        all_sens_values.extend(s.tolist())
         except Exception as e:
             print(f"  [warn] Failed to read {prop_file}: {e}")
 
@@ -157,7 +181,14 @@ def compute_fwhm_and_asci(work_dir: str):
             print(f"  [warn] Failed to read {asci_file}: {e}")
 
     # Compute averages
-    fwhm_mean = float(np.mean(all_fwhm_values)) if all_fwhm_values else np.nan
+    if all_fwhm_values:
+        fw = np.asarray(all_fwhm_values, dtype=np.float64)
+        sens = np.asarray(all_sens_values, dtype=np.float64)
+        fwhm_mean = float(fw.mean())
+        wsum = sens.sum()
+        fwhm_weighted_mean = float(np.dot(fw, sens) / wsum) if wsum > 0 else fwhm_mean
+    else:
+        fwhm_mean = fwhm_weighted_mean = np.nan
 
     if combined_asci_hist is not None:
         asci_filled = np.count_nonzero(combined_asci_hist)
@@ -165,7 +196,7 @@ def compute_fwhm_and_asci(work_dir: str):
     else:
         asci_pct = np.nan
 
-    return fwhm_mean, asci_pct
+    return fwhm_mean, fwhm_weighted_mean, asci_pct
 
 
 def compute_mpxi(work_dir: str):
@@ -493,12 +524,13 @@ def compute_metrics(work_dir: str, n_det_ring1: int = None) -> dict:
     those columns come back NaN and the config will be dropped by the optimizer.
     """
     sens_total, sens_mean, n_files = compute_sensitivity(work_dir)
-    fwhm_mean, asci_pct = compute_fwhm_and_asci(work_dir)
+    fwhm_mean, fwhm_weighted_mean, asci_pct = compute_fwhm_and_asci(work_dir)
     mpxi_mean = compute_mpxi(work_dir)
     ppds_mean = compute_ppds(work_dir)
 
     results = {
         "fwhm_mean": fwhm_mean,
+        "fwhm_weighted_mean": fwhm_weighted_mean,
         "sensitivity_total": sens_total,
         "sensitivity_mean": sens_mean,
         "asci_pct": asci_pct,
@@ -558,6 +590,7 @@ def main():
     if args.force_zero:
         results = {
             "fwhm_mean": float("nan"),
+            "fwhm_weighted_mean": float("nan"),
             "sensitivity_total": float("nan"),
             "sensitivity_mean": float("nan"),
             "asci_pct": float("nan"),

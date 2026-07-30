@@ -43,7 +43,7 @@ SLURM_SCRIPT = os.path.join(CODE_DIR, "optimization", "run_sai_pipeline.sh")
 LOG_DIR = os.path.join(RESULTS_DIR, "slurm_logs")
 
 # Keep in sync with mobo_agent.OBJ_COLUMNS (revised Jul 2026 objective set).
-OBJ_COLUMNS = ["fwhm_mean", "asci_pct_fwhm0p45", "ppds_ring1",
+OBJ_COLUMNS = ["fwhm_weighted_mean", "asci_pct_fwhm0p45", "ppds_ring1",
                "mpxi_mean", "cnr_sector_mean"]
 
 # Rich defaults to 80 columns when stdout is not a terminal, which silently
@@ -168,7 +168,7 @@ def print_status(idx, config_name):
         t.add_column("Worst", style="red")
         t.add_column("Mean", style="yellow")
         for col, label, direction in [
-            ("fwhm_mean", "FWHM (mm)", "min"),
+            ("fwhm_weighted_mean", "FWHM wtd (mm)", "min"),
             ("asci_pct_fwhm0p45", "ASCI@0.45mm (%)", "max"),
             ("ppds_ring1", "PPDS ring1", "max"),
             ("mpxi_mean", "MPXI", "min"),
@@ -196,7 +196,7 @@ def main():
     console.print(Panel.fit(
         "[bold green]SAI SC-SPECT MOBO Controller[/bold green]\n"
         "Design: (aperture_diam, n_apertures, n_det_ring1, n_det_ring2, d2_inner, d3_inner)\n"
-        "5 objectives: FWHM (min), ASCI@0.45mm (max), PPDS ring1 (max), "
+        "5 objectives: FWHM wtd (min), ASCI@0.45mm (max), PPDS ring1 (max), "
         "MPXI (min), CNR sector-mean (max)\n"
         "ModelListGP + qLogNEHVI | Sequential q=1",
         subtitle=f"Max iterations: {TOTAL_ITERATIONS}"

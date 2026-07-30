@@ -81,6 +81,10 @@ def main():
     ap.add_argument("--results_csv", required=True)
     ap.add_argument("--cnr_col", default="cnr_sector_mean")
     ap.add_argument("--limit", type=int, default=None)
+    ap.add_argument("--write", action="store_true",
+                    help="Write fwhm_weighted_mean into the CSV. Needed once, so "
+                         "existing rows carry the column the optimizer now reads; "
+                         "new rows get it from compute_metrics directly.")
     args = ap.parse_args()
 
     if not os.path.exists(args.results_csv):
@@ -115,6 +119,24 @@ def main():
         sys.exit(1)
     d = pd.DataFrame(rows)
     print(f"Computed all three definitions for {len(d)} configs\n")
+
+    if args.write:
+        import shutil, time as _time
+        stamp = _time.strftime("%Y%m%d_%H%M%S")
+        backup = args.results_csv.replace(".csv", f".bak.{stamp}.csv")
+        shutil.copy(args.results_csv, backup)
+        if "fwhm_weighted_mean" not in df.columns:
+            df["fwhm_weighted_mean"] = float("nan")
+        by_config = dict(zip(d["config"], d["weighted"]))
+        n_set = 0
+        for i, r in df.iterrows():
+            v = by_config.get(r.get("config"))
+            if v is not None and np.isfinite(v):
+                df.at[i, "fwhm_weighted_mean"] = float(v)
+                n_set += 1
+        df.to_csv(args.results_csv, index=False)
+        print(f"Wrote fwhm_weighted_mean for {n_set} rows")
+        print(f"Backup: {backup}\n")
 
     print("=" * 74)
     print("DOES THE FWHM DEFINITION REORDER THE DESIGNS?")

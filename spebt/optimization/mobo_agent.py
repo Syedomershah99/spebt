@@ -172,11 +172,18 @@ def is_feasible_full(diam, n_ap, n_det1, n_det2, d2_inner, d3_inner):
 # mpxi_mean is retained as the only objective carrying information independent
 # of CNR; its correlation is essentially zero where all others are strongly
 # signed.
-OBJ_COLUMNS = ["fwhm_mean", "asci_pct_fwhm0p45", "ppds_ring1",
+#   fwhm_mean (-0.83)         ->  fwhm_weighted_mean (-0.93)
+#       The unweighted mean counted a beam carrying 0.1% of the signal as much
+#       as one carrying all of it. Worse, its gap from the sensitivity-filtered
+#       mean tracks aperture diameter at -0.69, so it carried an
+#       aperture-dependent artifact -- and aperture diameter is itself the
+#       strongest CNR predictor. Weighting each width by that beam's sensitivity
+#       removes the artifact and predicts CNR better.
+OBJ_COLUMNS = ["fwhm_weighted_mean", "asci_pct_fwhm0p45", "ppds_ring1",
                "mpxi_mean", "cnr_sector_mean"]
 # Directions: +1 = maximize, -1 = minimize (we negate minimization objectives)
 OBJ_DIRECTIONS = [-1.0, 1.0, 1.0, -1.0, 1.0]
-OBJ_NAMES = ["FWHM (min)", "ASCI@0.45mm (max)", "PPDS ring1 (max)",
+OBJ_NAMES = ["FWHM weighted (min)", "ASCI@0.45mm (max)", "PPDS ring1 (max)",
              "MPXI (min)", "CNR sector-mean (max)"]
 
 
