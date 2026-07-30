@@ -46,7 +46,9 @@ LOG_DIR = os.path.join(RESULTS_DIR, "slurm_logs")
 OBJ_COLUMNS = ["fwhm_mean", "asci_pct_fwhm0p45", "ppds_ring1",
                "mpxi_mean", "cnr_sector_mean"]
 
-console = Console()
+# Rich defaults to 80 columns when stdout is not a terminal, which silently
+# truncated the candidate line and hid the d2/d3 values in the SLURM logs.
+console = Console(width=int(os.environ.get("MOBO_LOG_WIDTH", "160")))
 
 
 def ensure_dirs():
