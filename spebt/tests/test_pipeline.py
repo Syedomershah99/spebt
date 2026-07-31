@@ -163,25 +163,44 @@ class TestRingOrdering:
         import mobo_agent as ma
         # The legacy fixed layout [260, 390, 520, 650] must remain feasible,
         # otherwise every historical config becomes an infeasible training point.
+        # Its clearances are 59 mm all round, so it is comfortably valid.
         assert ma.is_ring_ordering_ok(390.0, 520.0)
 
-    def test_exactly_at_gap_is_feasible(self):
+    def test_clearance_is_radial_not_diametral(self):
+        """The bug this replaced: 10 mm of DIAMETER is 5 mm of radius, and the
+        crystals are 6 mm deep, so d2=270 put ring 2 inside ring 1 by 1 mm."""
         import mobo_agent as ma
-        assert ma.is_ring_ordering_ok(270.0, 280.0)      # D1+10, D2+10
-        assert ma.is_ring_ordering_ok(630.0, 640.0)      # D3+10 == D4-10
+        assert not ma.is_ring_ordering_ok(270.0, 520.0), \
+            "d2=270 overlaps ring 1 by 1 mm and must be rejected"
+        assert not ma.is_ring_ordering_ok(390.0, 640.0), \
+            "d3=640 overlaps ring 4 by 1 mm and must be rejected"
 
-    def test_rejects_d3_too_close_to_d2(self):
+    def test_exactly_at_clearance_is_feasible(self):
+        """d2 = 260 + 2*(6+10) = 292 gives exactly 10 mm; d3 = 650 - 32 = 618."""
         import mobo_agent as ma
-        assert not ma.is_ring_ordering_ok(400.0, 405.0)  # 5 mm gap
+        assert ma.is_ring_ordering_ok(292.0, 618.0)
+        assert not ma.is_ring_ordering_ok(291.0, 618.0)
+        assert not ma.is_ring_ordering_ok(292.0, 619.0)
+
+    def test_adjacent_rings_need_clearance_too(self):
+        import mobo_agent as ma
+        # d3 - d2 = 20 is only 4 mm of radial clearance after the 6 mm crystal
+        assert not ma.is_ring_ordering_ok(450.0, 470.0)
+        # d3 - d2 = 32 is exactly 10 mm
+        assert ma.is_ring_ordering_ok(450.0, 482.0)
 
     def test_rejects_out_of_order(self):
         import mobo_agent as ma
         assert not ma.is_ring_ordering_ok(520.0, 390.0)  # D3 inside D2
 
-    def test_rejects_crowding_fixed_rings(self):
+    def test_bounds_admit_only_valid_layouts(self):
+        """Every bound corner must satisfy the clearance rule."""
         import mobo_agent as ma
-        assert not ma.is_ring_ordering_ok(265.0, 400.0)  # D2 only 5 mm past D1
-        assert not ma.is_ring_ordering_ok(400.0, 645.0)  # D3 only 5 mm short of D4
+        assert ma.is_ring_ordering_ok(ma.BOUNDS_MIN[4], ma.BOUNDS_MAX[5])
+        r1_out = ma.D1_INNER_MM / 2 + ma.SCINT_RADIAL_MM
+        assert ma.BOUNDS_MIN[4] / 2 - r1_out >= ma.MIN_RING_GAP_MM
+        r4_in = ma.D4_INNER_MM / 2
+        assert r4_in - (ma.BOUNDS_MAX[5] / 2 + ma.SCINT_RADIAL_MM) >= ma.MIN_RING_GAP_MM
 
     def test_bounds_admit_the_gap(self):
         """Every bound corner must be reachable without violating the fixed rings."""

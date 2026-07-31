@@ -206,18 +206,25 @@ if __name__ == "__main__":
     MIN_RING_GAP_MM = 10.0   # RY, Jul 2026: 10 mm covers mounting and cooling
     RING_INNER_DIAMS_MM = [D1_INNER_MM, cli_args.d2_inner, cli_args.d3_inner, D4_INNER_MM]
 
-    # Ordering must hold: D1 < D2 < D3 < D4 with a minimum radial gap. MOBO
-    # enforces this as a feasibility constraint, but the generator can also be
-    # driven by hand, so check here rather than silently building a bad scanner.
-    for lo, hi, lo_name, hi_name in (
-        (D1_INNER_MM, cli_args.d2_inner, "D1", "D2"),
-        (cli_args.d2_inner, cli_args.d3_inner, "D2", "D3"),
-        (cli_args.d3_inner, D4_INNER_MM, "D3", "D4"),
-    ):
-        if hi - lo < MIN_RING_GAP_MM:
+    # Rings must not interpenetrate, and must leave clearance for mounting and
+    # cooling. This compares RADIAL SPANS, not inner diameters: a ring occupies
+    # r_in .. r_in + scint_radial_mm, so a 10 mm difference in diameter is only
+    # 5 mm of radius and leaves a 6 mm deep crystal overlapping its neighbour by
+    # 1 mm. An earlier version of this check compared diameters and happily
+    # produced overlapping scanners; the per-ring check further down would not
+    # have caught it either, since that one tests tangential packing within a
+    # ring rather than radial separation between rings.
+    _h = cli_args.scint_radial_mm   # SCINT_RADIAL_MM is not bound until later
+    _radial = [(d / 2.0, d / 2.0 + _h) for d in RING_INNER_DIAMS_MM]
+    for i in range(len(_radial) - 1):
+        clearance = _radial[i + 1][0] - _radial[i][1]
+        if clearance < MIN_RING_GAP_MM:
             raise ValueError(
-                f"Ring ordering violated: {hi_name}={hi:.1f} mm is not at least "
-                f"{MIN_RING_GAP_MM:.0f} mm beyond {lo_name}={lo:.1f} mm"
+                f"Ring {i + 1} and ring {i + 2} have {clearance:.1f} mm radial "
+                f"clearance (need {MIN_RING_GAP_MM:.0f} mm). Ring {i + 1} spans "
+                f"r={_radial[i][0]:.1f}-{_radial[i][1]:.1f} mm, ring {i + 2} "
+                f"starts at r={_radial[i + 1][0]:.1f} mm."
+                + (" The rings physically overlap." if clearance < 0 else "")
             )
 
     N_DET_RING1 = cli_args.n_det_ring1

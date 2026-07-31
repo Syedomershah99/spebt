@@ -68,13 +68,19 @@ warnings.filterwarnings(
 # Use 270 with safety margin.
 # d2_inner / d3_inner are the inner diameters of detector rings 2 and 3; rings 1
 # and 4 stay fixed at 260 / 650 mm.
-# d3 lower bound is NOT the ring gap -- ring 3 carries a fixed 960 crystals, and
-# below ~379 mm those cells overlap (see max_crystals_on_ring). 385 leaves a
-# small margin over that hard floor.
+# d2 lower / d3 upper bounds come from RADIAL clearance against the fixed rings:
+# a ring occupies r_in .. r_in + 6 mm, so 10 mm of clearance past ring 1 needs
+# d2 >= 260 + 2*(6+10) = 292, and clearance before ring 4 needs d3 <= 618.
+# The earlier values (270, 640) were derived from a diameter difference rather
+# than a radial gap and admitted designs whose rings interpenetrated by 1 mm.
+#
+# d3's lower bound is set by something else entirely: ring 3 carries a fixed 960
+# crystals, which do not fit below ~379 mm (see max_crystals_on_ring). 385 keeps
+# a small margin over that hard floor.
 PARAM_NAMES = ["aperture_diam_mm", "n_apertures", "n_det_ring1", "n_det_ring2",
                "d2_inner_mm", "d3_inner_mm"]
-BOUNDS_MIN = [0.2, 60.0, 120.0, 180.0, 270.0, 385.0]
-BOUNDS_MAX = [1.0, 270.0, 660.0, 960.0, 540.0, 640.0]
+BOUNDS_MIN = [0.2, 60.0, 120.0, 180.0, 292.0, 385.0]
+BOUNDS_MAX = [1.0, 270.0, 660.0, 960.0, 540.0, 618.0]
 DIM = len(PARAM_NAMES)
 
 # --- Feasibility constraints ---
@@ -111,12 +117,34 @@ def is_feasible(diam, n_ap):
     return diam < SAFETY_MARGIN * HR_CIRCUMFERENCE / n_ap
 
 
+def _ring_radial_span(inner_diam_mm):
+    """(inner, outer) radius of a ring's scintillator layer."""
+    r_in = inner_diam_mm / 2.0
+    return r_in, r_in + SCINT_RADIAL_MM
+
+
 def is_ring_ordering_ok(d2_inner, d3_inner):
-    """Check D1 < D2 < D3 < D4 with at least MIN_RING_GAP_MM between rings."""
+    """Check the rings are ordered with MIN_RING_GAP_MM of RADIAL clearance.
+
+    This compares radial spans, not inner diameters. The earlier version tested
+    `d2_inner - D1_INNER_MM >= 10`, which is a difference of DIAMETERS: 10 mm of
+    diameter is only 5 mm of radius, and each crystal is 6 mm deep, so rings
+    satisfying it interpenetrated by 1 mm. The geometry generator did not catch
+    this either -- its overlap check is tangential (arc length per cell within a
+    ring) and nothing tested radial separation between rings.
+
+    Clearance is measured between the outer surface of the inner ring and the
+    inner surface of the next one out, which is the gap an engineer would need
+    for mounting and cooling.
+    """
+    r1_out = _ring_radial_span(D1_INNER_MM)[1]
+    r2_in, r2_out = _ring_radial_span(d2_inner)
+    r3_in, r3_out = _ring_radial_span(d3_inner)
+    r4_in = _ring_radial_span(D4_INNER_MM)[0]
     return (
-        d2_inner - D1_INNER_MM >= MIN_RING_GAP_MM
-        and d3_inner - d2_inner >= MIN_RING_GAP_MM
-        and D4_INNER_MM - d3_inner >= MIN_RING_GAP_MM
+        r2_in - r1_out >= MIN_RING_GAP_MM
+        and r3_in - r2_out >= MIN_RING_GAP_MM
+        and r4_in - r3_out >= MIN_RING_GAP_MM
     )
 
 
