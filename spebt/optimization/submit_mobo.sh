@@ -10,7 +10,11 @@
 #SBATCH --partition=general-compute
 #SBATCH --qos=general-compute
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=96G
+# Sized against qLogNEHVI's hypervolume computation, which scales badly in the
+# number of X_baseline points. 96 GB sufficed at 120 training points (58.7 GB
+# peak) but OOM-killed at 189. If the training set grows much past ~250 this
+# will recur, and the real fix is capping X_baseline rather than the node.
+#SBATCH --mem=160G
 #SBATCH --time=72:00:00
 #SBATCH --job-name=mobo_loop
 #SBATCH --output=results/slurm_logs/out/mobo_%j.out
