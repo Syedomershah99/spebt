@@ -22,8 +22,13 @@ from matplotlib.lines import Line2D
 from itertools import combinations
 
 
-METRIC_COLS = ["fwhm_mean", "asci_pct", "sensitivity_mean", "mpxi_mean", "cnr_mean"]
-METRIC_LABELS = ["FWHM (mm)", "ASCI (%)", "Sensitivity", "MPXI", "CNR"]
+# Keep in sync with mobo_agent.OBJ_COLUMNS. Analysing the retired objectives
+# produces a hypervolume curve and Pareto front for metrics the optimizer is no
+# longer using, which is worse than useless for judging convergence.
+METRIC_COLS = ["fwhm_weighted_mean", "asci_pct_fwhm0p45", "ppds_ring1",
+               "mpxi_mean", "cnr_sector_mean"]
+METRIC_LABELS = ["FWHM wtd (mm)", "ASCI@0.45mm (%)", "PPDS ring1",
+                 "MPXI", "CNR sector-mean"]
 METRIC_DIRS = [-1, 1, 1, -1, 1]  # -1 = minimize, +1 = maximize
 
 DESIGN_COLS = ["aperture_diam_mm", "n_apertures", "n_det_ring1", "n_det_ring2"]
@@ -31,13 +36,20 @@ DESIGN_LABELS = ["Aperture Diam (mm)", "N Apertures", "N Det Ring 1", "N Det Rin
 
 # Reference point for hypervolume (worst acceptable values in MAXIMIZATION space)
 # These should be worse than any observed value after sign-flipping
-REF_POINT_PHYSICAL = {
-    "fwhm_mean": 1.5,        # worst FWHM (will be negated)
-    "asci_pct": 40.0,        # worst ASCI
-    "sensitivity_mean": 0.01, # worst sensitivity
-    "mpxi_mean": 15.0,       # worst MPXI (will be negated)
-    "cnr_mean": 1.0,         # worst CNR (observed minimum is ~1.41)
-}
+# Hypervolume reference point, derived from the data rather than hardcoded.
+# Hardcoded values silently go stale whenever an objective is redefined, and a
+# reference point that no longer bounds the data produces a meaningless
+# hypervolume. REF_MARGIN pushes it just past the worst observed value in each
+# objective's minimisation-space direction.
+REF_MARGIN = 0.05
+
+
+def reference_point(obj_max):
+    """Reference point in maximization space, just below the worst observation."""
+    worst = obj_max.min(axis=0)
+    spread = obj_max.max(axis=0) - worst
+    spread[spread == 0] = 1.0
+    return worst - REF_MARGIN * spread
 
 
 def is_pareto_optimal(objectives):
@@ -107,11 +119,8 @@ def compute_hypervolume_nd(points, ref_point):
 def plot_hypervolume_convergence(df, n_lhs, out_dir):
     """Plot 1: Hypervolume vs iteration number."""
     obj_max = to_maximization(df)
-    # Build the reference point in maximization space straight from METRIC_COLS
-    # so adding an objective does not require editing this list too.
-    ref = np.array([
-        d * REF_POINT_PHYSICAL[c] for c, d in zip(METRIC_COLS, METRIC_DIRS)
-    ])
+    # Fixed across the whole curve, so successive hypervolumes are comparable.
+    ref = reference_point(obj_max)
 
     hvs = []
     for i in range(1, len(df) + 1):
