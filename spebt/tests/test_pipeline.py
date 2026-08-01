@@ -315,6 +315,33 @@ class TestFailedRowClassification:
         got = self._classify(pd.DataFrame([{c: float("nan") for c in cols}]), cols)
         assert got["failed"] == 1 and got["partial"] == 0
 
+    def test_geometrically_invalid_rows_are_excluded(self):
+        """Rows whose rings overlap must not train the GP.
+
+        Configs proposed before the clearance fix have rings interpenetrating by
+        ~1 mm. The generator built them and the ray tracer modelled overlapping
+        absorbers, so their PPDFs are physically wrong rather than just poor.
+        """
+        import mobo_agent as ma
+        rows = [
+            {"d2_inner_mm": 390.0, "d3_inner_mm": 520.0},   # legacy, valid
+            {"d2_inner_mm": 400.0, "d3_inner_mm": 460.0},   # off-slice, valid
+            {"d2_inner_mm": 362.0, "d3_inner_mm": 640.0},   # ring 3 in ring 4
+            {"d2_inner_mm": 381.0, "d3_inner_mm": 391.0},   # ring 2 in ring 3
+            {"d2_inner_mm": 399.0, "d3_inner_mm": 424.0},   # only 6.5 mm gap
+        ]
+        ok = [ma.is_ring_ordering_ok(r["d2_inner_mm"], r["d3_inner_mm"]) for r in rows]
+        assert ok == [True, True, False, False, False], ok
+
+    def test_missing_d2d3_is_not_treated_as_invalid(self):
+        """A row with no D2/D3 recorded predates the expansion and is fine."""
+        import mobo_agent as ma
+        # Mirrors the guard in get_next_candidate: NaN passes through
+        for d2, d3 in ((float("nan"), 520.0), (390.0, float("nan"))):
+            passes = (pd.isna(d2) or pd.isna(d3)
+                      or ma.is_ring_ordering_ok(d2, d3))
+            assert passes
+
     def test_penalty_is_worse_than_every_real_value(self):
         """Penalty must sit outside the observed range in the correct direction."""
         import mobo_agent as ma

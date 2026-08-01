@@ -242,6 +242,25 @@ def get_next_candidate(results_csv: str):
     # Only rows with EVERY objective missing are genuine failures: the
     # force_zero path in run_sai_pipeline.sh writes NaN across the board when
     # geometry cannot be built, and that absence really is information.
+    # Drop rows whose geometry cannot physically be built. Configs proposed
+    # before the ring-clearance fix used a diameter comparison rather than a
+    # radial one, so some have rings interpenetrating by ~1 mm. The generator
+    # built them anyway and the ray tracer modelled absorbers occupying the same
+    # space, which makes their PPDFs wrong rather than merely unattractive.
+    # Filtering here rather than editing the CSV keeps the record intact and
+    # covers any future bounds change automatically.
+    if {"d2_inner_mm", "d3_inner_mm"}.issubset(df.columns):
+        geom_ok = df.apply(
+            lambda r: (pd.isna(r["d2_inner_mm"]) or pd.isna(r["d3_inner_mm"])
+                       or is_ring_ordering_ok(r["d2_inner_mm"], r["d3_inner_mm"])),
+            axis=1,
+        )
+        n_bad_geom = int((~geom_ok).sum())
+        if n_bad_geom:
+            logger.warning(f"Excluding {n_bad_geom} rows whose rings violate the "
+                           f"{MIN_RING_GAP_MM:.0f} mm radial clearance rule")
+            df = df[geom_ok].reset_index(drop=True)
+
     df_valid = df.dropna(subset=OBJ_COLUMNS)
     all_missing = df[OBJ_COLUMNS].isna().all(axis=1)
     some_missing = df[OBJ_COLUMNS].isna().any(axis=1)
