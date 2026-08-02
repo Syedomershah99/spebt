@@ -43,6 +43,11 @@ DESIGN_LABELS = ["Aperture Diam (mm)", "N Apertures", "N Det Ring 1", "N Det Rin
 # objective's minimisation-space direction.
 REF_MARGIN = 0.05
 
+# Number of points to evaluate along the hypervolume curve. Exact 5D hypervolume
+# is expensive enough that computing it at every prefix of a 200+ config archive
+# takes hours; ~40 samples gives the same curve in minutes.
+HV_CURVE_POINTS = 40
+
 
 def reference_point(obj_max):
     """Reference point in maximization space, just below the worst observation."""
@@ -122,13 +127,18 @@ def plot_hypervolume_convergence(df, n_lhs, out_dir):
     # Fixed across the whole curve, so successive hypervolumes are comparable.
     ref = reference_point(obj_max)
 
-    hvs = []
-    for i in range(1, len(df) + 1):
-        hv = compute_hypervolume_nd(obj_max[:i], ref)
-        hvs.append(hv)
+    # Exact hypervolume in 5D costs roughly O(N^(M-1)), and this recomputes from
+    # scratch at every prefix, so evaluating all 208 points takes hours. The
+    # curve is smooth and monotone, so sampling every few points is visually
+    # identical for a fraction of the work. Always include the final point so
+    # the endpoint is exact.
+    n = len(df)
+    stride = max(1, n // HV_CURVE_POINTS)
+    idx = sorted(set(list(range(1, n + 1, stride)) + [n]))
+    hvs = [compute_hypervolume_nd(obj_max[:i], ref) for i in idx]
 
     fig, ax = plt.subplots(figsize=(10, 5))
-    ax.plot(range(1, len(hvs) + 1), hvs, "b-o", markersize=3, linewidth=1.5)
+    ax.plot(idx, hvs, "b-o", markersize=3, linewidth=1.5)
     ax.axvline(x=n_lhs + 0.5, color="red", linestyle="--", alpha=0.6,
                label=f"LHS ({n_lhs}) → MOBO")
     # NB: this is the running hypervolume over configs that have ALL objectives,
