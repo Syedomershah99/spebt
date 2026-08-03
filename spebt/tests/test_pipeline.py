@@ -1045,3 +1045,79 @@ class TestCsvAlignment:
         assert new_row["n_apertures"] == 180
         # cnr_mean is not written by compute_metrics.py, so should be NaN on the new row
         assert pd.isna(new_row["cnr_mean"])
+
+
+# =============================================================================
+# run_mobo_loop.acquire_singleton_lock — two controllers must not coexist
+# =============================================================================
+class TestControllerSingletonLock:
+    """Two concurrent controllers claim the same manifest index and collide.
+
+    Aug 2026: submit_mobo.sh was re-submitted while 25545619 was still running,
+    queueing a second controller against the same manifest. Caught in squeue
+    before it started; these tests make sure it cannot start at all.
+    """
+
+    _CHILD = (
+        "import sys, os; sys.path.insert(0, {opt!r});"
+        "os.environ['MOBO_RESULTS_DIR'] = {res!r};"
+        "import run_mobo_loop as L;"
+        "L.acquire_singleton_lock();"
+        "print('ACQUIRED')"
+    )
+
+    def _child(self, tmp_path, hold_fd=None):
+        opt = os.path.join(_REPO_ROOT, "optimization")
+        code = self._CHILD.format(opt=opt, res=str(tmp_path))
+        return subprocess.run([sys.executable, "-c", code],
+                              capture_output=True, text=True, timeout=60)
+
+    def test_first_holder_acquires(self, tmp_path):
+        r = self._child(tmp_path)
+        assert r.returncode == 0, r.stderr
+        assert "ACQUIRED" in r.stdout
+
+    def test_second_holder_is_refused(self, tmp_path):
+        """While one process holds the lock, a second must exit non-zero."""
+        opt = os.path.join(_REPO_ROOT, "optimization")
+        holder_code = (
+            f"import sys, os; sys.path.insert(0, {opt!r});"
+            f"os.environ['MOBO_RESULTS_DIR'] = {str(tmp_path)!r};"
+            "import run_mobo_loop as L;"
+            "L.acquire_singleton_lock();"
+            "print('HELD', flush=True);"
+            "import time; time.sleep(30)"
+        )
+        holder = subprocess.Popen([sys.executable, "-c", holder_code],
+                                  stdout=subprocess.PIPE, text=True)
+        try:
+            assert holder.stdout.readline().strip() == "HELD"
+            r = self._child(tmp_path)
+            assert r.returncode == 1, (
+                f"second controller was allowed to start: {r.stdout} {r.stderr}")
+            assert "already running" in (r.stdout + r.stderr).lower()
+        finally:
+            holder.kill()
+            holder.wait(timeout=10)
+
+    def test_lock_released_when_holder_dies(self, tmp_path):
+        """A killed or OOM-ed controller must not leave a lock needing manual
+        cleanup -- that would turn a crash into a blocked queue."""
+        opt = os.path.join(_REPO_ROOT, "optimization")
+        holder_code = (
+            f"import sys, os; sys.path.insert(0, {opt!r});"
+            f"os.environ['MOBO_RESULTS_DIR'] = {str(tmp_path)!r};"
+            "import run_mobo_loop as L;"
+            "L.acquire_singleton_lock();"
+            "print('HELD', flush=True);"
+            "import time; time.sleep(30)"
+        )
+        holder = subprocess.Popen([sys.executable, "-c", holder_code],
+                                  stdout=subprocess.PIPE, text=True)
+        assert holder.stdout.readline().strip() == "HELD"
+        holder.kill()
+        holder.wait(timeout=10)
+
+        r = self._child(tmp_path)
+        assert r.returncode == 0, f"stale lock survived the holder: {r.stderr}"
+        assert "ACQUIRED" in r.stdout

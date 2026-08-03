@@ -14,6 +14,9 @@ Usage:
 import os
 import sys
 import time
+import errno
+import fcntl
+import socket
 import subprocess
 import argparse
 import pandas as pd
@@ -38,6 +41,9 @@ RESULTS_DIR = os.environ.get(
     os.path.join(CODE_DIR, "optimization", "results"),
 )
 MANIFEST_FILE = os.path.join(RESULTS_DIR, "mobo_manifest.csv")
+LOCK_FILE = os.path.join(RESULTS_DIR, ".mobo_loop.lock")
+# Holds the flock fd for the process lifetime. See acquire_singleton_lock().
+_LOCK_FD = None
 RESULTS_CSV = os.path.join(RESULTS_DIR, "results_summary_mobo.csv")
 SLURM_SCRIPT = os.path.join(CODE_DIR, "optimization", "run_sai_pipeline.sh")
 LOG_DIR = os.path.join(RESULTS_DIR, "slurm_logs")
@@ -55,6 +61,58 @@ def ensure_dirs():
     os.makedirs(RESULTS_DIR, exist_ok=True)
     os.makedirs(os.path.join(LOG_DIR, "out"), exist_ok=True)
     os.makedirs(os.path.join(LOG_DIR, "err"), exist_ok=True)
+
+
+def acquire_singleton_lock():
+    """Refuse to start if another controller already owns the manifest.
+
+    Nothing in the loop is safe to run twice concurrently: get_next_manifest_index()
+    reads the file with no reservation, so two controllers claim the SAME index,
+    append duplicate rows, and submit two pipelines writing to one config
+    directory. Re-submitting submit_mobo.sh while a controller is alive is easy
+    to do by accident -- the script is documented as safe to re-submit, and it is,
+    but only once the previous one has exited.
+
+    flock is released automatically when the process dies, so a killed or
+    OOM-ed controller leaves no stale lock to clear by hand.
+
+    Two details that look like style but are not:
+
+    - The fd is parked in a module global, not returned for the caller to hold.
+      A returned file object whose value is discarded is garbage-collected
+      immediately, which closes the fd and drops the lock -- the guard would
+      then pass its own tests while protecting nothing.
+    - The file is opened without O_TRUNC and truncated only AFTER the lock is
+      won. Opening "w" truncates before flock is attempted, so a refused
+      process would erase the running controller's identity on its way to
+      reporting it.
+    """
+    global _LOCK_FD
+    if _LOCK_FD is not None:
+        return
+    fd = os.open(LOCK_FILE, os.O_CREAT | os.O_RDWR, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as e:
+        os.close(fd)
+        if e.errno not in (errno.EACCES, errno.EAGAIN):
+            raise
+        try:
+            with open(LOCK_FILE) as fh:
+                holder = fh.read().strip() or "unknown"
+        except OSError:
+            holder = "unknown"
+        console.print(
+            f"[bold red]Another MOBO controller is already running[/bold red] "
+            f"({holder}).\nRefusing to start: two controllers would claim the same "
+            f"manifest index and collide on config directories.\n"
+            f"Cancel this job, or wait for the running one to finish."
+        )
+        sys.exit(1)
+    os.ftruncate(fd, 0)
+    os.write(fd, f"job={os.environ.get('SLURM_JOB_ID', 'local')} "
+                 f"host={socket.gethostname()} pid={os.getpid()}\n".encode())
+    _LOCK_FD = fd
 
 
 def ensure_manifest_header():
@@ -203,6 +261,9 @@ def main():
     ))
 
     ensure_dirs()
+    # Must be taken before anything reads the manifest, since the index race
+    # starts at the first read. The fd is held in a module global, not here.
+    acquire_singleton_lock()
     ensure_manifest_header()
     assert_initial_data()
 
