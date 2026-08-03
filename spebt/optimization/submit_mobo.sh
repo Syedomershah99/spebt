@@ -31,4 +31,4 @@ mkdir -p results/slurm_logs/out results/slurm_logs/err
 # --max_iters rows, so it's safe to set higher than we plan to run in one go.
 # 180 closed out the 4D campaign; 260 gives 80 iterations of 6D search on the
 # revised objective set.
-python run_mobo_loop.py --max_iters 260
+python run_mobo_loop.py --max_iters 300
