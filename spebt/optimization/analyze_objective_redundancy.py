@@ -3,10 +3,12 @@
 Is this really a five-objective problem?
 
 After the Jul 2026 objective revision, four of the five correlate strongly with
-reconstructed CNR: FWHM -0.93, ASCI@0.45mm +0.80, PPDS ring 1 +0.60. Only MPXI
-is independent, at essentially zero. That raises a question worth answering
-before the next campaign: if four objectives largely restate the same thing,
-the multi-objective formulation may be doing less work than it appears, and a
+reconstructed CNR: FWHM -0.93, ASCI@0.45mm +0.80, PPDS ring 1 +0.60. MPXI was
+assumed independent on the strength of a ~0.00 correlation against CNR, but that
+was measured against pooled cnr_mean on ~100 configs and says nothing about how
+MPXI relates to the OTHER four. That raises a question worth answering before
+the next campaign: if four objectives largely restate the same thing, the
+multi-objective formulation may be doing less work than it appears, and a
 smaller set would search the same space with a sharper acquisition signal.
 
 Symptoms already visible: 94 of 208 designs are Pareto-optimal. With five
@@ -38,14 +40,23 @@ import pandas as pd
 
 import mobo_agent as ma
 
-# Subsets worth testing. CNR is the outcome we care about; MPXI is the only
-# objective carrying information independent of it.
+# Subsets worth testing. CNR is the outcome we care about; MPXI is the objective
+# least aligned with it, so it is the natural second axis to test.
+# Short tags keep the section-3 table readable -- the full labels all start with
+# "CNR" and truncate to nothing useful.
 SUBSETS = {
     "all five": ma.OBJ_COLUMNS,
     "CNR + MPXI": ["cnr_sector_mean", "mpxi_mean"],
     "CNR + MPXI + FWHM": ["cnr_sector_mean", "mpxi_mean", "fwhm_weighted_mean"],
     "CNR only": ["cnr_sector_mean"],
     "no CNR (the 4 proxies)": [c for c in ma.OBJ_COLUMNS if c != "cnr_sector_mean"],
+}
+SUBSET_TAGS = {
+    "all five": "all5",
+    "CNR + MPXI": "C+M",
+    "CNR + MPXI + FWHM": "C+M+F",
+    "CNR only": "CNRonly",
+    "no CNR (the 4 proxies)": "noCNR",
 }
 
 
@@ -116,7 +127,11 @@ def main():
     print("=" * 74)
     full_mask = pareto_mask(to_max(df, ma.OBJ_COLUMNS))
     full_set = set(df.index[full_mask])
-    print(f"\n{'objective set':<26} {'Pareto':>7} {'% of all':>9} {'overlap with 5-obj':>19}")
+    # A smaller front is always a subset of a larger one, so "how much of the
+    # subset front is in the full front" is trivially 100% and says nothing.
+    # The informative direction is the reverse: how much of the five-objective
+    # front exists ONLY because of the extra objectives.
+    print(f"\n{'objective set':<26} {'Pareto':>7} {'% of all':>9} {'adds to 5-obj front':>20}")
     print("-" * 66)
     for label, cols in SUBSETS.items():
         cols = [c for c in cols if c in df.columns]
@@ -124,8 +139,9 @@ def main():
             continue
         m = pareto_mask(to_max(df, cols))
         s = set(df.index[m])
-        overlap = len(s & full_set) / len(s) if s else float("nan")
-        print(f"{label:<26} {len(s):>7} {len(s)/n:>8.1%} {overlap:>18.0%}")
+        extra = len(full_set - s)
+        print(f"{label:<26} {len(s):>7} {len(s)/n:>8.1%} "
+              f"{extra:>13} designs")
 
     print("""
 A five-objective front covering most of the archive is the tell: with five
@@ -140,15 +156,14 @@ nothing is dominated and the front stops being a filter.""")
     print("contribution (higher contribution = more valuable to that front):\n")
 
     top = df.nlargest(5, "cnr_sector_mean")
+    masks = {lab: pareto_mask(to_max(df, [c for c in cols if c in df.columns]))
+             for lab, cols in SUBSETS.items()}
     print(f"{'design':<30} {'CNR':>7} " +
-          " ".join(f"{lab.split()[0]:>10}" for lab in SUBSETS))
+          " ".join(f"{SUBSET_TAGS[lab]:>10}" for lab in SUBSETS))
     print("-" * (40 + 11 * len(SUBSETS)))
     for idx, row in top.iterrows():
-        cells = []
-        for label, cols in SUBSETS.items():
-            cols = [c for c in cols if c in df.columns]
-            m = pareto_mask(to_max(df, cols))
-            cells.append("front" if m[df.index.get_loc(idx)] else "  --")
+        pos = df.index.get_loc(idx)
+        cells = ["front" if masks[lab][pos] else "  --" for lab in SUBSETS]
         cfg = str(row["config"])[:28]
         print(f"{cfg:<30} {row['cnr_sector_mean']:>7.3f} " +
               " ".join(f"{c:>10}" for c in cells))
@@ -158,11 +173,14 @@ How to read this:
   - If the top CNR designs sit on the front under every subset, the extra
     objectives are not what put them there, and a smaller set would have found
     them too.
-  - If mean |rho| between objectives is high and two principal directions carry
-    most of the variance, the problem is closer to two-objective than five. That
-    is not a failure -- it is worth knowing, because a smaller set gives the
-    acquisition function a sharper signal and a front that actually
-    discriminates.
+  - Compare the number of principal directions carrying 90% of the variance
+    against the 5 objectives declared. A gap means the formulation is asking for
+    more trade-offs than the physics actually offers. That is not a failure --
+    it is worth knowing, because a smaller set gives the acquisition function a
+    sharper signal and a front that actually discriminates.
+  - Sign matters in the correlation table. It is in maximization space, so a
+    NEGATIVE entry is a genuine trade-off between two objectives, and a strongly
+    positive one means the pair is largely restating a single quantity.
   - The "no CNR" row is the useful control: if the four proxies alone pick the
     same designs, they are doing their job as cheap stand-ins for an expensive
     reconstruction.
