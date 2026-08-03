@@ -37,6 +37,7 @@ Usage:
 import argparse
 import os
 import sys
+import time
 import warnings
 
 import numpy as np
@@ -49,8 +50,27 @@ from botorch.models.model_list_gp_regression import ModelListGP
 from botorch.utils.transforms import normalize
 from gpytorch.mlls import ExactMarginalLogLikelihood
 
+from botorch.sampling.normal import SobolQMCNormalSampler
+
 import mobo_agent as ma
 from analyze_objective_redundancy import SUBSETS, SUBSET_TAGS
+
+# Candidates scored per acquisition call. Scoring all ~180 remaining archive
+# points at once OOM-killed a 32 GB job after 4.5 h: qLogNEHVI holds a
+# hypervolume partition per candidate, so peak memory is linear in the batch and
+# steep in the objective count. Chunking bounds it without changing any result --
+# the values are concatenated and the argmax is over the same set.
+ACQF_CHUNK = 16
+
+# Monte Carlo samples for the acquisition. BoTorch defaults higher; 64 is enough
+# to rank candidates, which is all the replay does with them.
+MC_SAMPLES = 64
+
+# Exact box decomposition is combinatorial in the number of objectives and is
+# the other half of the memory blowup at m=5. BoTorch recommends the
+# approximate partitioning above m=4; alpha=0 keeps it exact where it is cheap.
+def hv_alpha(m):
+    return 0.0 if m <= 4 else 1e-3
 
 # The real campaign seeded with 21 LHS designs before the first proposal, so the
 # replay starts from the same budget. Changing this changes what "iterations to
@@ -110,11 +130,17 @@ def replay(x_norm, y_max, rng, n_steps, use_acqf=True):
                 X_baseline=tx,
                 prune_baseline=True,
                 cache_root=False,
+                alpha=hv_alpha(ty_std.shape[1]),
+                sampler=SobolQMCNormalSampler(sample_shape=torch.Size([MC_SAMPLES])),
             )
             cand = x_norm[remaining].unsqueeze(1)  # (n_rem, q=1, d)
-            with torch.no_grad():
-                vals = acqf(cand)
+            scores = []
+            for i in range(0, len(cand), ACQF_CHUNK):
+                with torch.no_grad():
+                    scores.append(acqf(cand[i:i + ACQF_CHUNK]))
+            vals = torch.cat(scores)
         chosen.append(int(remaining[int(torch.argmax(vals))]))
+        del acqf, model
 
     return chosen
 
@@ -134,6 +160,12 @@ def main():
     ap.add_argument("--n_repeats", type=int, default=N_REPEATS_DEFAULT)
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
+
+    # Python block-buffers stdout when it is not a terminal. A 32 GB OOM kill
+    # discarded 4.5 h of completed subset rows that had "printed" into the
+    # buffer and never reached the log. Line buffering makes every finished row
+    # survive whatever kills the job.
+    sys.stdout.reconfigure(line_buffering=True)
 
     if not os.path.exists(args.results_csv):
         print(f"ERROR: results CSV not found: {args.results_csv}")
@@ -159,10 +191,11 @@ def main():
     print(f"best CNR {best:.3f} ({best_cfg});  top-5 threshold {top5:.3f}")
     print(f"seed set {N_INIT} designs, matching the campaign's LHS start\n")
 
-    runs = dict(SUBSETS)
-    runs["random (control)"] = None
-    tags = dict(SUBSET_TAGS)
-    tags["random (control)"] = "random"
+    # Control first, deliberately. It is much the cheapest and every other row
+    # is meaningless without it, so if the job dies partway the one result we
+    # cannot do without is already in the log.
+    runs = {"random (control)": None}
+    runs.update(SUBSETS)
 
     print("=" * 78)
     print(f"EVALUATIONS AFTER THE SEED SET TO REACH EACH TARGET (mean +/- sd over repeats)")
@@ -183,12 +216,15 @@ def main():
             y_max = None
 
         hit5, hitbest, finals = [], [], []
+        t0 = time.time()
         for r in range(args.n_repeats):
             rng = np.random.default_rng(args.seed + r)
             order = replay(x_norm, y_max, rng, args.n_steps, use_acqf=use_acqf)
             hit5.append(steps_to_reach(order, outcome, top5))
             hitbest.append(steps_to_reach(order, outcome, best))
             finals.append(outcome[order].max())
+            print(f"    [{label}] repeat {r + 1}/{args.n_repeats} done "
+                  f"({time.time() - t0:.0f}s elapsed, best CNR {finals[-1]:.3f})")
 
         def fmt(vals):
             got = [v for v in vals if v is not None]
