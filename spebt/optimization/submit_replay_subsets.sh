@@ -11,11 +11,14 @@
 # candidate scoring and uses approximate partitioning at m=5, which measured
 # 0.83 GB peak on a synthetic archive of the same shape.
 #
-# Sized at 128G anyway, because that measurement is a floor rather than a
-# prediction: the synthetic archive had a 12% Pareto front and the real one has
-# 44%, and I could not reproduce 44% closely enough to trust an extrapolation.
-# The job is short, so over-requesting costs little; another OOM costs hours.
-#SBATCH --mem=128G
+# MEASURED on the real archive (job 25582343): 585 MB RSS mid-run, against the
+# 0.83 GB the synthetic probe predicted. The worry that a 46% Pareto front would
+# blow past that estimate was wrong — chunking plus approximate partitioning
+# bounds the peak regardless of front size. 128G was requested for that run and
+# was a ~200x over-correction after the 32G OOM.
+# 16G is ~15x the measured peak: enough margin for a larger archive without
+# queueing behind a request nothing needs.
+#SBATCH --mem=16G
 #SBATCH --time=12:00:00
 #SBATCH --job-name=replay_subsets
 #SBATCH --output=results/slurm_logs/out/replay_%j.out
