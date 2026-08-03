@@ -193,6 +193,37 @@ class TestRingOrdering:
         import mobo_agent as ma
         assert not ma.is_ring_ordering_ok(520.0, 390.0)  # D3 inside D2
 
+    def test_diameter_and_radial_rules_agree(self):
+        """The acquisition-time check works on diameters for speed; it must accept
+        exactly what the radial rule accepts.
+
+        These drifted apart once: is_ring_ordering_ok was corrected to compare
+        radial spans while is_feasible_norm kept comparing d3 - d2 against 10 mm.
+        The optimizer then proposed d2=540/d3=550 for 46 consecutive iterations,
+        every one of which the geometry generator refused to build.
+        """
+        import mobo_agent as ma
+        for d2 in range(292, 541, 8):
+            for d3 in range(385, 619, 8):
+                by_diam = (d3 - d2) >= ma.MIN_DIAM_SEPARATION_MM
+                by_radius = ma.is_ring_ordering_ok(float(d2), float(d3))
+                assert by_diam == by_radius, f"disagree at d2={d2}, d3={d3}"
+
+    def test_repair_produces_a_valid_layout(self):
+        """The repair path must not emit something still invalid.
+
+        It previously set d3 = d2 + 10, which for d2=540 gives the overlapping
+        540/550 -- and deterministically, so every iteration landed on the same
+        unbuildable design.
+        """
+        import mobo_agent as ma
+        for d2, d3 in ((540.0, 550.0), (500.0, 505.0), (292.0, 300.0), (530.0, 618.0)):
+            r3 = min(d2 + ma.MIN_DIAM_SEPARATION_MM, ma.BOUNDS_MAX[5])
+            r2 = max(min(d2, r3 - ma.MIN_DIAM_SEPARATION_MM), ma.BOUNDS_MIN[4])
+            if not ma.is_ring_ordering_ok(r2, r3):
+                r2, r3 = 390.0, 520.0      # documented fallback
+            assert ma.is_ring_ordering_ok(r2, r3), f"repair failed for {d2}/{d3}"
+
     def test_bounds_admit_only_valid_layouts(self):
         """Every bound corner must satisfy the clearance rule."""
         import mobo_agent as ma

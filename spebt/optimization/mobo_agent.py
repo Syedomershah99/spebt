@@ -97,6 +97,14 @@ D1_INNER_MM = 260.0
 D4_INNER_MM = 650.0
 MIN_RING_GAP_MM = 10.0
 
+# Minimum separation between two rings' INNER DIAMETERS that yields
+# MIN_RING_GAP_MM of radial clearance. A ring occupies r_in .. r_in + 6 mm, so
+# clearing the previous ring costs 6 mm of radius plus the gap, and diameters
+# are twice radii. Derived rather than written as a literal, because having the
+# radial rule in one place and a hand-computed diameter threshold in another is
+# exactly how the two drifted apart before.
+MIN_DIAM_SEPARATION_MM = 2.0 * (6.0 + MIN_RING_GAP_MM)   # 32 mm
+
 # 3) Detector cell packing. Each ring holds n_scint/2 cells, and every cell needs
 # 2*W + gap of arc length. Shrinking a ring while keeping its crystal count
 # raises the packing density, so diameter and detector count interact: the
@@ -228,6 +236,9 @@ def get_next_candidate(results_csv: str):
         raise FileNotFoundError(f"Could not find {results_csv}")
 
     df = pd.read_csv(results_csv)
+    # Unfiltered copy: every design ever attempted, valid or not. Used only for
+    # deduplication, so a design that failed still counts as "already tried".
+    df_all = df.copy()
 
     # Separate feasible, genuinely-failed, and partially-measured rows.
     #
@@ -260,6 +271,13 @@ def get_next_candidate(results_csv: str):
             logger.warning(f"Excluding {n_bad_geom} rows whose rings violate the "
                            f"{MIN_RING_GAP_MM:.0f} mm radial clearance rule")
             df = df[geom_ok].reset_index(drop=True)
+
+    # Deduplication must see EVERY design already attempted, including the ones
+    # just excluded from training. Filtering them out of the dedup reference set
+    # makes the optimizer forget it has tried a point: after the clearance fix it
+    # re-proposed the same unbuildable d2=540/d3=550 for 46 consecutive
+    # iterations because each failed attempt was hidden from the next.
+    df_attempted = df_all[PARAM_NAMES].dropna() if set(PARAM_NAMES).issubset(df_all.columns) else df[PARAM_NAMES].dropna()
 
     df_valid = df.dropna(subset=OBJ_COLUMNS)
     all_missing = df[OBJ_COLUMNS].isna().all(axis=1)
@@ -423,7 +441,12 @@ def get_next_candidate(results_csv: str):
 
         d2 = d2_min + x_norm[..., 4] * d2_range
         d3 = d3_min + x_norm[..., 5] * d3_range
-        ordering_ok = (d3 - d2) >= MIN_RING_GAP_MM
+        # Separation of inner diameters, which must cover ring 2's 6 mm depth
+        # plus the clearance. Comparing d3 - d2 against MIN_RING_GAP_MM directly
+        # accepts overlapping rings -- that mistake let the acquisition propose
+        # d2=540/d3=550 for 46 consecutive iterations, none of which could be
+        # built.
+        ordering_ok = (d3 - d2) >= MIN_DIAM_SEPARATION_MM
 
         n_det2 = nd2_min + x_norm[..., 3] * nd2_range
         max_nd2 = 4.0 * math.pi * (d2 / 2.0 + SCINT_RADIAL_MM / 2.0) / CELL_SPAN_MM
@@ -476,10 +499,24 @@ def get_next_candidate(results_csv: str):
         logger.warning(f"Candidate infeasible (d={next_diam:.4f}, n={next_n_ap}), clamping aperture_diam")
         next_diam = min(next_diam, SAFETY_MARGIN * HR_CIRCUMFERENCE / next_n_ap - 0.01)
     if not is_ring_ordering_ok(next_d2, next_d3):
-        logger.warning(f"Candidate violates ring ordering (d2={next_d2:.1f}, d3={next_d3:.1f}), "
-                       f"pushing d3 out to keep the {MIN_RING_GAP_MM:.0f} mm gap")
-        next_d3 = min(next_d2 + MIN_RING_GAP_MM, D4_INNER_MM - MIN_RING_GAP_MM)
-        next_d2 = min(next_d2, next_d3 - MIN_RING_GAP_MM)
+        # Repair by separating the diameters enough to clear ring 2's depth, then
+        # pulling d2 in if d3 has hit its bound. The previous version used
+        # MIN_RING_GAP_MM as a diameter offset, so for d2=540 it produced
+        # d3=550 -- still overlapping, and deterministic, which is why the same
+        # unbuildable design was proposed 46 iterations running.
+        before = (next_d2, next_d3)
+        next_d3 = min(next_d2 + MIN_DIAM_SEPARATION_MM, BOUNDS_MAX[5])
+        next_d2 = min(next_d2, next_d3 - MIN_DIAM_SEPARATION_MM)
+        next_d2 = max(next_d2, BOUNDS_MIN[4])
+        logger.warning(f"Candidate violated ring clearance "
+                       f"(d2={before[0]:.1f}, d3={before[1]:.1f}); "
+                       f"repaired to d2={next_d2:.1f}, d3={next_d3:.1f}")
+        if not is_ring_ordering_ok(next_d2, next_d3):
+            # Repair cannot succeed from every starting point. Falling back to
+            # the legacy layout is better than emitting a design the pipeline
+            # will refuse to build and burning the iteration on a NaN row.
+            logger.error(f"Repair failed; falling back to the legacy 390/520 layout")
+            next_d2, next_d3 = 390.0, 520.0
     if not is_ring_packing_ok(next_n_det1, next_n_det2, next_d2, next_d3):
         # Trim ring 2's crystal count to what actually fits, rounding down to an
         # even number. Better a slightly smaller ring than a geometry crash that
@@ -492,7 +529,7 @@ def get_next_candidate(results_csv: str):
         next_n_det2 = max(int(BOUNDS_MIN[3]), trimmed)
 
     # --- Deduplication: reject if too close to a previously tried config ---
-    all_x = torch.tensor(df[PARAM_NAMES].dropna().values, dtype=torch.double)
+    all_x = torch.tensor(df_attempted.values, dtype=torch.double)
     candidate_vec = torch.tensor([next_diam, float(next_n_ap), float(next_n_det1),
                                   float(next_n_det2), next_d2, next_d3],
                                  dtype=torch.double)
