@@ -1191,3 +1191,57 @@ class TestMpxiVariants:
         import compute_metrics as cm
         r = cm.compute_mpxi_variants(str(tmp_path / "nothing"))
         assert all(np.isnan(v) for v in r.values())
+
+
+# =============================================================================
+# Objective-set definition — one source of truth
+# =============================================================================
+class TestObjectiveSetSingleSource:
+    """run_mobo_loop and analyze_mobo_convergence used to carry hand-synced
+    copies of OBJ_COLUMNS under "keep in sync" comments. A duplicated rule that
+    drifted is what made 46 consecutive iterations propose an unbuildable
+    geometry in Jul 2026. These fail if anyone reintroduces a private copy."""
+
+    def test_run_mobo_loop_imports_the_definition(self):
+        import mobo_agent as ma
+        import run_mobo_loop as loop
+        assert loop.OBJ_COLUMNS is ma.OBJ_COLUMNS
+        assert loop.OBJ_DIRECTIONS is ma.OBJ_DIRECTIONS
+
+    def test_convergence_imports_the_definition(self):
+        import mobo_agent as ma
+        import analyze_mobo_convergence as conv
+        assert conv.METRIC_COLS is ma.OBJ_COLUMNS
+        assert conv.METRIC_DIRS is ma.OBJ_DIRECTIONS
+
+    def test_parallel_lists_stay_aligned(self):
+        import mobo_agent as ma
+        n = len(ma.OBJ_COLUMNS)
+        assert len(ma.OBJ_DIRECTIONS) == n
+        assert len(ma.OBJ_NAMES) == n
+        assert len(ma.OBJ_SHORT) == n
+        assert all(d in (1.0, -1.0) for d in ma.OBJ_DIRECTIONS)
+
+    def test_mpxi_is_maximized_under_the_corrected_definition(self):
+        """RY approved Aug 2026: windowed+active MPXI, maximized.
+
+        Measured in physical units on 228 designs, multiplexing correlates
+        +0.60 with CNR, +0.91 with windowed ASCI and -0.73 with FWHM. Minimizing
+        it optimizes away from image quality. If this ever reverts to
+        mpxi_mean or to a -1 direction, that is a regression, not a choice.
+        """
+        import mobo_agent as ma
+        assert "mpxi_windowed_active_mean" in ma.OBJ_COLUMNS
+        assert "mpxi_mean" not in ma.OBJ_COLUMNS
+        i = ma.OBJ_COLUMNS.index("mpxi_windowed_active_mean")
+        assert ma.OBJ_DIRECTIONS[i] == 1.0, "MPXI must be maximized"
+
+    def test_names_declare_the_same_direction_as_the_signs(self):
+        """A label saying (min) beside a +1 direction would mislead every log
+        and status table the campaign is monitored through."""
+        import mobo_agent as ma
+        for name, d in zip(ma.OBJ_NAMES, ma.OBJ_DIRECTIONS):
+            if "(min)" in name:
+                assert d == -1.0, f"{name} labelled min but direction {d}"
+            elif "(max)" in name:
+                assert d == 1.0, f"{name} labelled max but direction {d}"

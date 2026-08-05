@@ -46,8 +46,9 @@ import mobo_agent as ma
 # "CNR" and truncate to nothing useful.
 SUBSETS = {
     "all five": ma.OBJ_COLUMNS,
-    "CNR + MPXI": ["cnr_sector_mean", "mpxi_mean"],
-    "CNR + MPXI + FWHM": ["cnr_sector_mean", "mpxi_mean", "fwhm_weighted_mean"],
+    "CNR + MPXI": ["cnr_sector_mean", "mpxi_windowed_active_mean"],
+    "CNR + MPXI + FWHM": ["cnr_sector_mean", "mpxi_windowed_active_mean",
+                          "fwhm_weighted_mean"],
     "CNR only": ["cnr_sector_mean"],
     "no CNR (the 4 proxies)": [c for c in ma.OBJ_COLUMNS if c != "cnr_sector_mean"],
 }

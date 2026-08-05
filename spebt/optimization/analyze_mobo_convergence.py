@@ -22,14 +22,12 @@ from matplotlib.lines import Line2D
 from itertools import combinations
 
 
-# Keep in sync with mobo_agent.OBJ_COLUMNS. Analysing the retired objectives
-# produces a hypervolume curve and Pareto front for metrics the optimizer is no
-# longer using, which is worse than useless for judging convergence.
-METRIC_COLS = ["fwhm_weighted_mean", "asci_pct_fwhm0p45", "ppds_ring1",
-               "mpxi_mean", "cnr_sector_mean"]
-METRIC_LABELS = ["FWHM wtd (mm)", "ASCI@0.45mm (%)", "PPDS ring1",
-                 "MPXI", "CNR sector-mean"]
-METRIC_DIRS = [-1, 1, 1, -1, 1]  # -1 = minimize, +1 = maximize
+# Imported rather than restated. This copy previously drifted and produced a
+# hypervolume curve for metrics the optimizer had already stopped using, which
+# is worse than useless for judging convergence.
+from mobo_agent import OBJ_COLUMNS as METRIC_COLS
+from mobo_agent import OBJ_SHORT as METRIC_LABELS
+from mobo_agent import OBJ_DIRECTIONS as METRIC_DIRS
 
 DESIGN_COLS = ["aperture_diam_mm", "n_apertures", "n_det_ring1", "n_det_ring2"]
 DESIGN_LABELS = ["Aperture Diam (mm)", "N Apertures", "N Det Ring 1", "N Det Ring 2"]

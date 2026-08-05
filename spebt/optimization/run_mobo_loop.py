@@ -48,9 +48,10 @@ RESULTS_CSV = os.path.join(RESULTS_DIR, "results_summary_mobo.csv")
 SLURM_SCRIPT = os.path.join(CODE_DIR, "optimization", "run_sai_pipeline.sh")
 LOG_DIR = os.path.join(RESULTS_DIR, "slurm_logs")
 
-# Keep in sync with mobo_agent.OBJ_COLUMNS (revised Jul 2026 objective set).
-OBJ_COLUMNS = ["fwhm_weighted_mean", "asci_pct_fwhm0p45", "ppds_ring1",
-               "mpxi_mean", "cnr_sector_mean"]
+# Imported, not restated. This was a hand-synced copy; a duplicated definition
+# that drifted from mobo_agent's is what produced 46 wasted iterations in Jul
+# 2026, so the objective set now has exactly one home.
+from mobo_agent import OBJ_COLUMNS, OBJ_DIRECTIONS, OBJ_SHORT
 
 # Rich defaults to 80 columns when stdout is not a terminal, which silently
 # truncated the candidate line and hid the d2/d3 values in the SLURM logs.
@@ -225,16 +226,10 @@ def print_status(idx, config_name):
         t.add_column("Best", style="green")
         t.add_column("Worst", style="red")
         t.add_column("Mean", style="yellow")
-        for col, label, direction in [
-            ("fwhm_weighted_mean", "FWHM wtd (mm)", "min"),
-            ("asci_pct_fwhm0p45", "ASCI@0.45mm (%)", "max"),
-            ("ppds_ring1", "PPDS ring1", "max"),
-            ("mpxi_mean", "MPXI", "min"),
-            ("cnr_sector_mean", "CNR sector-mean", "max"),
-        ]:
+        for col, label, sign in zip(OBJ_COLUMNS, OBJ_SHORT, OBJ_DIRECTIONS):
             vals = df[col]
-            best = vals.min() if direction == "min" else vals.max()
-            worst = vals.max() if direction == "min" else vals.min()
+            best = vals.min() if sign < 0 else vals.max()
+            worst = vals.max() if sign < 0 else vals.min()
             fmt = ".4e" if col == "ppds_ring1" else ".4f"
             t.add_row(label, f"{best:{fmt}}", f"{worst:{fmt}}", f"{vals.mean():{fmt}}")
         t.add_row("Total configs", str(len(df)), "", "")

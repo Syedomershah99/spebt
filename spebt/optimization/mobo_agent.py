@@ -205,9 +205,31 @@ def is_feasible_full(diam, n_ap, n_det1, n_det2, d2_inner, d3_inner):
 #       area-weighted and let the largest rods dominate. Ranks designs almost
 #       identically (Spearman 0.999) but is the defensible definition.
 #
-# mpxi_mean is retained as the only objective carrying information independent
-# of CNR; its correlation is essentially zero where all others are strongly
-# signed.
+#   mpxi_mean (min)  ->  mpxi_windowed_active_mean (MAX)   [RY approved Aug 2026]
+#       Two separate errors, found together.
+#
+#       DIRECTION. MPXI was minimized on the assumption that multiplexing costs
+#       image quality. Measured on 228 designs, in physical units, the opposite
+#       holds: multiplexing correlates +0.29 with CNR, +0.71 with windowed ASCI,
+#       and -0.43 with FWHM. More splitting means more angular sampling and
+#       narrower stripes. We were minimizing a quantity every measurement says
+#       to increase. RY predicted this from the physics before it was measured.
+#
+#       DEFINITION. The old count included every beam, while windowed ASCI counts
+#       only beams under 0.45 mm, so the two were measured over different beam
+#       populations. Matching the window and the sensitivity floor strengthens
+#       every relationship: +0.84 vs ASCI, +0.47 vs CNR, -0.62 vs FWHM. Also
+#       restricting to detectors that see something (blind detectors contributed
+#       k=0 to a then-minimized mean) gives +0.91, +0.60, -0.73.
+#
+#       Note the active-detector fix ALONE makes things worse (+0.71 -> +0.60 vs
+#       ASCI): blind detectors carry real information in an unwindowed count,
+#       since a design with many of them is a poor design. The two changes are
+#       only correct together.
+#
+#       Consequence: corrected MPXI is no longer independent of the other
+#       objectives -- it is now among the most redundant. Better metric, worse
+#       fifth objective. See analyze_objective_redundancy.py.
 #   fwhm_mean (-0.83)         ->  fwhm_weighted_mean (-0.93)
 #       The unweighted mean counted a beam carrying 0.1% of the signal as much
 #       as one carrying all of it. Worse, its gap from the sensitivity-filtered
@@ -215,12 +237,22 @@ def is_feasible_full(diam, n_ap, n_det1, n_det2, d2_inner, d3_inner):
 #       aperture-dependent artifact -- and aperture diameter is itself the
 #       strongest CNR predictor. Weighting each width by that beam's sensitivity
 #       removes the artifact and predicts CNR better.
+# THE definition of the objective set. Other modules import these rather than
+# restating them: run_mobo_loop.py and analyze_mobo_convergence.py both used to
+# carry their own copy under a "keep in sync" comment, and a duplicated rule
+# that drifted is what made 46 consecutive iterations propose an unbuildable
+# geometry in Jul 2026. One copy, imported.
 OBJ_COLUMNS = ["fwhm_weighted_mean", "asci_pct_fwhm0p45", "ppds_ring1",
-               "mpxi_mean", "cnr_sector_mean"]
+               "mpxi_windowed_active_mean", "cnr_sector_mean"]
 # Directions: +1 = maximize, -1 = minimize (we negate minimization objectives)
-OBJ_DIRECTIONS = [-1.0, 1.0, 1.0, -1.0, 1.0]
+OBJ_DIRECTIONS = [-1.0, 1.0, 1.0, 1.0, 1.0]
 OBJ_NAMES = ["FWHM weighted (min)", "ASCI@0.45mm (max)", "PPDS ring1 (max)",
-             "MPXI (min)", "CNR sector-mean (max)"]
+             "MPXI windowed+active (max)", "CNR sector-mean (max)"]
+# Short labels for status tables and plots, in OBJ_COLUMNS order.
+OBJ_SHORT = ["FWHM wtd (mm)", "ASCI@0.45mm (%)", "PPDS ring1",
+             "MPXI win+act", "CNR sector-mean"]
+
+assert len(OBJ_COLUMNS) == len(OBJ_DIRECTIONS) == len(OBJ_NAMES) == len(OBJ_SHORT)
 
 
 def get_next_candidate(results_csv: str):
@@ -301,7 +333,7 @@ def get_next_candidate(results_csv: str):
     #
     # IMPORTANT: this multiplicative scheme assumes every metric in OBJ_COLUMNS
     # is strictly positive across the observed data. All current metrics
-    # (fwhm_mean, asci_pct_fwhm0p45, ppds_ring1, mpxi_mean, cnr_sector_mean)
+    # (every column in OBJ_COLUMNS; MPXI is a beam count, so non-negative)
     # satisfy that. If a future metric can go negative, "col.min() * 0.5" would
     # make the penalty MORE favourable than the worst observation —
     # subtract-a-margin would be needed instead. The assertion below guards
