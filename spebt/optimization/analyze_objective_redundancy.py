@@ -109,6 +109,22 @@ def main():
     print(f"\nmean |rho| between objectives: {np.abs(off).mean():.2f}")
     print("(near 0 would mean genuinely independent objectives)")
 
+    # The same numbers in physical units. The maximization-space table above is
+    # what the acquisition function sees, but it silently negates every
+    # minimized metric (FWHM, MPXI), so a reader reasoning about the PHYSICS
+    # reads the sign backwards. That happened: a -0.33 for MPXI vs CNR in max
+    # space is +0.33 between the measured quantities, i.e. more multiplexing
+    # goes WITH better CNR -- the opposite of what the max-space sign suggests.
+    print("\nThe same correlations in physical units (raw measured values,")
+    print("no direction flips) -- read this one for the physics:\n")
+    raw = df[ma.OBJ_COLUMNS].copy()
+    raw.columns = [short[c] for c in ma.OBJ_COLUMNS]
+    print(raw.corr(method="spearman").round(2).to_string())
+    print("\n  Minimized metrics (FWHM, MPXI) are NOT negated here, so a + means")
+    print("  the two measured quantities rise together, whatever we do with them.")
+    mins = [n for n, d in zip(ma.OBJ_NAMES, ma.OBJ_DIRECTIONS) if d < 0]
+    print(f"  Currently minimized: {', '.join(m.split(' (')[0] for m in mins)}")
+
     # PCA on the standardised objectives: how many directions carry the variance
     z = (mx - mx.mean()) / mx.std().replace(0, 1)
     ev = np.linalg.eigvalsh(np.cov(z.values.T))[::-1]
