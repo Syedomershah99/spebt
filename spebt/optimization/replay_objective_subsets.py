@@ -43,6 +43,7 @@ import warnings
 import numpy as np
 import pandas as pd
 import torch
+from botorch.acquisition.logei import qLogNoisyExpectedImprovement
 from botorch.acquisition.multi_objective.logei import qLogNoisyExpectedHypervolumeImprovement
 from botorch.fit import fit_gpytorch_mll
 from botorch.models import SingleTaskGP
@@ -124,15 +125,29 @@ def replay(x_norm, y_max, rng, n_steps, use_acqf=True):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             model = fit_model(tx, ty_std)
-            acqf = qLogNoisyExpectedHypervolumeImprovement(
-                model=model,
-                ref_point=(ty_std.min(dim=0).values - 0.1).tolist(),
-                X_baseline=tx,
-                prune_baseline=True,
-                cache_root=False,
-                alpha=hv_alpha(ty_std.shape[1]),
-                sampler=SobolQMCNormalSampler(sample_shape=torch.Size([MC_SAMPLES])),
-            )
+            sampler = SobolQMCNormalSampler(sample_shape=torch.Size([MC_SAMPLES]))
+            if ty_std.shape[1] == 1:
+                # Hypervolume is undefined for a single objective, and passing
+                # one to qLogNEHVI raises -- which killed job 25582343 at the
+                # "CNR only" row after 5 h and took the remaining subset with
+                # it. Expected improvement is the correct single-objective
+                # analogue of NEHVI, so the row stays comparable.
+                acqf = qLogNoisyExpectedImprovement(
+                    model=model.models[0],
+                    X_baseline=tx,
+                    prune_baseline=True,
+                    sampler=sampler,
+                )
+            else:
+                acqf = qLogNoisyExpectedHypervolumeImprovement(
+                    model=model,
+                    ref_point=(ty_std.min(dim=0).values - 0.1).tolist(),
+                    X_baseline=tx,
+                    prune_baseline=True,
+                    cache_root=False,
+                    alpha=hv_alpha(ty_std.shape[1]),
+                    sampler=sampler,
+                )
             cand = x_norm[remaining].unsqueeze(1)  # (n_rem, q=1, d)
             scores = []
             for i in range(0, len(cand), ACQF_CHUNK):
@@ -159,6 +174,10 @@ def main():
     ap.add_argument("--n_steps", type=int, default=N_STEPS_DEFAULT)
     ap.add_argument("--n_repeats", type=int, default=N_REPEATS_DEFAULT)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--only", default=None,
+                    help="Comma-separated subset labels to run (substring match). "
+                         "Lets a rerun fill in missing rows without recomputing "
+                         "the 4-hour 'all five' row.")
     args = ap.parse_args()
 
     # Python block-buffers stdout when it is not a terminal. A 32 GB OOM kill
@@ -196,6 +215,15 @@ def main():
     # cannot do without is already in the log.
     runs = {"random (control)": None}
     runs.update(SUBSETS)
+    if args.only:
+        wanted = [w.strip().lower() for w in args.only.split(",")]
+        runs = {k: v for k, v in runs.items()
+                if any(w in k.lower() for w in wanted)}
+        if not runs:
+            print(f"ERROR: --only {args.only!r} matched no subset. Available: "
+                  f"{list(SUBSETS) + ['random (control)']}")
+            sys.exit(1)
+        print(f"running only: {list(runs)}\n")
 
     print("=" * 78)
     print(f"EVALUATIONS AFTER THE SEED SET TO REACH EACH TARGET (mean +/- sd over repeats)")
@@ -217,14 +245,23 @@ def main():
 
         hit5, hitbest, finals = [], [], []
         t0 = time.time()
-        for r in range(args.n_repeats):
-            rng = np.random.default_rng(args.seed + r)
-            order = replay(x_norm, y_max, rng, args.n_steps, use_acqf=use_acqf)
-            hit5.append(steps_to_reach(order, outcome, top5))
-            hitbest.append(steps_to_reach(order, outcome, best))
-            finals.append(outcome[order].max())
-            print(f"    [{label}] repeat {r + 1}/{args.n_repeats} done "
-                  f"({time.time() - t0:.0f}s elapsed, best CNR {finals[-1]:.3f})")
+        try:
+            for r in range(args.n_repeats):
+                rng = np.random.default_rng(args.seed + r)
+                order = replay(x_norm, y_max, rng, args.n_steps, use_acqf=use_acqf)
+                hit5.append(steps_to_reach(order, outcome, top5))
+                hitbest.append(steps_to_reach(order, outcome, best))
+                finals.append(outcome[order].max())
+                print(f"    [{label}] repeat {r + 1}/{args.n_repeats} done "
+                      f"({time.time() - t0:.0f}s elapsed, best CNR {finals[-1]:.3f})")
+        except Exception as e:
+            # One subset failing must not discard the others. Job 25582343 lost
+            # a completed 4-hour row plus an unrun subset because the "CNR only"
+            # row raised and nothing caught it.
+            print(f"    [{label}] FAILED after {len(finals)} repeats: "
+                  f"{type(e).__name__}: {e}")
+            if not finals:
+                continue
 
         def fmt(vals):
             got = [v for v in vals if v is not None]
