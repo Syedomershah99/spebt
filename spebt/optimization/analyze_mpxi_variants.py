@@ -148,10 +148,15 @@ def main():
             else:
                 print("\n-> The window mismatch was carrying a substantial part of the")
                 print("   original number. Windowed MPXI is the quantity to use.")
-            print("\n  How much the two MPXI definitions agree with each other: "
-                  f"{sub['mpxi_mean'].corr(sub['mpxi_windowed_mean'], method='spearman'):+.2f}")
-            print("  (a high value here means the window changed the scale but not"
-                  "\n   the ranking, so design SELECTION would be little affected)")
+            agree = sub["mpxi_mean"].corr(sub["mpxi_windowed_mean"], method="spearman")
+            print(f"\n  How much the two MPXI definitions agree with each other: {agree:+.2f}")
+            print("  Note this does NOT mean the choice of definition is unimportant.")
+            print("  Two metrics can rank designs almost identically and still")
+            print("  differ sharply in how well they track the outcome, if the")
+            print("  disagreement is concentrated among the best designs -- which")
+            print("  are the only ones selection actually turns on. Compare the CNR")
+            print("  column above across definitions before concluding it does not")
+            print("  matter.")
 
 
 if __name__ == "__main__":
