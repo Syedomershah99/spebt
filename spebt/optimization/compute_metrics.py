@@ -232,6 +232,125 @@ def compute_mpxi(work_dir: str):
     return float(np.mean(all_k))
 
 
+# Must match analyze_asci_window.SENSITIVITY_FLOOR_FRAC. The whole point of the
+# windowed MPXI variant is that it selects the same beams windowed ASCI does, so
+# these two floors drifting apart would silently reintroduce the mismatch the
+# variant exists to remove.
+_MPXI_SENSITIVITY_FLOOR_FRAC = 0.01
+
+
+def _mpxi_layout_id(path):
+    """Layout id from a filename, matching analyze_asci_window._layout_id."""
+    for part in os.path.basename(path).replace(".hdf5", "").split("_"):
+        if part.isdigit() and len(part) == 3:
+            return part
+    return None
+
+
+def compute_mpxi_variants(work_dir: str, threshold_mm: float = None):
+    """MPXI under the two definition changes RY asked for (Aug 2026).
+
+    Returns a dict with three variants alongside the original:
+
+      mpxi_active_mean            averaged over detectors that see something
+      mpxi_windowed_mean          counting only beams narrower than the window
+      mpxi_windowed_active_mean   both
+
+    Why each exists:
+
+    ACTIVE. The original averages k over EVERY detector, so a detector seeing
+    nothing contributes k=0 to a quantity we were minimising. 100 detectors at
+    k=3 scores 3.0; 50 at k=5 plus 50 blind scores 2.5, and therefore scores
+    "better" with half the array idle. Averaging over active detectors only
+    removes that.
+
+    WINDOWED. The original counts every beam, including wide poorly-collimated
+    ones, but windowed ASCI counts only beams under 0.45 mm. Correlating the two
+    compares different beam populations, which is a confound rather than a
+    result. This applies the SAME window and the same sensitivity floor as
+    windowed ASCI, so the two are measured over one beam set.
+
+    Computed from beam_properties rather than the masks, because the properties
+    table is what carries per-beam FWHM. Detector totals still come from the
+    mask files, which are authoritative for how many detectors exist -- counting
+    only detectors present in beam_properties would silently redefine "all
+    detectors" as "active detectors" and collapse the two variants into one.
+    """
+    if threshold_mm is None:
+        threshold_mm = ASCI_FWHM_WINDOW_MM
+
+    nan_result = {"mpxi_active_mean": float("nan"),
+                  "mpxi_windowed_mean": float("nan"),
+                  "mpxi_windowed_active_mean": float("nan")}
+
+    prop_files = sorted(glob.glob(os.path.join(work_dir, "beams_properties_configuration_*.hdf5")))
+    mask_files = sorted(glob.glob(os.path.join(work_dir, "beams_masks_configuration_*.hdf5")))
+    if not prop_files or not mask_files:
+        return nan_result
+
+    mask_n_det = {}
+    for f in mask_files:
+        lid = _mpxi_layout_id(f)
+        if lid is None:
+            continue
+        try:
+            with h5py.File(f, "r") as h:
+                mask_n_det[lid] = h["beam_mask"].shape[0]
+        except Exception as e:
+            print(f"  [warn] MPXI variants: failed reading masks for layout {lid}: {e}")
+
+    k_all, k_win = [], []
+    for prop_file in prop_files:
+        lid = _mpxi_layout_id(prop_file)
+        n_det = mask_n_det.get(lid)
+        if n_det is None:
+            continue
+        try:
+            with h5py.File(prop_file, "r") as f:
+                bp = f["beam_properties"][:]
+        except Exception as e:
+            print(f"  [warn] MPXI variants: failed reading layout {lid}: {e}")
+            continue
+        if bp.shape[0] == 0:
+            continue
+
+        det_ids = bp[:, 1].astype(np.int64)
+        fwhms = bp[:, 4].astype(np.float64)
+        sens = bp[:, 7].astype(np.float64)
+
+        if det_ids.size and det_ids.min() >= 1 and det_ids.max() <= n_det:
+            det_ids = det_ids - 1
+
+        # Same sensitivity floor as windowed ASCI, so the beam populations match.
+        keep = np.ones(bp.shape[0], dtype=bool)
+        finite = np.isfinite(sens)
+        smax = sens[finite].max() if finite.any() else 0.0
+        if smax > 0:
+            keep &= sens > smax * _MPXI_SENSITIVITY_FLOOR_FRAC
+
+        counts_all = np.bincount(det_ids[keep], minlength=n_det)
+        win = keep & np.isfinite(fwhms) & (fwhms > 0) & (fwhms < threshold_mm)
+        counts_win = np.bincount(det_ids[win], minlength=n_det)
+        k_all.append(counts_all)
+        k_win.append(counts_win)
+
+    if not k_all:
+        return nan_result
+
+    k_all = np.concatenate(k_all)
+    k_win = np.concatenate(k_win)
+
+    def _active_mean(a):
+        act = a[a > 0]
+        return float(act.mean()) if act.size else float("nan")
+
+    return {
+        "mpxi_active_mean": _active_mean(k_all),
+        "mpxi_windowed_mean": float(k_win.mean()),
+        "mpxi_windowed_active_mean": _active_mean(k_win),
+    }
+
+
 def _per_beam_radial_fwhm(mask_row, ppdf_row, beam_id, angle):
     """
     Measure the radial FWHM of a single beam in one PPDF row.
@@ -539,6 +658,8 @@ def compute_metrics(work_dir: str, n_det_ring1: int = None) -> dict:
         "ppds_mean": ppds_mean,
         "ppds_weighted_mean": float("nan"),
     }
+    # Recorded but not yet optimized against: the definition is RY's call.
+    results.update(compute_mpxi_variants(work_dir))
 
     for i in range(1, 5):
         results[f"ppds_ring{i}"] = float("nan")

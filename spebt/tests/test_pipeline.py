@@ -1121,3 +1121,73 @@ class TestControllerSingletonLock:
         r = self._child(tmp_path)
         assert r.returncode == 0, f"stale lock survived the holder: {r.stderr}"
         assert "ACQUIRED" in r.stdout
+
+
+# =============================================================================
+# compute_metrics.compute_mpxi_variants — the two definition changes RY asked for
+# =============================================================================
+class TestMpxiVariants:
+    """Aug 2026: MPXI averaged blind detectors (k=0) into a minimized objective,
+    and was correlated against a WINDOWED ASCI while itself counting every beam.
+    These verify both fixes on synthetic files with known answers."""
+
+    def _write(self, wd, n_det, beams):
+        """beams: list of (det_id_1based, beam_id, fwhm, sens)."""
+        os.makedirs(wd, exist_ok=True)
+        with h5py.File(os.path.join(wd, "beams_masks_configuration_001.hdf5"), "w") as f:
+            f.create_dataset("beam_mask", data=np.zeros((n_det, 4), dtype=np.int32))
+        bp = np.zeros((len(beams), 8), dtype=np.float64)
+        for i, (d, b, fw, s) in enumerate(beams):
+            bp[i, 1], bp[i, 2], bp[i, 4], bp[i, 7] = d, b, fw, s
+        with h5py.File(os.path.join(wd, "beams_properties_configuration_001.hdf5"), "w") as f:
+            f.create_dataset("beam_properties", data=bp)
+
+    def test_blind_detectors_excluded_from_active_mean(self, tmp_path):
+        """4 detectors, only 2 see anything, with 3 beams each.
+
+        The original definition averages over all 4 and reports 1.5; the active
+        mean must report 3.0 -- otherwise idling half the array looks like an
+        improvement in a quantity we minimize.
+        """
+        wd = str(tmp_path / "blind")
+        beams = [(1, b, 0.3, 1.0) for b in range(1, 4)] + \
+                [(2, b, 0.3, 1.0) for b in range(1, 4)]
+        self._write(wd, n_det=4, beams=beams)
+        import compute_metrics as cm
+        r = cm.compute_mpxi_variants(wd, threshold_mm=0.45)
+        assert r["mpxi_active_mean"] == pytest.approx(3.0)
+        # windowed_mean averages over ALL detectors, so it keeps the zeros
+        assert r["mpxi_windowed_mean"] == pytest.approx(6 / 4)
+        assert r["mpxi_windowed_active_mean"] == pytest.approx(3.0)
+
+    def test_window_excludes_wide_beams(self, tmp_path):
+        """Detector 1 has 2 narrow beams and 2 wide ones; only narrow count."""
+        wd = str(tmp_path / "window")
+        beams = [(1, 1, 0.30, 1.0), (1, 2, 0.40, 1.0),
+                 (1, 3, 0.90, 1.0), (1, 4, 1.20, 1.0)]
+        self._write(wd, n_det=1, beams=beams)
+        import compute_metrics as cm
+        r = cm.compute_mpxi_variants(wd, threshold_mm=0.45)
+        assert r["mpxi_active_mean"] == pytest.approx(4.0)
+        assert r["mpxi_windowed_active_mean"] == pytest.approx(2.0)
+
+    def test_sensitivity_floor_matches_windowed_asci(self, tmp_path):
+        """Beams under 1% of peak sensitivity are dropped, as in windowed ASCI.
+
+        If these two floors drift apart the variant stops measuring the same
+        beam population as ASCI, which is the entire reason it exists.
+        """
+        import analyze_asci_window as aw
+        import compute_metrics as cm
+        assert cm._MPXI_SENSITIVITY_FLOOR_FRAC == aw.SENSITIVITY_FLOOR_FRAC
+
+        wd = str(tmp_path / "floor")
+        beams = [(1, 1, 0.3, 100.0), (1, 2, 0.3, 0.5)]  # second is 0.5% of peak
+        self._write(wd, n_det=1, beams=beams)
+        r = cm.compute_mpxi_variants(wd, threshold_mm=0.45)
+        assert r["mpxi_windowed_active_mean"] == pytest.approx(1.0)
+
+    def test_nan_when_files_missing(self, tmp_path):
+        import compute_metrics as cm
+        r = cm.compute_mpxi_variants(str(tmp_path / "nothing"))
+        assert all(np.isnan(v) for v in r.values())
