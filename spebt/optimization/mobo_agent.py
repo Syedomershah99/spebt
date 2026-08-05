@@ -255,6 +255,29 @@ OBJ_SHORT = ["FWHM wtd (mm)", "ASCI@0.45mm (%)", "PPDS ring1",
 assert len(OBJ_COLUMNS) == len(OBJ_DIRECTIONS) == len(OBJ_NAMES) == len(OBJ_SHORT)
 
 
+def require_objective_columns(df, results_csv: str):
+    """Fail with an actionable message when the archive predates an objective change.
+
+    Changing OBJ_COLUMNS makes every previously-written row missing the new
+    column, and pandas' dropna(subset=...) then raises a bare KeyError naming
+    the column but not what to do about it. Anyone hitting that mid-campaign
+    needs to know it is a backfill step, not a corrupted archive.
+    """
+    missing = [c for c in OBJ_COLUMNS if c not in df.columns]
+    if not missing:
+        return
+    raise SystemExit(
+        f"\n{results_csv} has no column(s): {missing}\n"
+        f"\nThe objective set references a metric this archive predates. The"
+        f"\narchive is fine; it just needs the column filled in. For the Aug 2026"
+        f"\nMPXI change that is:\n"
+        f"\n  python analyze_mpxi_variants.py --results_csv {results_csv} \\"
+        f"\n      --out results/mpxi_variants.csv"
+        f"\n  python backfill_mpxi_variants.py --results_csv {results_csv} \\"
+        f"\n      --variants_csv results/mpxi_variants.csv\n"
+        f"\nRun the backfill with --dry_run first to see the coverage.\n")
+
+
 def get_next_candidate(results_csv: str):
     """
     1. Load results CSV with all OBJ_COLUMNS objectives.
@@ -268,6 +291,7 @@ def get_next_candidate(results_csv: str):
         raise FileNotFoundError(f"Could not find {results_csv}")
 
     df = pd.read_csv(results_csv)
+    require_objective_columns(df, results_csv)
     # Unfiltered copy: every design ever attempted, valid or not. Used only for
     # deduplication, so a design that failed still counts as "already tried".
     df_all = df.copy()

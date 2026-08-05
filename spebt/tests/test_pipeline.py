@@ -1245,3 +1245,23 @@ class TestObjectiveSetSingleSource:
                 assert d == -1.0, f"{name} labelled min but direction {d}"
             elif "(max)" in name:
                 assert d == 1.0, f"{name} labelled max but direction {d}"
+
+
+class TestRequireObjectiveColumns:
+    """Changing OBJ_COLUMNS strands every previously-written row. The failure
+    must name the fix, not just raise KeyError on the column name."""
+
+    def test_passes_when_all_present(self):
+        import mobo_agent as ma
+        df = pd.DataFrame({c: [1.0] for c in ma.OBJ_COLUMNS})
+        ma.require_objective_columns(df, "x.csv")  # must not raise
+
+    def test_names_the_backfill_when_missing(self):
+        import mobo_agent as ma
+        df = pd.DataFrame({c: [1.0] for c in ma.OBJ_COLUMNS[:-1]})
+        with pytest.raises(SystemExit) as e:
+            ma.require_objective_columns(df, "results/x.csv")
+        msg = str(e.value)
+        assert ma.OBJ_COLUMNS[-1] in msg
+        assert "backfill_mpxi_variants.py" in msg
+        assert "results/x.csv" in msg

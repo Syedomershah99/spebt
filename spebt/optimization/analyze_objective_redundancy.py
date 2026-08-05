@@ -89,7 +89,9 @@ def main():
         print(f"ERROR: results CSV not found: {args.results_csv}")
         sys.exit(1)
 
-    df = pd.read_csv(args.results_csv).dropna(subset=ma.OBJ_COLUMNS + ma.PARAM_NAMES)
+    df = pd.read_csv(args.results_csv)
+    ma.require_objective_columns(df, args.results_csv)
+    df = df.dropna(subset=ma.OBJ_COLUMNS + ma.PARAM_NAMES)
     if {"d2_inner_mm", "d3_inner_mm"}.issubset(df.columns):
         df = df[df.apply(lambda r: ma.is_ring_ordering_ok(r.d2_inner_mm, r.d3_inner_mm), axis=1)]
     df = df.reset_index(drop=True)
