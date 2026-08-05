@@ -1265,3 +1265,31 @@ class TestRequireObjectiveColumns:
         assert ma.OBJ_COLUMNS[-1] in msg
         assert "backfill_mpxi_variants.py" in msg
         assert "results/x.csv" in msg
+
+
+class TestNoHardcodedObjectiveLabels:
+    """The controller banner said "MPXI (min)" for a whole run after MPXI was
+    changed to windowed+active and MAXIMIZED. The optimizer was correct; only
+    the log lied, which is worse than an obvious failure because it is believed.
+    Any objective label in run_mobo_loop must derive from mobo_agent."""
+
+    def test_source_has_no_literal_objective_labels(self):
+        import run_mobo_loop as loop
+        src = open(loop.__file__).read()
+        # Strip comments, which legitimately discuss the old labels. Docstrings
+        # are NOT stripped: the module docstring is where the stalest list lived
+        # (it still named sensitivity months after that objective was retired),
+        # and docstrings are read as documentation, so they must stay honest.
+        code = "\n".join(l for l in src.splitlines()
+                         if not l.lstrip().startswith("#"))
+        for bad in ("MPXI (min)", "MPXI (max)", "ASCI@0.45mm (max)",
+                    "FWHM wtd (min)", "CNR sector-mean (max)",
+                    "sensitivity (max)"):
+            assert bad not in code, (
+                f"hardcoded objective label {bad!r} in run_mobo_loop.py; "
+                f"derive it from mobo_agent.OBJ_NAMES instead")
+
+    def test_banner_reflects_the_current_direction(self):
+        import mobo_agent as ma
+        i = ma.OBJ_COLUMNS.index("mpxi_windowed_active_mean")
+        assert "(max)" in ma.OBJ_NAMES[i]

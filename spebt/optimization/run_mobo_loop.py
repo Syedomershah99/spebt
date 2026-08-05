@@ -3,9 +3,14 @@
 Sequential MOBO Controller for SAI SC-SPECT.
 
 Multi-objective BO loop: propose one config, evaluate on HPC, collect metrics, repeat.
-Objectives: FWHM (min), ASCI (max), sensitivity (max), MPXI (min), CNR (max).
 CNR is produced in-loop by compute_cnr.py step [4/4] of run_sai_pipeline.sh.
 Uses mobo_agent (ModelListGP + qLogNEHVI).
+
+The objective set lives in mobo_agent.OBJ_COLUMNS / OBJ_DIRECTIONS and is
+deliberately NOT restated here. This docstring used to enumerate it and drifted
+badly: it still named sensitivity, retired in Jul 2026, and MPXI as minimized,
+reversed in Aug 2026. A stale list in a docstring is read as documentation and
+believed.
 
 Usage:
   python run_mobo_loop.py                   # run with defaults
@@ -51,7 +56,8 @@ LOG_DIR = os.path.join(RESULTS_DIR, "slurm_logs")
 # Imported, not restated. This was a hand-synced copy; a duplicated definition
 # that drifted from mobo_agent's is what produced 46 wasted iterations in Jul
 # 2026, so the objective set now has exactly one home.
-from mobo_agent import OBJ_COLUMNS, OBJ_DIRECTIONS, OBJ_SHORT
+import mobo_agent
+from mobo_agent import OBJ_COLUMNS, OBJ_DIRECTIONS, OBJ_NAMES, OBJ_SHORT
 
 # Rich defaults to 80 columns when stdout is not a terminal, which silently
 # truncated the candidate line and hid the d2/d3 values in the SLURM logs.
@@ -208,13 +214,31 @@ def assert_initial_data():
         console.print("  Run the initial LHS sweep first (with MPXI), then re-run.")
         sys.exit(1)
     df = pd.read_csv(RESULTS_CSV)
+    mobo_agent.require_objective_columns(df, RESULTS_CSV)
     df = df.dropna(subset=OBJ_COLUMNS)
     n = len(df)
     if n < 3:
         console.print(f"[bold red]ERROR:[/bold red] Need >= 3 feasible points for MOBO, got {n}.")
         sys.exit(1)
-    console.print(f"[green]Loaded {n} feasible data points with all 5 objectives.[/green]")
-    return n
+
+    # Report the number that will actually TRAIN, not just the number with
+    # objectives. get_next_candidate additionally drops designs whose rings
+    # violate the radial clearance rule, so this pre-flight line previously
+    # printed a count 4 higher than the training set and read as though those
+    # designs were being used.
+    n_train = n
+    if {"d2_inner_mm", "d3_inner_mm"}.issubset(df.columns):
+        ok = df.apply(
+            lambda r: (pd.isna(r["d2_inner_mm"]) or pd.isna(r["d3_inner_mm"])
+                       or mobo_agent.is_ring_ordering_ok(r["d2_inner_mm"],
+                                                         r["d3_inner_mm"])),
+            axis=1)
+        n_train = int(ok.sum())
+
+    console.print(f"[green]Loaded {n} designs with all {len(OBJ_COLUMNS)} objectives; "
+                  f"{n_train} will train "
+                  f"({n - n_train} excluded for ring clearance).[/green]")
+    return n_train
 
 
 def print_status(idx, config_name):
@@ -246,11 +270,14 @@ def main():
 
     TOTAL_ITERATIONS = args.max_iters
 
+    # Built from OBJ_NAMES, never hand-written. The hardcoded version of this
+    # banner still read "MPXI (min)" for a full run after MPXI was changed to
+    # windowed+active and MAXIMIZED, so the log contradicted the optimizer for
+    # anyone reading it later.
     console.print(Panel.fit(
         "[bold green]SAI SC-SPECT MOBO Controller[/bold green]\n"
-        "Design: (aperture_diam, n_apertures, n_det_ring1, n_det_ring2, d2_inner, d3_inner)\n"
-        "5 objectives: FWHM wtd (min), ASCI@0.45mm (max), PPDS ring1 (max), "
-        "MPXI (min), CNR sector-mean (max)\n"
+        f"Design: ({', '.join(mobo_agent.PARAM_NAMES)})\n"
+        f"{len(OBJ_NAMES)} objectives: {', '.join(OBJ_NAMES)}\n"
         "ModelListGP + qLogNEHVI | Sequential q=1",
         subtitle=f"Max iterations: {TOTAL_ITERATIONS}"
     ))
