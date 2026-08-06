@@ -1293,3 +1293,62 @@ class TestNoHardcodedObjectiveLabels:
         import mobo_agent as ma
         i = ma.OBJ_COLUMNS.index("mpxi_windowed_active_mean")
         assert "(max)" in ma.OBJ_NAMES[i]
+
+
+class TestObjectiveSelection:
+    """MOBO_OBJECTIVES restricts the objective set for head-to-head campaigns.
+
+    A subset campaign that silently ran the wrong objectives, or that paired a
+    direction with the wrong label, would invalidate the comparison without
+    failing. These run mobo_agent in a subprocess because the selection happens
+    at import time.
+    """
+
+    def _run(self, env_val, code):
+        env = dict(os.environ)
+        if env_val is None:
+            env.pop("MOBO_OBJECTIVES", None)
+        else:
+            env["MOBO_OBJECTIVES"] = env_val
+        opt = os.path.join(_REPO_ROOT, "optimization")
+        return subprocess.run(
+            [sys.executable, "-c",
+             f"import sys; sys.path.insert(0, {opt!r});\nimport mobo_agent as ma\n{code}"],
+            capture_output=True, text=True, env=env, timeout=120)
+
+    def test_default_is_all_five(self):
+        r = self._run(None, "print(len(ma.OBJ_COLUMNS))")
+        assert r.returncode == 0, r.stderr
+        assert r.stdout.strip() == "5"
+
+    def test_subset_selects_in_the_order_given(self):
+        r = self._run("cnr_sector_mean,mpxi_windowed_active_mean",
+                      "print(','.join(ma.OBJ_COLUMNS))")
+        assert r.returncode == 0, r.stderr
+        assert r.stdout.strip() == "cnr_sector_mean,mpxi_windowed_active_mean"
+
+    def test_direction_and_label_travel_with_the_column(self):
+        """The subset must not reindex directions independently of columns."""
+        r = self._run("cnr_sector_mean,fwhm_weighted_mean",
+                      "print(ma.OBJ_DIRECTIONS); print(ma.OBJ_NAMES)")
+        assert r.returncode == 0, r.stderr
+        out = r.stdout
+        # FWHM is minimized and must stay so after being moved to position 2
+        assert "[1.0, -1.0]" in out
+        assert "FWHM weighted (min)" in out
+
+    def test_single_objective_refused(self):
+        """qLogNEHVI needs m>=2; failing here beats failing 5 hours in."""
+        r = self._run("cnr_sector_mean", "print('reached')")
+        assert r.returncode != 0
+        assert "at least 2 objectives" in (r.stdout + r.stderr)
+
+    def test_unknown_name_refused(self):
+        r = self._run("cnr_sector_mean,not_a_metric", "print('reached')")
+        assert r.returncode != 0
+        assert "unknown objective" in (r.stdout + r.stderr)
+
+    def test_duplicate_refused(self):
+        r = self._run("cnr_sector_mean,cnr_sector_mean", "print('reached')")
+        assert r.returncode != 0
+        assert "repeats an objective" in (r.stdout + r.stderr)

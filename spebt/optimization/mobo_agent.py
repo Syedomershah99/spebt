@@ -242,17 +242,65 @@ def is_feasible_full(diam, n_ap, n_det1, n_det2, d2_inner, d3_inner):
 # carry their own copy under a "keep in sync" comment, and a duplicated rule
 # that drifted is what made 46 consecutive iterations propose an unbuildable
 # geometry in Jul 2026. One copy, imported.
-OBJ_COLUMNS = ["fwhm_weighted_mean", "asci_pct_fwhm0p45", "ppds_ring1",
-               "mpxi_windowed_active_mean", "cnr_sector_mean"]
+_ALL_OBJ_COLUMNS = ["fwhm_weighted_mean", "asci_pct_fwhm0p45", "ppds_ring1",
+                    "mpxi_windowed_active_mean", "cnr_sector_mean"]
 # Directions: +1 = maximize, -1 = minimize (we negate minimization objectives)
-OBJ_DIRECTIONS = [-1.0, 1.0, 1.0, 1.0, 1.0]
-OBJ_NAMES = ["FWHM weighted (min)", "ASCI@0.45mm (max)", "PPDS ring1 (max)",
-             "MPXI windowed+active (max)", "CNR sector-mean (max)"]
+_ALL_OBJ_DIRECTIONS = [-1.0, 1.0, 1.0, 1.0, 1.0]
+_ALL_OBJ_NAMES = ["FWHM weighted (min)", "ASCI@0.45mm (max)", "PPDS ring1 (max)",
+                  "MPXI windowed+active (max)", "CNR sector-mean (max)"]
 # Short labels for status tables and plots, in OBJ_COLUMNS order.
-OBJ_SHORT = ["FWHM wtd (mm)", "ASCI@0.45mm (%)", "PPDS ring1",
-             "MPXI win+act", "CNR sector-mean"]
+_ALL_OBJ_SHORT = ["FWHM wtd (mm)", "ASCI@0.45mm (%)", "PPDS ring1",
+                  "MPXI win+act", "CNR sector-mean"]
 
-assert len(OBJ_COLUMNS) == len(OBJ_DIRECTIONS) == len(OBJ_NAMES) == len(OBJ_SHORT)
+assert (len(_ALL_OBJ_COLUMNS) == len(_ALL_OBJ_DIRECTIONS)
+        == len(_ALL_OBJ_NAMES) == len(_ALL_OBJ_SHORT))
+
+
+def _select_objectives():
+    """Restrict the objective set via MOBO_OBJECTIVES, for head-to-head campaigns.
+
+    Set it to a comma-separated list of column names to run a campaign on a
+    subset, e.g.
+
+        MOBO_OBJECTIVES=cnr_sector_mean,mpxi_windowed_active_mean
+
+    Unset means all five. Direction, display name and short label are carried
+    across from the master lists, so a subset campaign cannot end up with a
+    label that disagrees with its own sign.
+
+    Pair it with MOBO_RESULTS_DIR so the subset campaign writes its own
+    manifest, results CSV, lock file and logs. Two campaigns sharing a results
+    directory would interleave rows and claim the same manifest indices.
+    """
+    sel = os.environ.get("MOBO_OBJECTIVES", "").strip()
+    if not sel:
+        return list(range(len(_ALL_OBJ_COLUMNS)))
+
+    wanted = [s.strip() for s in sel.split(",") if s.strip()]
+    unknown = [w for w in wanted if w not in _ALL_OBJ_COLUMNS]
+    if unknown:
+        raise SystemExit(
+            f"\nMOBO_OBJECTIVES names unknown objective(s): {unknown}\n"
+            f"Valid names: {_ALL_OBJ_COLUMNS}\n")
+    if len(set(wanted)) != len(wanted):
+        raise SystemExit(f"\nMOBO_OBJECTIVES repeats an objective: {wanted}\n")
+    if len(wanted) < 2:
+        # The controller optimizes qLogNEHVI, whose hypervolume is undefined for
+        # a single objective. It raises "ref_point has length 1" deep inside
+        # BoTorch, which killed a 5-hour job before this check existed.
+        raise SystemExit(
+            f"\nMOBO_OBJECTIVES needs at least 2 objectives, got {len(wanted)}.\n"
+            f"The controller uses qLogNEHVI and hypervolume is undefined for one\n"
+            f"objective. For a single-objective run the acquisition would have to\n"
+            f"change to qLogNEI.\n")
+    return [_ALL_OBJ_COLUMNS.index(w) for w in wanted]
+
+
+_OBJ_IDX = _select_objectives()
+OBJ_COLUMNS = [_ALL_OBJ_COLUMNS[i] for i in _OBJ_IDX]
+OBJ_DIRECTIONS = [_ALL_OBJ_DIRECTIONS[i] for i in _OBJ_IDX]
+OBJ_NAMES = [_ALL_OBJ_NAMES[i] for i in _OBJ_IDX]
+OBJ_SHORT = [_ALL_OBJ_SHORT[i] for i in _OBJ_IDX]
 
 
 def require_objective_columns(df, results_csv: str):
