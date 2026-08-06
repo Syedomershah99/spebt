@@ -50,7 +50,11 @@ echo "arm         : $ARM"
 echo "results dir : $MOBO_RESULTS_DIR"
 echo "objectives  : $MOBO_OBJECTIVES"
 
-# 21 LHS seeds + 80 optimized iterations. Both arms get the same budget; the
-# comparison is best-CNR against iteration number, so an unequal budget would
-# make the curves incomparable past the shorter one.
-python run_mobo_loop.py --max_iters 101
+# 80 optimized iterations on top of the 21 shared LHS seeds. The seeds live in
+# the results CSV as training data but are NOT manifest rows, so --max_iters
+# counts optimized iterations only.
+#
+# Both arms get the same budget. The comparison is best CNR against iteration
+# number, so an unequal budget would make the curves incomparable past the
+# shorter one.
+python run_mobo_loop.py --max_iters 80
