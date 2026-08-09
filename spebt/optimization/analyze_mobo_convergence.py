@@ -169,16 +169,25 @@ def plot_pareto_expansion(df, n_lhs, out_dir):
     # Combined Pareto
     all_pareto = is_pareto_optimal(obj_max)
 
-    # Pick the most conflicting pairs for visualization. The last two panels
-    # carry CNR, which is the objective added for the 5-objective campaign.
-    pairs = [(0, 2, "FWHM (neg.)", "Sensitivity"),
-             (1, 3, "ASCI", "MPXI (neg.)"),
-             (3, 4, "MPXI (neg.)", "CNR"),
-             (2, 4, "Sensitivity", "CNR")]
+    # Axis labels are DERIVED, never written out. The hardcoded versions went
+    # stale twice: they still said "Sensitivity" for what is now ppds_ring1, and
+    # "MPXI (neg.)" after MPXI was changed to a maximized objective. A mislabelled
+    # axis on a figure is worse than a missing one, because it gets believed.
+    def axis_label(i):
+        base = METRIC_LABELS[i]
+        return base if METRIC_DIRS[i] > 0 else f"{base} (neg.)"
+
+    # Index pairs only. The last two panels carry CNR, the outcome objective.
+    pairs = [(0, 2), (1, 3), (3, 4), (2, 4)]
+    pairs = [(i, j) for i, j in pairs
+             if i < len(METRIC_LABELS) and j < len(METRIC_LABELS)]
 
     fig, axes = plt.subplots(1, len(pairs), figsize=(7 * len(pairs), 6))
+    if len(pairs) == 1:
+        axes = [axes]
 
-    for ax, (i, j, xlabel, ylabel) in zip(axes, pairs):
+    for ax, (i, j) in zip(axes, pairs):
+        xlabel, ylabel = axis_label(i), axis_label(j)
         # LHS points
         ax.scatter(lhs_obj[:, i], lhs_obj[:, j], c="#3498db", s=40, alpha=0.6,
                    edgecolors="white", linewidth=0.5, label=f"LHS ({n_lhs})", zorder=2)

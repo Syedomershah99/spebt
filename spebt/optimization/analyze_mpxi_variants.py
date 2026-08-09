@@ -42,6 +42,7 @@ import pandas as pd
 import compute_metrics as cm
 
 # What the variants are measured against. All in physical units.
+OUTCOME_CNR = "cnr_sector_mean"
 REFERENCE_COLS = ["asci_pct_fwhm0p45", "cnr_sector_mean", "fwhm_weighted_mean",
                   "ppds_ring1"]
 VARIANT_COLS = ["mpxi_mean", "mpxi_active_mean", "mpxi_windowed_mean",
@@ -126,6 +127,49 @@ def main():
         print(f"{LABELS.get(v, v):<24}{cells}")
 
     print(f"\n(n = {len(merged[have + refs].dropna())} configs with every column)")
+
+    # Is "maximize MPXI" actually right, or does it have an optimum?
+    #
+    # Spearman measures MONOTONE association. A metric that helps up to a point
+    # and hurts past it can still show a healthy positive rho while "maximize"
+    # is the wrong instruction. The scatter of CNR against MPXI looks like an
+    # inverted U, so this bins it rather than trusting the eye or the
+    # coefficient.
+    key = "mpxi_windowed_active_mean"
+    if key in merged.columns and OUTCOME_CNR in merged.columns:
+        sub = merged[[key, OUTCOME_CNR]].dropna()
+        if len(sub) >= 40:
+            print("\n" + "=" * 78)
+            print("IS MORE MPXI ALWAYS BETTER?")
+            print("=" * 78)
+            print(f"\nMean CNR within bins of {key}, {len(sub)} designs:\n")
+            # Quantile bins keep the counts comparable; equal-width bins would
+            # put almost everything in the first bin, since MPXI is right-skewed.
+            try:
+                bins = pd.qcut(sub[key], q=8, duplicates="drop")
+            except ValueError:
+                bins = pd.cut(sub[key], bins=8)
+            g = sub.groupby(bins, observed=True)[OUTCOME_CNR].agg(["count", "mean", "max"])
+            print(f"{'MPXI range':<24} {'n':>5} {'mean CNR':>10} {'best CNR':>10}")
+            print("-" * 52)
+            for interval, row in g.iterrows():
+                lo, hi = interval.left, interval.right
+                print(f"{f'{lo:.2f} to {hi:.2f}':<24} {int(row['count']):>5} "
+                      f"{row['mean']:>10.3f} {row['max']:>10.3f}")
+
+            peak = g["mean"].idxmax()
+            top = g.index[-1]
+            print(f"\nHighest mean CNR is in the {peak.left:.2f} to {peak.right:.2f} bin.")
+            if peak != top:
+                drop = g["mean"].iloc[-1] - g["mean"].max()
+                print(f"The highest-MPXI bin is {abs(drop):.3f} BELOW that peak.")
+                print("\n-> MPXI has an optimum, it is not monotone in CNR. Maximizing it")
+                print("   without bound walks into designs that score well on MPXI and")
+                print("   badly as scanners. Treating it as a target near the peak, or")
+                print("   pairing it with CNR so CNR pushes back, is the safer use.")
+            else:
+                print("\n-> CNR is still rising in the top MPXI bin, so maximizing is")
+                print("   defensible over the range explored so far.")
 
     # The direct question: how much of the original ASCI relationship was the
     # window mismatch rather than physics?
