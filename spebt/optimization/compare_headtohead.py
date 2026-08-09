@@ -1,0 +1,197 @@
+#!/usr/bin/env python3
+"""
+Two objectives against five, run live from identical seeds.
+
+The replay (replay_objective_subsets.py) could only ever be suggestive: the
+designs it searched were chosen by the five-objective campaign, so a smaller set
+winning there was winning on someone else's map. This compares two campaigns
+that started from the same 21 fresh 6D designs and differ only in what they
+optimise.
+
+Both arms are scored on CNR regardless of what they optimise. That is the point:
+CNR is the outcome we care about, and an arm that does not include it as an
+objective is still judged by it.
+
+Comparability notes that matter for reading the output:
+
+  - Hypervolume is NOT compared across arms. The two arms have different
+    objective spaces, so their hypervolumes are different quantities with
+    different units and comparing them would be meaningless.
+  - The x axis is evaluations, not wall time. The arms cost very different
+    amounts per iteration, which is reported separately and is part of the
+    result rather than a confound to remove.
+  - Both arms share the same 21 seed designs, so every trajectory starts from
+    the same best-so-far value. A gap at iteration 0 would mean the arms were
+    not seeded identically and the comparison is invalid.
+
+Usage:
+  python compare_headtohead.py
+  python compare_headtohead.py --arms results_h2h_2obj results_h2h_5obj --plot out.png
+"""
+import argparse
+import os
+import sys
+
+import numpy as np
+import pandas as pd
+
+OUTCOME = "cnr_sector_mean"
+DEFAULT_ARMS = ["results_h2h_2obj", "results_h2h_5obj"]
+RESULTS_NAME = "results_summary_mobo.csv"
+MANIFEST_NAME = "mobo_manifest.csv"
+
+# Measured from repeat reconstructions of identical designs: a single ML-EM run
+# with unseeded Poisson noise varies by this much. Differences smaller than it
+# are not real, and the script says so rather than leaving it to the reader.
+CNR_NOISE_SD = 0.15
+
+
+def load_arm(arm_dir):
+    """Best-CNR-so-far against evaluation number for one arm."""
+    res_path = os.path.join(arm_dir, RESULTS_NAME)
+    man_path = os.path.join(arm_dir, MANIFEST_NAME)
+    if not os.path.exists(res_path):
+        return None, f"no results CSV at {res_path}"
+
+    res = pd.read_csv(res_path)
+    if OUTCOME not in res.columns:
+        return None, f"{res_path} has no {OUTCOME} column"
+
+    seeds = res[res["config"].astype(str).str.startswith("lhs6d_")]
+    seed_best = seeds[OUTCOME].max() if len(seeds) else np.nan
+
+    # Evaluation order comes from the manifest, not from row order in the
+    # results CSV: compute_cnr.py rewrites that file in place and rows can move.
+    if not os.path.exists(man_path):
+        return None, f"no manifest at {man_path} (arm may not have started)"
+    man = pd.read_csv(man_path)
+    if "idx" not in man.columns or "config_name" not in man.columns:
+        return None, f"{man_path} has an unexpected schema"
+
+    order = man.sort_values("idx")[["idx", "config_name"]]
+    merged = order.merge(res[["config", OUTCOME]],
+                         left_on="config_name", right_on="config", how="left")
+
+    cnr = merged[OUTCOME].values.astype(float)
+    # A failed or still-running iteration has no CNR. Treat it as "no
+    # improvement" rather than dropping it, so the x axis stays evaluation
+    # count. Dropping them would credit an arm for iterations it wasted.
+    running = np.maximum.accumulate(np.where(np.isnan(cnr), -np.inf, cnr))
+    running = np.where(np.isinf(running), np.nan, running)
+    if np.isfinite(seed_best):
+        running = np.maximum(running, seed_best)
+
+    return {
+        "n_iters": len(merged),
+        "n_evaluated": int(np.isfinite(cnr).sum()),
+        "seed_best": seed_best,
+        "curve": running,
+        "final": float(np.nanmax(running)) if np.isfinite(running).any() else np.nan,
+    }, None
+
+
+def short(arm_dir):
+    """Directory basename, so the tables stay readable with absolute paths."""
+    return os.path.basename(os.path.normpath(arm_dir)).replace("results_h2h_", "")
+
+
+def evals_to_reach(curve, target):
+    hit = np.where(np.asarray(curve) >= target)[0]
+    return int(hit[0] + 1) if len(hit) else None
+
+
+def main():
+    ap = argparse.ArgumentParser(description="Compare head-to-head campaign arms")
+    ap.add_argument("--arms", nargs="+", default=DEFAULT_ARMS)
+    ap.add_argument("--plot", default=None, help="Write a trajectory plot here")
+    args = ap.parse_args()
+
+    arms, problems = {}, []
+    for a in args.arms:
+        data, err = load_arm(a)
+        if err:
+            problems.append(f"  {a}: {err}")
+        else:
+            arms[a] = data
+
+    for p in problems:
+        print(p)
+    if not arms:
+        print("\nNo arm has usable data yet. Both arms need at least one "
+              "completed iteration.")
+        sys.exit(1)
+
+    print("=" * 74)
+    print("HEAD-TO-HEAD: TWO OBJECTIVES vs FIVE, FROM IDENTICAL SEEDS")
+    print("=" * 74)
+
+    # If the arms were not seeded identically the comparison is invalid, so
+    # check it before reporting anything that depends on it.
+    seed_vals = {a: d["seed_best"] for a, d in arms.items()}
+    uniq = {round(v, 6) for v in seed_vals.values() if np.isfinite(v)}
+    print(f"\nBest CNR among the shared seeds: "
+          f"{', '.join(f'{short(a)}={v:.4f}' for a, v in seed_vals.items())}")
+    if len(uniq) > 1:
+        print("\n*** WARNING: the arms do not share a seed best. They were not")
+        print("*** seeded identically, so any difference below may be the")
+        print("*** starting data rather than the objective set. Re-seed with")
+        print("*** merge_lhs6d_seeds.py before drawing conclusions.")
+
+    print(f"\n{'arm':<22} {'iters':>7} {'evaluated':>10} {'best CNR':>10}")
+    print("-" * 52)
+    for a, d in arms.items():
+        print(f"{short(a):<22} {d['n_iters']:>7} {d['n_evaluated']:>10} {d['final']:>10.4f}")
+
+    # Evaluations to reach shared thresholds. Using thresholds both arms can
+    # reach avoids the trap of scoring each arm against its own best, which
+    # would flatter whichever arm got lucky.
+    finals = [d["final"] for d in arms.values() if np.isfinite(d["final"])]
+    if finals:
+        lo = min(finals)
+        targets = [t for t in (4.2, 4.4, 4.6, round(lo, 3)) if t <= lo + 1e-9]
+        targets = sorted(set(targets))
+        if targets:
+            print(f"\nEvaluations to reach each CNR level "
+                  f"(only levels both arms reached):\n")
+            hdr = f"{'arm':<22}" + "".join(f"{t:>10.3f}" for t in targets)
+            print(hdr)
+            print("-" * len(hdr))
+            for a, d in arms.items():
+                cells = ""
+                for t in targets:
+                    n = evals_to_reach(d["curve"], t)
+                    cells += f"{n:>10}" if n else f"{'--':>10}"
+                print(f"{short(a):<22}{cells}")
+
+    if len(finals) == 2:
+        gap = abs(finals[0] - finals[1])
+        print(f"\nDifference in best CNR between arms: {gap:.4f}")
+        if gap < CNR_NOISE_SD:
+            print(f"That is below the {CNR_NOISE_SD} single-reconstruction noise")
+            print("level, so the arms have found designs of indistinguishable")
+            print("quality. Any claim has to rest on HOW FAST each got there,")
+            print("not on which final number is larger.")
+
+    if args.plot:
+        try:
+            import matplotlib
+            matplotlib.use("Agg")
+            import matplotlib.pyplot as plt
+            fig, ax = plt.subplots(figsize=(7, 4.5))
+            for a, d in arms.items():
+                ax.plot(np.arange(1, len(d["curve"]) + 1), d["curve"],
+                        label=a.replace("results_h2h_", ""), lw=2)
+            ax.set_xlabel("evaluations after the shared seeds")
+            ax.set_ylabel("best CNR sector-mean so far")
+            ax.set_title("Two objectives vs five, identical 21-design start")
+            ax.legend()
+            ax.grid(alpha=0.3)
+            fig.tight_layout()
+            fig.savefig(args.plot, dpi=150)
+            print(f"\nwrote {args.plot}")
+        except Exception as e:
+            print(f"\n[warn] plot failed: {e}")
+
+
+if __name__ == "__main__":
+    main()
