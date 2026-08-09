@@ -44,6 +44,9 @@ import mobo_agent as ma
 # least aligned with it, so it is the natural second axis to test.
 # Short tags keep the section-3 table readable -- the full labels all start with
 # "CNR" and truncate to nothing useful.
+# The outcome every objective is ultimately judged against.
+OUTCOME = "cnr_sector_mean"
+
 SUBSETS = {
     "all five": ma.OBJ_COLUMNS,
     "CNR + MPXI": ["cnr_sector_mean", "mpxi_windowed_active_mean"],
@@ -139,6 +142,49 @@ def main():
         print(f"  PC{i}: {e:6.1%}   cumulative {cum:6.1%}")
     n_eff = int(np.searchsorted(np.cumsum(ev), 0.90) + 1)
     print(f"\n-> {n_eff} directions capture 90% of the variance across 5 objectives")
+
+    # Is each objective's DIRECTION right, not just its correlation?
+    #
+    # Spearman measures monotone association. An objective that helps up to a
+    # point and hurts past it can still post a healthy rho while "maximize" is
+    # the wrong instruction. That is exactly what happened with MPXI: +0.60
+    # against CNR, but the best designs cluster near 2.0 and the top of the
+    # range collapses to CNR 1.78. Binning catches the shape that a coefficient
+    # averages away. Run for every objective, since being wrong about one was
+    # enough to justify checking all of them.
+    print()
+    print("=" * 74)
+    print("1b. IS EACH OBJECTIVE'S DIRECTION ACTUALLY RIGHT?")
+    print("=" * 74)
+    print("\nMean CNR in bins of each objective. An objective whose best CNR")
+    print("sits in a MIDDLE bin has an optimum, not a direction.\n")
+    print(f"{'objective':<24} {'best bin':>22} {'top bin below peak by':>23}")
+    print("-" * 72)
+    for col, name, d in zip(ma.OBJ_COLUMNS, ma.OBJ_NAMES, ma.OBJ_DIRECTIONS):
+        if col == OUTCOME:
+            continue
+        sub = df[[col, OUTCOME]].dropna()
+        if len(sub) < 40:
+            continue
+        try:
+            bins = pd.qcut(sub[col], q=8, duplicates="drop")
+        except ValueError:
+            continue
+        g = sub.groupby(bins, observed=True)[OUTCOME].mean()
+        if len(g) < 3:
+            continue
+        peak = g.idxmax()
+        # "Preferred end" is the top bin for a maximized objective, the bottom
+        # bin for a minimized one.
+        end = g.index[-1] if d > 0 else g.index[0]
+        shortfall = g.max() - g.loc[end]
+        flag = "" if peak == end else "   <-- OPTIMUM, not a direction"
+        print(f"{name.split(' (')[0]:<24} "
+              f"{f'{peak.left:.3g} to {peak.right:.3g}':>22} "
+              f"{shortfall:>23.3f}{flag}")
+    print("\nA large shortfall means the objective is pushing the search past")
+    print("where CNR actually peaks, toward designs that score well on the")
+    print("metric and badly as scanners.")
 
     print()
     print("=" * 74)
