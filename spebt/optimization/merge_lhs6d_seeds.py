@@ -20,7 +20,9 @@ import argparse
 import glob
 import hashlib
 import os
+import shutil
 import sys
+import time
 
 import pandas as pd
 
@@ -39,6 +41,11 @@ def main():
     ap.add_argument("--force", action="store_true",
                     help="Overwrite an arm that already has rows. Destroys a "
                          "campaign in progress; only for restarting cleanly.")
+    ap.add_argument("--append_to", default=None,
+                    help="APPEND the seeds to an existing results CSV instead of "
+                         "seeding fresh arms. Use this for the ring2_* seeds, "
+                         "which extend the main archive rather than starting a "
+                         "new campaign. Mutually exclusive with --arms.")
     args = ap.parse_args()
 
     files = sorted(glob.glob(args.task_glob))
@@ -80,8 +87,15 @@ def main():
 
     complete = seeds.dropna(subset=have)
     print(f"{len(complete)} of {len(seeds)} have every objective")
-    if len(complete) < 3:
+    # The 3-point floor is a FRESH-campaign rule: a controller starting from
+    # these alone needs enough to fit a GP. It does not apply when appending to
+    # an archive that already has hundreds of rows, where even one usable seed
+    # adds information.
+    if len(complete) < 3 and not args.append_to:
         print("ERROR: fewer than 3 usable seeds; the controller needs at least 3.")
+        sys.exit(1)
+    if len(complete) == 0:
+        print("ERROR: no seed has a complete objective set; nothing to add.")
         sys.exit(1)
     if len(complete) < len(seeds):
         lost = seeds.loc[~seeds.index.isin(complete.index), "config"].tolist()
@@ -93,6 +107,35 @@ def main():
     digest = hashlib.sha256(
         pd.util.hash_pandas_object(seeds, index=False).values.tobytes()).hexdigest()[:16]
     print(f"seed frame digest: {digest}")
+
+    if args.append_to:
+        target = args.append_to
+        if not os.path.exists(target):
+            print(f"ERROR: {target} does not exist. --append_to extends an "
+                  f"existing archive; it will not create one.")
+            sys.exit(1)
+        existing = pd.read_csv(target)
+        dup = set(existing.get("config", pd.Series(dtype=str)).astype(str)) & \
+              set(seeds["config"].astype(str))
+        if dup:
+            print(f"ERROR: {len(dup)} of these configs are already in {target}, "
+                  f"e.g. {sorted(dup)[:3]}")
+            print("Appending would duplicate rows and double-count them in "
+                  "training. Nothing written.")
+            sys.exit(1)
+
+        combined = pd.concat([existing, seeds], ignore_index=True)
+        print(f"\n{target}: {len(existing)} rows + {len(seeds)} seeds "
+              f"= {len(combined)}")
+        if args.dry_run:
+            print("dry run, nothing written")
+            return
+        backup = f"{target}.bak_{time.strftime('%Y%m%d_%H%M%S')}"
+        shutil.copy2(target, backup)
+        combined.to_csv(target, index=False)
+        print(f"wrote {target}\nbackup at {backup}")
+        print("\nThe controller picks these up on its next restart.")
+        return
 
     for arm in args.arms:
         out_dir = arm
