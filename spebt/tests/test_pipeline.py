@@ -1394,3 +1394,33 @@ class TestSeedNameCollision:
         r, out = self._gen(tmp_path, "lhs6d_r1_", results)
         assert r.returncode == 0, r.stdout + r.stderr
         assert len(pd.read_csv(out)) == 21
+
+
+class TestRing2BoundNotBinding:
+    """n_det_ring2's box bound was 960 while packing allows 1012 at d2=400 and
+    1361 at d2=540. Every top design in the 271-config archive sat exactly on
+    960, which is a search stopped by its box rather than by physics. The bound
+    should never be what binds; is_ring_packing_ok should be."""
+
+    def test_box_bound_exceeds_packing_across_the_d2_range(self):
+        import mobo_agent as ma
+        worst_case = ma.max_crystals_on_ring(ma.BOUNDS_MAX[4])
+        assert ma.BOUNDS_MAX[3] >= worst_case, (
+            f"n_det_ring2 bound {ma.BOUNDS_MAX[3]} is below the packing limit "
+            f"{worst_case:.0f} at d2={ma.BOUNDS_MAX[4]}, so the box binds first "
+            f"and the search cannot reach physically buildable designs")
+
+    def test_packing_still_rejects_overfull_rings(self):
+        """Raising the box must not disable the physical constraint."""
+        import mobo_agent as ma
+        d2 = 400.0
+        limit = ma.max_crystals_on_ring(d2)
+        assert ma.is_ring_packing_ok(480, int(limit) - 10, d2, 520.0)
+        assert not ma.is_ring_packing_ok(480, int(limit) + 10, d2, 520.0)
+
+    def test_old_bound_was_reachable_everywhere_new_one_is_not(self):
+        """Sanity: 960 fit at every d2, which is why it always bound. The new
+        bound is deliberately unreachable at small d2, so packing decides."""
+        import mobo_agent as ma
+        assert ma.max_crystals_on_ring(ma.BOUNDS_MIN[4]) < ma.BOUNDS_MAX[3]
+        assert ma.max_crystals_on_ring(ma.BOUNDS_MAX[4]) <= ma.BOUNDS_MAX[3]

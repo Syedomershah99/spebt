@@ -34,4 +34,7 @@ mkdir -p results/slurm_logs/out results/slurm_logs/err
 # the corrected objective set, where MPXI is windowed+active and maximized.
 # The existing 224 designs stay valid as training data: the design-to-metric
 # mapping did not change, only which column is read and its sign.
-python run_mobo_loop.py --max_iters 380
+# 420 gives ~100 iterations past the 322 the campaign reached, now that
+# n_det_ring2 can exceed 960 and the ring2_* seeds have put training data in
+# the newly opened region.
+python run_mobo_loop.py --max_iters 420

@@ -2,24 +2,22 @@
 """
 Multi-Objective Bayesian Optimization Agent for SAI SC-SPECT.
 
-5 objectives (all maximized internally via negation where needed):
-  1. FWHM          — minimize (negate)
-  2. ASCI          — maximize
-  3. sensitivity   — maximize
-  4. MPXI          — minimize (negate)
-  5. CNR           — maximize  (reconstructed contrast-to-noise ratio from
-                                the in-loop 150-iter ML-EM run on the hot-rod
-                                phantom; computed by compute_cnr.py and
-                                appended to each row by run_sai_pipeline.sh
-                                step [4/4]. Direct reconstruction quality
-                                objective per Dr. Yao's guidance — the four
-                                proxy metrics did not always align with
-                                CNR in the tested regime.)
+The objective set is defined ONCE below, in OBJ_COLUMNS / OBJ_DIRECTIONS /
+OBJ_NAMES / OBJ_SHORT, and is deliberately not restated here. This docstring
+used to enumerate it and went stale twice: it still named sensitivity months
+after that objective was retired for correlating -0.92 with reconstructed CNR,
+and still described MPXI as minimized after the sign was reversed. A stale list
+in a docstring is read as documentation and believed.
 
-(PPDS was evaluated earlier and put on hold — Spearman ρ vs reconstructed
-CNR was not positive across 16 validated configurations. The PPDS
-computation remains available in compute_metrics.py but is not used as
-an objective here.)
+Read the code, and see the comment block above OBJ_COLUMNS for why each
+objective is what it is. MOBO_OBJECTIVES can restrict the set at runtime for
+head-to-head comparisons.
+
+CNR is the outcome objective: reconstructed contrast-to-noise from the in-loop
+150-iteration ML-EM run on the hot-rod phantom, computed by compute_cnr.py and
+appended by run_sai_pipeline.sh step [4/4]. It exists because the cheap proxy
+metrics do not always align with reconstructed image quality, which is the
+lesson this file's history mostly records.
 
 Uses ModelListGP (one SingleTaskGP per objective) + qLogNEHVI.
 
@@ -77,10 +75,31 @@ warnings.filterwarnings(
 # d3's lower bound is set by something else entirely: ring 3 carries a fixed 960
 # crystals, which do not fit below ~379 mm (see max_crystals_on_ring). 385 keeps
 # a small margin over that hard floor.
+#
+# n_det_ring2's upper bound was 960, matching ring 3's fixed count. That number
+# was never physical, and it was binding: EVERY top design in the 271-config
+# archive sat exactly on it, which is the signature of a search constrained by
+# the box rather than converged. The real limit is the packing constraint, and
+# it is well above 960 across the whole d2 range:
+#
+#     d2 = 292 mm  ->  743 crystals        d2 = 450 mm  ->  1137
+#     d2 = 400 mm  ->  1012                d2 = 540 mm  ->  1361
+#
+# Raised to 1362 so is_ring_packing_ok binds instead of the box. That is the
+# packing limit at the largest allowed d2 (1361.4) rounded up to the next even
+# count, since cells hold two crystals. 1360 would still have clipped the very
+# top of the range by 1.4 crystals, which is exactly the kind of not-quite-right
+# bound this change exists to remove. At the d2 ~ 400 pocket where the best
+# designs live the effective ceiling becomes ~1010, so this opens roughly 5%
+# more crystals there and much more at larger d2.
+#
+# NOTE FOR RY: the real hardware is 480/720/960/1200, so ring 2 carrying more
+# than 960 is a design-study question rather than a build-ready one. Worth
+# confirming there is no manufacturing reason for the old cap.
 PARAM_NAMES = ["aperture_diam_mm", "n_apertures", "n_det_ring1", "n_det_ring2",
                "d2_inner_mm", "d3_inner_mm"]
 BOUNDS_MIN = [0.2, 60.0, 120.0, 180.0, 292.0, 385.0]
-BOUNDS_MAX = [1.0, 270.0, 660.0, 960.0, 540.0, 618.0]
+BOUNDS_MAX = [1.0, 270.0, 660.0, 1362.0, 540.0, 618.0]
 DIM = len(PARAM_NAMES)
 
 # --- Feasibility constraints ---
