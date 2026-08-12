@@ -47,8 +47,14 @@ done
 
 # A different --seed per replicate is the whole point: replicate 0 used seed 0,
 # so reusing it would produce an identical start and measure nothing new.
+#
+# --prefix is equally load-bearing and less obvious. run_sai_pipeline.sh derives
+# its work directory from the config name, so without a per-replicate prefix
+# every replicate evaluates into results/lhs6d_000..020 -- the same 21
+# directories, concurrently, with different designs and no error.
 echo "=== generating seed designs for replicate ${REP} ==="
-python make_lhs6d_seeds.py --n_seeds 21 --seed "$REP" --out "$SEED_CSV"
+python make_lhs6d_seeds.py --n_seeds 21 --seed "$REP" \
+    --prefix "lhs6d_r${REP}_" --out "$SEED_CSV"
 
 mkdir -p "$TASK_DIR"
 

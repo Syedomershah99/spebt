@@ -26,6 +26,7 @@ Usage:
   python make_lhs6d_seeds.py --n_seeds 21 --seed 7 --out lhs6d_seeds.csv
 """
 import argparse
+import os
 import sys
 
 import numpy as np
@@ -73,6 +74,14 @@ def main():
                     help="Matches the 21-design start the existing campaign used")
     ap.add_argument("--out", default="lhs6d_seeds.csv")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--prefix", default="lhs6d_",
+                    help="Config-name prefix. MUST differ between replicates: "
+                         "the pipeline derives its work directory from the "
+                         "config name, so a shared prefix makes two replicates "
+                         "evaluate different designs into the same directories.")
+    ap.add_argument("--results_dir", default="results",
+                    help="Where pipeline work directories live; checked "
+                         "for config-name collisions.")
     ap.add_argument("--max_tries", type=int, default=20000)
     args = ap.parse_args()
 
@@ -126,7 +135,27 @@ def main():
         print("genuinely collapsing this axis.")
         sys.exit(1)
 
-    df.insert(0, "config", [f"lhs6d_{i:03d}" for i in range(len(df))])
+    # Config names must be unique ACROSS replicates. run_sai_pipeline.sh derives
+    # its work directory from the config name, so two replicates using
+    # lhs6d_000..020 would evaluate different designs into the same 21
+    # directories -- concurrently, and without erroring. The numbers that came
+    # out would look entirely plausible.
+    df.insert(0, "config", [f"{args.prefix}{i:03d}" for i in range(len(df))])
+
+    # Refuse to emit names whose work directories already exist. This is the
+    # guard that would have caught replicates 1 and 2 being generated with the
+    # default prefix: they would have evaluated into replicate 0's directories,
+    # concurrently, silently.
+    clashes = [c for c in df["config"]
+               if os.path.isdir(os.path.join(args.results_dir, str(c)))]
+    if clashes:
+        print(f"\nERROR: {len(clashes)} config names already have work directories "
+              f"under {args.results_dir}, e.g. {clashes[:3]}")
+        print("The pipeline derives its work directory from the config name, so "
+              "these\nwould overwrite existing evaluations. Pass a distinct "
+              "--prefix, e.g.\n  --prefix lhs6d_r3_")
+        sys.exit(1)
+
     df.to_csv(args.out, index=False)
     print(f"\nwrote {len(df)} seeds to {args.out}")
     print("\nEvery design satisfies the same feasibility rules the optimizer uses,")

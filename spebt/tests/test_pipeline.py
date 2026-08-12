@@ -1352,3 +1352,45 @@ class TestObjectiveSelection:
         r = self._run("cnr_sector_mean,cnr_sector_mean", "print('reached')")
         assert r.returncode != 0
         assert "repeats an objective" in (r.stdout + r.stderr)
+
+
+class TestSeedNameCollision:
+    """run_sai_pipeline.sh derives WORK_DIR from the config name, so two
+    replicates sharing a config-name prefix evaluate different designs into the
+    same directories -- concurrently, silently, producing plausible numbers.
+    Caught in Aug 2026 after both replicate arrays were already submitted."""
+
+    def _gen(self, tmp_path, prefix, results_dir):
+        opt = os.path.join(_REPO_ROOT, "optimization")
+        out = tmp_path / f"seeds_{prefix.strip('_')}.csv"
+        cmd = [sys.executable, os.path.join(opt, "make_lhs6d_seeds.py"),
+               "--n_seeds", "21", "--seed", "0", "--prefix", prefix,
+               "--results_dir", str(results_dir), "--out", str(out)]
+        r = subprocess.run(cmd, capture_output=True, text=True, cwd=opt, timeout=180)
+        return r, out
+
+    def test_prefix_lands_in_config_names(self, tmp_path):
+        r, out = self._gen(tmp_path, "lhs6d_r7_", tmp_path / "empty_results")
+        assert r.returncode == 0, r.stdout + r.stderr
+        df = pd.read_csv(out)
+        assert all(str(c).startswith("lhs6d_r7_") for c in df["config"])
+
+    def test_refuses_names_whose_work_dirs_exist(self, tmp_path):
+        """The guard that would have prevented the incident."""
+        results = tmp_path / "results"
+        # Pretend replicate 0 already evaluated these
+        for i in range(21):
+            (results / f"lhs6d_{i:03d}").mkdir(parents=True)
+        r, _ = self._gen(tmp_path, "lhs6d_", results)
+        assert r.returncode != 0
+        out = r.stdout + r.stderr
+        assert "already have work directories" in out
+        assert "--prefix" in out
+
+    def test_distinct_prefix_passes_the_same_check(self, tmp_path):
+        results = tmp_path / "results"
+        for i in range(21):
+            (results / f"lhs6d_{i:03d}").mkdir(parents=True)
+        r, out = self._gen(tmp_path, "lhs6d_r1_", results)
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert len(pd.read_csv(out)) == 21
