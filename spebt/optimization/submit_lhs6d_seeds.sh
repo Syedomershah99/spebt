@@ -34,8 +34,14 @@ SEED_CSV="${SEED_CSV:-lhs6d_seeds.csv}"
 
 # One output file per task. compute_cnr.py does a full read-modify-write of the
 # results CSV, so concurrent array tasks writing one file silently drop rows.
-mkdir -p results/lhs6d_seed_out
-RESULTS_CSV="${RESULTS_CSV:-${CODE_DIR}/optimization/results/lhs6d_seed_out/task_${SLURM_ARRAY_TASK_ID}.csv}"
+#
+# Override the DIRECTORY, not the file: RESULTS_CSV has to embed
+# SLURM_ARRAY_TASK_ID, which does not exist when sbatch captures the
+# environment, so exporting RESULTS_CSV from outside leaves a literal
+# "${SLURM_ARRAY_TASK_ID}" in the path and every task writes the same file.
+TASK_DIR="${TASK_DIR:-results/lhs6d_seed_out}"
+mkdir -p "${TASK_DIR}"
+RESULTS_CSV="${CODE_DIR}/optimization/${TASK_DIR}/task_${SLURM_ARRAY_TASK_ID}.csv"
 
 # Row 0 of the CSV is the header, so task N maps to line N+2
 LINE=$(sed -n "$((SLURM_ARRAY_TASK_ID + 2))p" "${SEED_CSV}")

@@ -30,6 +30,7 @@ Usage:
 """
 import argparse
 import os
+import re
 import sys
 
 import numpy as np
@@ -100,11 +101,89 @@ def evals_to_reach(curve, target):
     return int(hit[0] + 1) if len(hit) else None
 
 
+def arm_label(arm_dir):
+    """'2obj' from results_h2h_2obj_r1, so replicates group together."""
+    s = short(arm_dir)
+    return re.sub(r"_r\d+$", "", s)
+
+
+def report_replicates(args):
+    """Aggregate paired replicates: per-arm mean and spread, not single runs.
+
+    One trajectory per arm cannot separate these formulations. The replay's own
+    spread was 12 +/- 9 against 26 +/- 18, so a single run lands almost anywhere
+    in that range. This groups results_h2h_<arm>_r<N> directories by arm and
+    reports the spread across replicates.
+    """
+    groups = {}
+    for a in args.arms:
+        data, err = load_arm(a)
+        if err:
+            print(f"  {short(a)}: {err}")
+            continue
+        groups.setdefault(arm_label(a), []).append((a, data))
+
+    if not groups:
+        print("\nNo arm has usable data yet.")
+        sys.exit(1)
+
+    print("=" * 74)
+    print("HEAD-TO-HEAD ACROSS REPLICATES")
+    print("=" * 74)
+
+    # Paired design: within a replicate both arms share a seed set, so a seed
+    # best that differs between arms of the SAME replicate invalidates it.
+    by_rep = {}
+    for label, runs in groups.items():
+        for a, d in runs:
+            m = re.search(r"_r(\d+)$", short(a))
+            by_rep.setdefault(m.group(1) if m else "0", {})[label] = d["seed_best"]
+    for rep, seeds in sorted(by_rep.items()):
+        vals = {round(v, 6) for v in seeds.values() if np.isfinite(v)}
+        if len(vals) > 1:
+            print(f"\n*** WARNING: replicate {rep} arms do not share a seed best "
+                  f"({seeds}). That replicate is not paired and should be excluded.")
+
+    # Compare at a budget every run reached, so a short run cannot flatter an arm.
+    budget = min(d["n_iters"] for runs in groups.values() for _, d in runs)
+    print(f"\nAll runs truncated to their common budget of {budget} evaluations,")
+    print("so an arm that ran longer gets no advantage.\n")
+
+    targets = [4.2, 4.4, 4.6]
+    hdr = f"{'arm':<10} {'runs':>5} " + "".join(f"{f'-> {t}':>16}" for t in targets) + f"{'best CNR':>16}"
+    print(hdr)
+    print("-" * len(hdr))
+    for label, runs in sorted(groups.items()):
+        cells = ""
+        for t in targets:
+            got = [evals_to_reach(d["curve"][:budget], t) for _, d in runs]
+            hit = [g for g in got if g]
+            cells += (f"{f'{np.mean(hit):.0f}+/-{np.std(hit):.0f} ({len(hit)}/{len(got)})':>16}"
+                      if hit else f"{'not reached':>16}")
+        finals = [float(np.nanmax(d["curve"][:budget])) for _, d in runs]
+        print(f"{label:<10} {len(runs):>5} {cells}"
+              f"{f'{np.mean(finals):.3f}+/-{np.std(finals):.3f}':>16}")
+
+    n_runs = min(len(r) for r in groups.values())
+    if n_runs < 3:
+        print(f"\nOnly {n_runs} run(s) per arm. That is not enough to separate these")
+        print("formulations: single trajectories vary by more than the difference")
+        print("being measured. Treat any ordering here as provisional until there")
+        print("are at least 3 paired replicates per arm.")
+
+
 def main():
     ap = argparse.ArgumentParser(description="Compare head-to-head campaign arms")
     ap.add_argument("--arms", nargs="+", default=DEFAULT_ARMS)
     ap.add_argument("--plot", default=None, help="Write a trajectory plot here")
+    ap.add_argument("--replicates", action="store_true",
+                    help="Group results_h2h_<arm>_r<N> dirs by arm and report "
+                         "mean and spread across replicates")
     args = ap.parse_args()
+
+    if args.replicates:
+        report_replicates(args)
+        return
 
     arms, problems = {}, []
     for a in args.arms:

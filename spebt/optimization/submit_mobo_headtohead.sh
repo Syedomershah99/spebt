@@ -23,7 +23,18 @@ set -euo pipefail
 
 ARM="${1:-}"
 if [[ "$ARM" != "2obj" && "$ARM" != "5obj" ]]; then
-    echo "ERROR: pass an arm: sbatch submit_mobo_headtohead.sh {2obj|5obj}" >&2
+    echo "ERROR: pass an arm: sbatch submit_mobo_headtohead.sh {2obj|5obj} [replicate]" >&2
+    exit 2
+fi
+
+# Replicate index. One run per arm cannot separate these formulations: the
+# replay's own spread was 12 +/- 9 against 26 +/- 18, so single trajectories are
+# mostly noise. Replicates are PAIRED -- replicate N gives both arms the same
+# LHS seed set, and different replicates use different seed sets, so the start
+# is blocked out rather than confounded with the objective set.
+REP="${2:-0}"
+if ! [[ "$REP" =~ ^[0-9]+$ ]]; then
+    echo "ERROR: replicate must be a non-negative integer, got '$REP'" >&2
     exit 2
 fi
 
@@ -31,10 +42,16 @@ BASE=/vscratch/grp-rutaoyao/Omer/spebt/spebt/spebt
 source /vscratch/grp-rutaoyao/Omer/.venv/bin/activate
 cd "$BASE/optimization"
 
-# Each arm gets its own results directory: manifest, results CSV, singleton lock
-# and logs. Sharing one would make the two arms claim the same manifest indices
-# and interleave rows into a single CSV, which is unrecoverable after the fact.
-export MOBO_RESULTS_DIR="$BASE/optimization/results_h2h_${ARM}"
+# Each arm and replicate gets its own results directory: manifest, results CSV,
+# singleton lock and logs. Sharing one would make two campaigns claim the same
+# manifest indices and interleave rows into a single CSV, unrecoverable after
+# the fact. Replicate 0 keeps the original unsuffixed names so the first
+# experiment's directories stay valid.
+if [[ "$REP" == "0" ]]; then
+    export MOBO_RESULTS_DIR="$BASE/optimization/results_h2h_${ARM}"
+else
+    export MOBO_RESULTS_DIR="$BASE/optimization/results_h2h_${ARM}_r${REP}"
+fi
 
 if [[ "$ARM" == "2obj" ]]; then
     export MOBO_OBJECTIVES="cnr_sector_mean,mpxi_windowed_active_mean"
@@ -47,6 +64,7 @@ fi
 mkdir -p "$MOBO_RESULTS_DIR/slurm_logs/out" "$MOBO_RESULTS_DIR/slurm_logs/err"
 
 echo "arm         : $ARM"
+echo "replicate   : $REP"
 echo "results dir : $MOBO_RESULTS_DIR"
 echo "objectives  : $MOBO_OBJECTIVES"
 
