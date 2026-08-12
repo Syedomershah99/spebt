@@ -18,8 +18,10 @@ import re
 
 import numpy as np
 
-# Top designs from the 180-iteration campaign. Keep in sync with
-# submit_cnr_repeats.sh.
+# Fallback only. Named designs go stale the moment a campaign advances, so the
+# default path derives the top designs from the results CSV instead; this list
+# is used only if that CSV cannot be read. It names configs from the retired
+# 180-iteration campaign.
 CONFIGS = [
     "mobo_0069_ap0.3138_nap124_nd1_612_nd2_230",
     "mobo_0177_ap0.3512_nap97_nd1_604_nd2_584",
@@ -75,10 +77,18 @@ def correlate_with_metrics(results_dir, stats_by_config, metrics_csv):
         if m.empty:
             continue
         r = m.iloc[0]
+        # Current objective columns. These were mpxi_mean / asci_pct /
+        # sensitivity_mean / fwhm_mean, all of which are retired: sensitivity
+        # was dropped entirely, and the other three were redefined. Reading the
+        # old names returns NaN and the metric is silently skipped rather than
+        # reported as missing.
         rows.append({
             "config": short_name(config), "cnr_std": std,
-            "mpxi": r.get("mpxi_mean"), "asci": r.get("asci_pct"),
-            "sensitivity": r.get("sensitivity_mean"), "fwhm": r.get("fwhm_mean"),
+            "mpxi": r.get("mpxi_windowed_active_mean"),
+            "asci": r.get("asci_pct_fwhm0p45"),
+            "ppds_ring1": r.get("ppds_ring1"),
+            "fwhm": r.get("fwhm_weighted_mean"),
+            "aperture": r.get("aperture_diam_mm"),
             "n_det_ring2": r.get("n_det_ring2"),
         })
     if len(rows) < 3:
@@ -94,7 +104,7 @@ def correlate_with_metrics(results_dir, stats_by_config, metrics_csv):
     print(d.sort_values("cnr_std").to_string(index=False))
     print()
     print(f"Spearman rank correlation of each metric against CNR std (n={len(d)}):")
-    for col in ["mpxi", "asci", "sensitivity", "fwhm", "n_det_ring2"]:
+    for col in ["mpxi", "asci", "ppds_ring1", "fwhm", "aperture", "n_det_ring2"]:
         if col not in d or d[col].isna().any():
             continue
         rho = d["cnr_std"].corr(d[col], method="spearman")
@@ -111,13 +121,30 @@ def main():
     ap.add_argument("--config_list", default=None,
                     help="File with one config name per line (default: the built-in top designs)")
     ap.add_argument("--metrics_csv", default="results/results_summary_mobo.csv",
-                    help="Campaign CSV, used to correlate CNR std against design metrics")
+                    help="Campaign CSV, used to correlate CNR std against design metrics "
+                         "and, without --config_list, to pick the top designs")
+    ap.add_argument("--top_n", type=int, default=5,
+                    help="How many top-CNR designs to analyse when --config_list "
+                         "is not given")
     args = ap.parse_args()
 
     global CONFIGS
     if args.config_list:
         with open(args.config_list) as f:
             CONFIGS = [ln.strip() for ln in f if ln.strip()]
+    else:
+        # Derive the top designs from the archive rather than using the
+        # built-in list, which names configs from the retired 180-iteration
+        # campaign. A stale default here does not error -- it silently reports
+        # on designs nobody is considering any more.
+        try:
+            import pandas as pd
+            df = pd.read_csv(args.metrics_csv).dropna(subset=["cnr_sector_mean"])
+            CONFIGS = df.nlargest(args.top_n, "cnr_sector_mean")["config"].astype(str).tolist()
+            print(f"Top {len(CONFIGS)} designs by CNR from {args.metrics_csv}\n")
+        except Exception as e:
+            print(f"Could not read {args.metrics_csv} ({e}); falling back to the "
+                  f"built-in list, which may be out of date:\n  {CONFIGS}\n")
 
     stats = {}
     std_by_config = {}
