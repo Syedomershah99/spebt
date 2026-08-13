@@ -12,7 +12,27 @@
 #
 #SBATCH --partition=general-compute
 #SBATCH --qos=general-compute
+# MEASURED, 4 cores: the 2obj arm used 44 min of CPU across 71 h, the 5obj arm
+# 14 h across 72 h. Both spend most of their life asleep waiting on pipeline
+# jobs, so 4 cores is generous already.
 #SBATCH --cpus-per-task=4
+#
+# MEASURED peak RSS, same design space and ~100 training points:
+#     2obj arm (25671477)   0.98 GB
+#     5obj arm (25671478)  49.60 GB      <- 50x, purely from objective count
+#
+# qLogNEHVI's hypervolume partition is what costs this, and it grows with both
+# the objective count and the training-set size. 160G is ~3x the 5obj peak at
+# 100 points and leaves room as the archive grows; the main campaign OOM-killed
+# at 96G with 189 points and five objectives.
+#
+# SBATCH directives cannot branch on the arm, so this default is sized for the
+# expensive case. When submitting a 2obj arm, override it -- 160G for a job that
+# uses 1 GB just queues behind nodes it does not need:
+#
+#     sbatch --mem=16G submit_mobo_headtohead.sh 2obj 1
+#     sbatch           submit_mobo_headtohead.sh 5obj 1
+#
 #SBATCH --mem=160G
 #SBATCH --time=72:00:00
 #SBATCH --job-name=mobo_h2h
