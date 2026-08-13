@@ -14,8 +14,12 @@
 #
 #SBATCH --partition=general-compute
 #SBATCH --qos=general-compute
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=32G
+# MEASURED (job 25706256_0): 1.06 cores of 8 used, 10.7 GB of 32.
+# ML-EM reconstruction is single-threaded and I/O-bound -- run_mlem re-reads
+# all 16 PPDF files inside its 150-iteration loop, so extra cores idle.
+# 2 cores leaves headroom for the torch/BLAS threads that do fire.
+#SBATCH --cpus-per-task=2
+#SBATCH --mem=16G
 #SBATCH --time=01:00:00
 #SBATCH --job-name=cnr_repeat
 #SBATCH --array=0-14

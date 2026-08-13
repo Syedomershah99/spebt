@@ -4,6 +4,8 @@
 # Read-only against the archive — safe to run while the MOBO controller is live.
 #SBATCH --partition=general-compute
 #SBATCH --qos=general-compute
+# MEASURED (job 25615829): 2.8 cores of 4 used. BoTorch GP fitting is mostly
+# single-threaded with some BLAS parallelism. 4 is right.
 #SBATCH --cpus-per-task=4
 # 32G was OOM-killed after 4.5 h. The cost is not the point count, as that first
 # estimate assumed — it is qLogNEHVI's hypervolume partition, which grows with

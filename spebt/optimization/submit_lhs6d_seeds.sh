@@ -18,7 +18,11 @@
 #
 #SBATCH --partition=general-compute
 #SBATCH --qos=general-compute
-#SBATCH --cpus-per-task=36
+# MEASURED (job 25704120_0): 22.2 cores of 36 used, 17.0 GB of 32.
+# The PPDF ray tracing does parallelise, so this is the one job where a
+# large core count earns its keep. 24 matches observed use and schedules
+# sooner than 36 on a busy partition.
+#SBATCH --cpus-per-task=24
 #SBATCH --mem=32G
 #SBATCH --time=06:00:00
 #SBATCH --job-name=lhs6d_seed
