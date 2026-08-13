@@ -41,10 +41,16 @@ DEFAULT_ARMS = ["results_h2h_2obj", "results_h2h_5obj"]
 RESULTS_NAME = "results_summary_mobo.csv"
 MANIFEST_NAME = "mobo_manifest.csv"
 
-# Measured from repeat reconstructions of identical designs: a single ML-EM run
-# with unseeded Poisson noise varies by this much. Differences smaller than it
-# are not real, and the script says so rather than leaving it to the reader.
-CNR_NOISE_SD = 0.15
+# Measured over 5-seed repeats of 8 designs (Aug 2026): per-run std is
+# 0.05-0.12, pooled ~0.08. The earlier 0.15 came from a single two-run
+# spread and was about twice too conservative, which made real design
+# differences read as "inside noise".
+CNR_NOISE_SD = 0.08
+
+# Fewest evaluations a run needs before a cross-arm comparison means
+# anything. Below this the truncation just compares two campaigns that
+# have barely started.
+MIN_BUDGET = 10
 
 
 def load_arm(arm_dir):
@@ -146,6 +152,23 @@ def report_replicates(args):
 
     # Compare at a budget every run reached, so a short run cannot flatter an arm.
     budget = min(d["n_iters"] for runs in groups.values() for _, d in runs)
+
+    print("\nProgress per run:")
+    for label, runs in sorted(groups.items()):
+        counts = ", ".join(f"{short(a)}={d['n_iters']}" for a, d in runs)
+        print(f"  {label:<8} {counts}")
+
+    # A common budget set by a just-started replicate makes every column read
+    # "not reached" and every mean NaN, which looks like a result and is not.
+    # Report progress and stop instead.
+    if budget < MIN_BUDGET:
+        print(f"\nCommon budget is only {budget} evaluation(s), set by the "
+              f"shortest run above.")
+        print("Truncating to that would compare campaigns before either has")
+        print("done anything. Nothing to conclude yet -- rerun once every run")
+        print(f"has at least {MIN_BUDGET} evaluations.")
+        return
+
     print(f"\nAll runs truncated to their common budget of {budget} evaluations,")
     print("so an arm that ran longer gets no advantage.\n")
 
