@@ -1424,3 +1424,38 @@ class TestRing2BoundNotBinding:
         import mobo_agent as ma
         assert ma.max_crystals_on_ring(ma.BOUNDS_MIN[4]) < ma.BOUNDS_MAX[3]
         assert ma.max_crystals_on_ring(ma.BOUNDS_MAX[4]) <= ma.BOUNDS_MAX[3]
+
+
+class TestRepeatMetricIsSectorMean:
+    """analyze_cnr_repeats.collect must return the SECTOR MEAN, not overall_cnr.
+
+    Aug 2026: it returned overall_cnr while the campaign optimises
+    cnr_sector_mean. The two differ by ~0.15 for the top designs, so repeat runs
+    of mobo_0296 read as 4.91 against a campaign value of 4.77 and were
+    mistaken for a systematic measurement offset. The gap between the metrics
+    is larger than the effects being measured, so this must not regress."""
+
+    def _write(self, wd, seed, sector_cnrs, overall):
+        d = os.path.join(wd, f"cnr_repeat_seed{seed}")
+        os.makedirs(d, exist_ok=True)
+        np.savez(os.path.join(d, "cnr_results.npz"),
+                 sector_cnrs=np.array(sector_cnrs, dtype=float),
+                 overall_cnr=float(overall))
+
+    def test_returns_sector_mean_not_overall(self, tmp_path):
+        import analyze_cnr_repeats as acr
+        cfg = "cfg_x"
+        wd = str(tmp_path / cfg)
+        # sector mean is 3.0; overall is deliberately far away
+        for s in range(3):
+            self._write(wd, s, [1.0, 2.0, 3.0, 4.0, 5.0], 9.99)
+        seeds, values, sectors = acr.collect(str(tmp_path), cfg)
+        assert seeds == [0, 1, 2]
+        assert values == pytest.approx([3.0, 3.0, 3.0])
+        assert not np.allclose(values, 9.99), "returned overall_cnr, not sector mean"
+        assert sectors.shape == (3, 5)
+
+    def test_empty_when_no_repeats(self, tmp_path):
+        import analyze_cnr_repeats as acr
+        seeds, values, sectors = acr.collect(str(tmp_path), "missing_cfg")
+        assert seeds == [] and values.size == 0

@@ -35,23 +35,37 @@ def short_name(config: str) -> str:
 
 
 def collect(results_dir: str, config: str):
-    """Return (seeds, overall_cnrs, sector_matrix) for one config."""
+    """Return (seeds, sector_mean_cnrs, sector_matrix) for one config.
+
+    The headline number is the MEAN OVER SECTORS, not overall_cnr. Those are
+    different quantities: overall_cnr pools every hot pixel, so the largest rods
+    dominate it, while cnr_sector_mean weights each rod size equally. RY asked
+    for the sector mean in Jul 2026 and it is what the campaign optimizes and
+    what every row of the results CSV holds.
+
+    This function previously returned overall_cnr, which made repeat runs of
+    mobo_0296 read as 4.91 against a campaign value of 4.77 and look like a
+    systematic offset. It was the pooled metric being compared with the
+    sector-mean one. The two differ by ~0.15 for these designs, which is larger
+    than the effects being measured.
+    """
     pattern = os.path.join(results_dir, config, "cnr_repeat_seed*", "cnr_results.npz")
-    seeds, overall, sectors = [], [], []
+    seeds, sector_mean, sectors = [], [], []
     for path in sorted(glob.glob(pattern)):
         m = re.search(r"cnr_repeat_seed(\d+)", path)
         if not m:
             continue
         d = np.load(path, allow_pickle=True)
+        sec = np.asarray(d["sector_cnrs"], dtype=float)
         seeds.append(int(m.group(1)))
-        overall.append(float(d["overall_cnr"]))
-        sectors.append(np.asarray(d["sector_cnrs"], dtype=float))
-    if not overall:
+        sector_mean.append(float(np.mean(sec)))
+        sectors.append(sec)
+    if not sector_mean:
         return [], np.array([]), np.empty((0, 0))
     order = np.argsort(seeds)
     return (
         [seeds[i] for i in order],
-        np.array([overall[i] for i in order]),
+        np.array([sector_mean[i] for i in order]),
         np.vstack([sectors[i] for i in order]),
     )
 
