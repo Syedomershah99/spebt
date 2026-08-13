@@ -20,6 +20,7 @@ import argparse
 import glob
 import hashlib
 import os
+import re
 import shutil
 import sys
 import time
@@ -159,9 +160,22 @@ def main():
         print("\ndry run, nothing written")
         return
 
+    # Derive the replicate from the arm directory names rather than printing a
+    # bare "2obj", which defaults to replicate 0 and would target the original
+    # experiment instead of the one just seeded.
+    reps = {m.group(1) for a in args.arms
+            for m in [re.search(r"_r(\d+)$", a.rstrip("/"))] if m}
+    rep = reps.pop() if len(reps) == 1 else None
+
     print("\nBoth arms now hold identical seed data. Launch them with:")
-    print("  sbatch submit_mobo_headtohead.sh 2obj")
-    print("  sbatch submit_mobo_headtohead.sh 5obj")
+    suffix = f" {rep}" if rep else ""
+    # 2obj measured 0.98 GB against 5obj's 49.6 GB, so it does not need the
+    # script's 160G default and schedules far sooner without it.
+    print(f"  sbatch --mem=16G submit_mobo_headtohead.sh 2obj{suffix}")
+    print(f"  sbatch           submit_mobo_headtohead.sh 5obj{suffix}")
+    if rep is None:
+        print("\n(could not infer a replicate from the arm names; if these are "
+              "replicate\n arms, append the replicate number to each command)")
 
 
 if __name__ == "__main__":
