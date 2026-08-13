@@ -122,7 +122,13 @@ def correlate_with_metrics(results_dir, stats_by_config, metrics_csv):
         if col not in d or d[col].isna().any():
             continue
         rho = d["cnr_std"].corr(d[col], method="spearman")
-        print(f"  {col:<14} rho = {rho:+.3f}")
+        # A rank correlation over a near-constant column is noise dressed as a
+        # result. The top designs' weighted FWHM spans 0.4811 to 0.4838 -- a
+        # range of 0.003 mm -- and produced rho = -0.900, which means nothing.
+        spread = d[col].max() - d[col].min()
+        rel = spread / abs(d[col].mean()) if d[col].mean() else 0.0
+        note = "   (metric near-constant here; rho is meaningless)" if rel < 0.02 else ""
+        print(f"  {col:<14} rho = {rho:+.3f}   range {spread:.4g}{note}")
     if len(d) < 6:
         print("\nNOTE: with fewer than ~6 designs these correlations are not")
         print("      evidence. Re-run with a wider spread of designs.")
