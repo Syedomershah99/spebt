@@ -10,15 +10,21 @@
 #
 # Keep the venv OFF /vscratch. Scratch is for regenerable outputs only.
 #
-# Versions are those of the working local environment as of Aug 2026.
-torch==2.13.0
-botorch==0.18.1
-gpytorch==1.15.2
-numpy==2.5.1
-pandas==3.0.5
-scipy==1.18.0
-h5py==3.16.0
-matplotlib==3.11.1
-rich==15.0.0
-pytest==9.1.1
+# PYTHON VERSION MATTERS HERE. CCR provides Python 3.10.8 and has no python
+# module to load, while the local Mac runs 3.12. botorch >= 0.17 requires 3.11+,
+# so CCR caps at 0.16.1. The entire 279-design archive was therefore produced
+# under botorch <= 0.16.1 on Python 3.10, and that is what these pins restore.
+#
+# Only botorch is pinned exactly. It is the one package whose version changes
+# acquisition behaviour, so reproducing the archive depends on it. Everything
+# else is left to pip, because pinning the Mac's versions is what produced an
+# unsatisfiable file the first time: pandas 3.x and numpy 2.5 also require
+# newer Python than CCR has.
+botorch==0.16.1
+h5py
+matplotlib
+pandas
+pytest
 pyyaml
+rich
+scipy
