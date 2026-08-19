@@ -153,10 +153,26 @@ def report_replicates(args):
     # Compare at a budget every run reached, so a short run cannot flatter an arm.
     budget = min(d["n_iters"] for runs in groups.values() for _, d in runs)
 
-    print("\nProgress per run:")
+    print("\nProgress per run (manifest rows / with a CNR value):")
     for label, runs in sorted(groups.items()):
-        counts = ", ".join(f"{short(a)}={d['n_iters']}" for a, d in runs)
+        counts = ", ".join(f"{short(a)}={d['n_iters']}/{d['n_evaluated']}"
+                           for a, d in runs)
         print(f"  {label:<8} {counts}")
+
+    # An iteration with no CNR is treated as "no improvement" and still counted,
+    # which is right for a FAILED evaluation and wrong for one that never ran.
+    # Replicates 1 and 2 hit their wall-clock limits partway through, so their
+    # manifests carried rows the arms never finished, and the arms lost unequal
+    # numbers of them. Flag it rather than silently crediting both arms for
+    # iterations they did not do.
+    for label, runs in sorted(groups.items()):
+        for a, d in runs:
+            gap = d["n_iters"] - d["n_evaluated"]
+            if gap > 0.1 * max(d["n_iters"], 1):
+                print(f"  [warn] {short(a)}: {gap} of {d['n_iters']} iterations "
+                      f"have no CNR. If the job hit its wall rather than failing,"
+                      f"\n         this arm is credited with evaluations it never "
+                      f"ran. Compare hit RATES, not totals.")
 
     # A common budget set by a just-started replicate makes every column read
     # "not reached" and every mean NaN, which looks like a result and is not.
