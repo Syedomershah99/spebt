@@ -382,7 +382,35 @@ def main():
 
             elapsed_total = int((time.time() - wait_start) / 60)
             console.log(f"Job {job_id} finished in {elapsed_total} min.")
-            patch_manifest_status(idx, job_id, "completed")
+
+            # "The SLURM job exited" is not "the evaluation succeeded". Marking
+            # it completed on exit status alone is what hid a broken geometry
+            # generator for five days: four campaigns ran at 51-69% of their
+            # nominal budget with every manifest row reading "completed".
+            #
+            # Check the archive actually gained an objective value for this
+            # config before claiming the iteration happened.
+            outcome = "completed"
+            try:
+                df_chk = pd.read_csv(RESULTS_CSV)
+                row = df_chk[df_chk["config"].astype(str) == config_name]
+                if row.empty:
+                    outcome = "no_row"
+                elif row[OBJ_COLUMNS].isna().all(axis=1).iloc[0]:
+                    outcome = "all_nan"
+            except Exception as e:
+                console.print(f"[yellow]Could not verify {config_name}: {e}[/yellow]")
+                outcome = "unverified"
+
+            if outcome != "completed":
+                console.print(
+                    f"[bold red]Iteration {idx} produced no usable metrics "
+                    f"({outcome}).[/bold red] The pipeline job exited cleanly but "
+                    f"the archive gained nothing. This is a LOST iteration, not a "
+                    f"measurement. Check {LOG_DIR}/out for this config before "
+                    f"trusting the campaign's budget."
+                )
+            patch_manifest_status(idx, job_id, outcome)
 
             # 6. Print status
             print_status(idx, config_name)

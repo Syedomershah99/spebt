@@ -119,7 +119,25 @@ else
     --n_det_ring2 "${N_DET_RING2}" \
     --d2_inner "${D2_INNER}" \
     --d3_inner "${D3_INNER}" \
-    --output_dir "${WORK_DIR}" 2>&1; then
+    --output_dir "${WORK_DIR}" 2>&1 | tee "${WORK_DIR}/geometry_gen.log"; then
+    # Distinguish a genuinely infeasible DESIGN from a broken TOOLCHAIN. Both
+    # exit non-zero, and treating them alike is how a purged helper.py cost four
+    # campaigns 30-50% of their iterations for five days: every crash was
+    # recorded as "aperture too wide or ring ordering violated" and written to
+    # the archive as an infeasible design.
+    #
+    # An infeasible design is data. A crash is a lost iteration, and the run
+    # must stop rather than poison the archive with a NaN row that the optimizer
+    # will read as "this region is bad".
+    if grep -qE "ModuleNotFoundError|ImportError|No such file or directory|SyntaxError|Traceback" \
+         "${WORK_DIR}/geometry_gen.log"; then
+      echo "[FATAL] The geometry generator CRASHED; it did not reject the design." >&2
+      echo "        This is a broken environment, not an infeasible geometry." >&2
+      echo "        Not writing a NaN row -- that would teach the optimizer this" >&2
+      echo "        design region is bad when it was never evaluated." >&2
+      sed -n "1,40p" "${WORK_DIR}/geometry_gen.log" >&2
+      exit 1
+    fi
     write_zero_ji "Geometry generation failed (aperture too wide for n_apertures, or ring ordering violated)"
   fi
 
