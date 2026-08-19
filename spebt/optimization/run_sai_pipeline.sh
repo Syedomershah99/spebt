@@ -27,7 +27,10 @@ set -uo pipefail
 #   - Stale beam analysis outputs cleaned before re-run
 # ============================================================
 
-source /vscratch/grp-rutaoyao/Omer/.venv/bin/activate
+# The venv lives in HOME, not /vscratch. Scratch is auto-purged and in
+# Aug 2026 it removed .venv/bin/python mid-campaign. Override with
+# SPEBT_VENV if the environment moves again.
+source "${SPEBT_VENV:-$HOME/spebt-venv}/bin/activate"
 export PYTHONPATH="${CODE_DIR}/pymatcal:${PYTHONPATH:-}"
 export HDF5_USE_FILE_LOCKING=FALSE
 export OMP_NUM_THREADS=2

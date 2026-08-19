@@ -59,7 +59,10 @@ if ! [[ "$REP" =~ ^[0-9]+$ ]]; then
 fi
 
 BASE=/vscratch/grp-rutaoyao/Omer/spebt/spebt/spebt
-source /vscratch/grp-rutaoyao/Omer/.venv/bin/activate
+# The venv lives in HOME, not /vscratch. Scratch is auto-purged and in
+# Aug 2026 it removed .venv/bin/python mid-campaign. Override with
+# SPEBT_VENV if the environment moves again.
+source "${SPEBT_VENV:-$HOME/spebt-venv}/bin/activate"
 cd "$BASE/optimization"
 
 # Each arm and replicate gets its own results directory: manifest, results CSV,

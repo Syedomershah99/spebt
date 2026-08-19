@@ -27,7 +27,10 @@ echo "Start: $(date)"
 echo "=========================================================="
 
 # --- Activate venv ---
-source /vscratch/grp-rutaoyao/Omer/.venv/bin/activate
+# The venv lives in HOME, not /vscratch. Scratch is auto-purged and in
+# Aug 2026 it removed .venv/bin/python mid-campaign. Override with
+# SPEBT_VENV if the environment moves again.
+source "${SPEBT_VENV:-$HOME/spebt-venv}/bin/activate"
 
 # --- Make scanner_modeling importable ---
 export PYTHONPATH=/vscratch/grp-rutaoyao/Omer/spebt/pymatcal:$PYTHONPATH

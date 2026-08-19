@@ -30,7 +30,10 @@
 
 set -euo pipefail
 
-VENV_PY=/vscratch/grp-rutaoyao/Omer/.venv/bin/python3
+# The venv lives in HOME, not /vscratch. Scratch is auto-purged and in
+# Aug 2026 it removed .venv/bin/python mid-campaign. Override with
+# SPEBT_VENV if the environment moves again.
+VENV_PY="${SPEBT_VENV:-$HOME/spebt-venv}/bin/python3"
 CODE_DIR=/vscratch/grp-rutaoyao/Omer/spebt/spebt/spebt
 cd "${CODE_DIR}/optimization"
 
