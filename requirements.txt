@@ -1,0 +1,24 @@
+# Pinned environment for the SC-SPECT MOBO pipeline.
+#
+# This file exists because the CCR virtualenv lived only on /vscratch, which is
+# auto-purged. In Aug 2026 the purge removed .venv/bin/python along with torch,
+# botorch, gpytorch, pandas and scipy, and there was no record of what had been
+# installed. Rebuild with:
+#
+#   python3 -m venv ~/spebt-venv
+#   ~/spebt-venv/bin/pip install -r requirements.txt
+#
+# Keep the venv OFF /vscratch. Scratch is for regenerable outputs only.
+#
+# Versions are those of the working local environment as of Aug 2026.
+torch==2.13.0
+botorch==0.18.1
+gpytorch==1.15.2
+numpy==2.5.1
+pandas==3.0.5
+scipy==1.18.0
+h5py==3.16.0
+matplotlib==3.11.1
+rich==15.0.0
+pytest==9.1.1
+pyyaml
