@@ -88,9 +88,28 @@ def load_arm(arm_dir):
     if np.isfinite(seed_best):
         running = np.maximum(running, seed_best)
 
+    # Separate "finished but produced nothing" from "still running". The
+    # controller records no_row / all_nan for the former since Aug 2026; older
+    # manifests only have "completed", so fall back to treating the final row as
+    # in-flight when the status column cannot distinguish them.
+    status = man.sort_values("idx").get("status")
+    if status is not None:
+        st = status.astype(str).values
+        n_lost = int(((st == "no_row") | (st == "all_nan")).sum())
+        n_pending = int(((st == "submitted") | (st == "running")).sum())
+    else:
+        n_lost, n_pending = 0, 0
+    missing = len(merged) - int(np.isfinite(cnr).sum())
+    if n_lost == 0 and n_pending == 0 and missing > 0:
+        # Legacy manifest: assume at most one in-flight row, rest are losses.
+        n_pending = 1 if missing >= 1 else 0
+        n_lost = max(0, missing - n_pending)
+
     return {
         "n_iters": len(merged),
         "n_evaluated": int(np.isfinite(cnr).sum()),
+        "n_lost": n_lost,
+        "n_pending": n_pending,
         "seed_best": seed_best,
         "curve": running,
         "final": float(np.nanmax(running)) if np.isfinite(running).any() else np.nan,
@@ -161,18 +180,23 @@ def report_replicates(args):
 
     # An iteration with no CNR is treated as "no improvement" and still counted,
     # which is right for a FAILED evaluation and wrong for one that never ran.
-    # Replicates 1 and 2 hit their wall-clock limits partway through, so their
-    # manifests carried rows the arms never finished, and the arms lost unequal
-    # numbers of them. Flag it rather than silently crediting both arms for
-    # iterations they did not do.
+    # Flag it rather than silently crediting an arm for iterations it did not do.
+    #
+    # Read the manifest STATUS rather than inferring from a missing CNR. A
+    # running controller always has one iteration in flight whose pipeline has
+    # not written its metrics yet, and counting that as a loss made every
+    # healthy arm emit a warning -- which is how a real signal gets ignored.
     for label, runs in sorted(groups.items()):
         for a, d in runs:
-            gap = d["n_iters"] - d["n_evaluated"]
-            if gap > 0.1 * max(d["n_iters"], 1):
-                print(f"  [warn] {short(a)}: {gap} of {d['n_iters']} iterations "
-                      f"have no CNR. If the job hit its wall rather than failing,"
-                      f"\n         this arm is credited with evaluations it never "
-                      f"ran. Compare hit RATES, not totals.")
+            lost, pending = d["n_lost"], d["n_pending"]
+            if lost > 0:
+                print(f"  [warn] {short(a)}: {lost} of {d['n_iters']} iterations "
+                      f"finished WITHOUT metrics.\n         This arm is credited "
+                      f"with evaluations it never completed. Compare hit RATES, "
+                      f"not totals.")
+            elif pending:
+                print(f"  {short(a)}: {pending} iteration(s) still in flight "
+                      f"(counted as incomplete, not lost)")
 
     # A common budget set by a just-started replicate makes every column read
     # "not reached" and every mean NaN, which looks like a result and is not.
