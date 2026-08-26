@@ -28,6 +28,25 @@ write would have silently removed the ability to measure our own uncertainty.
 
 So pruning is deliberate: keep the designs worth re-measuring, drop the rest.
 
+WHAT YOU LOSE, AND WHY IT MAY MATTER MORE THAN THE DISK
+-------------------------------------------------------
+position_*_ppdfs_t8_*.hdf5 is read by three things: sensitivity (retired),
+PPDS in any form, and the CNR forward projection. --keep_top covers CNR for
+the designs worth re-measuring. It does NOT cover PPDS.
+
+Ring-1 PPDS is still an objective, and redefining it is an open question: it
+goes flat inside the small-aperture region where the best designs sit, and the
+proposal on record is to test an FWHM-windowed version the way the ASCI window
+was tested. That needs the raw PPDFs. Every metric in this project has been
+redefined at least once (sensitivity removed, ASCI windowed, FWHM reweighted,
+MPXI redefined and its sign reversed), so treat "we might redefine PPDS" as
+likely rather than hypothetical.
+
+Regenerating one design's PPDFs is a full pipeline run, about 40 minutes. At
+250 designs that is roughly a week of compute to undo.
+
+Prune when the disk actually demands it, not pre-emptively.
+
 Usage:
   python prune_ppdfs.py --results_dir results --keep_top 10           # dry run
   python prune_ppdfs.py --results_dir results --keep_top 10 --delete
