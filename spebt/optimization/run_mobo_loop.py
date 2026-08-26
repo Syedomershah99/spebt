@@ -122,6 +122,44 @@ def acquire_singleton_lock():
     _LOCK_FD = fd
 
 
+# Each evaluated design leaves ~8.9 GB of simulation output behind, against
+# ~77 KB of metrics that actually get used. On Aug 26 2026 /vscratch reached
+# 100% and every running campaign died in a way that looked like a code bug:
+# pipeline jobs failed with no logs because SLURM could not create their output
+# files, and controllers died with no traceback because stderr could not be
+# written either. Checking before each iteration turns that into a clear message.
+MIN_FREE_GB = 60.0
+
+
+def free_gb(path):
+    st = os.statvfs(path)
+    return st.f_bavail * st.f_frsize / 1e9
+
+
+def check_disk_space(where="before iteration"):
+    """Warn, and refuse to start a new iteration, when the disk is nearly full."""
+    try:
+        avail = free_gb(RESULTS_DIR)
+    except OSError as e:
+        console.print(f"[yellow]Could not check free space: {e}[/yellow]")
+        return True
+    if avail < MIN_FREE_GB:
+        console.print(
+            f"[bold red]Only {avail:.0f} GB free on the results filesystem "
+            f"({where}).[/bold red]\n"
+            f"Each design needs roughly 9 GB, so this iteration would likely "
+            f"fail\nhalfway and take the controller with it. Stopping cleanly "
+            f"instead.\n"
+            f"Free space with prune_ppdfs.py, then resubmit; the manifest makes "
+            f"this\nsafe to resume."
+        )
+        return False
+    if avail < MIN_FREE_GB * 4:
+        console.print(f"[yellow]{avail:.0f} GB free; roughly "
+                      f"{int(avail // 9)} more designs will fit.[/yellow]")
+    return True
+
+
 def ensure_manifest_header():
     if not os.path.exists(MANIFEST_FILE):
         with open(MANIFEST_FILE, "w") as f:
@@ -286,6 +324,8 @@ def main():
     # Must be taken before anything reads the manifest, since the index race
     # starts at the first read. The fd is held in a module global, not here.
     acquire_singleton_lock()
+    if not check_disk_space("at startup"):
+        sys.exit(1)
     ensure_manifest_header()
     assert_initial_data()
 
@@ -307,6 +347,8 @@ def main():
         task = progress.add_task("[green]MOBO Loop", total=n_to_run)
 
         for _ in range(n_to_run):
+            if not check_disk_space():
+                break
             idx = get_next_manifest_index()
             console.print(f"\n[bold yellow]=== MOBO Iteration {idx} ===[/bold yellow]")
 

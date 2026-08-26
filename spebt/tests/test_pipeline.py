@@ -1459,3 +1459,42 @@ class TestRepeatMetricIsSectorMean:
         import analyze_cnr_repeats as acr
         seeds, values, sectors = acr.collect(str(tmp_path), "missing_cfg")
         assert seeds == [] and values.size == 0
+
+
+class TestDiskSpaceGuard:
+    """Aug 26 2026: /vscratch hit 100% and every campaign died looking like a
+    code bug. Pipeline jobs failed with no logs (SLURM could not create their
+    output files) and controllers died with no traceback (stderr could not be
+    written). Each design leaves ~8.9 GB behind for ~77 KB of metrics, so this
+    was arithmetic, not bad luck. The guard turns a silent death into a clear
+    stop."""
+
+    def test_free_gb_reports_something_sane(self, tmp_path):
+        import run_mobo_loop as loop
+        gb = loop.free_gb(str(tmp_path))
+        assert gb > 0, "free space should be positive on a working filesystem"
+
+    def test_guard_blocks_when_space_is_low(self, tmp_path, monkeypatch):
+        import run_mobo_loop as loop
+        monkeypatch.setattr(loop, "RESULTS_DIR", str(tmp_path))
+        monkeypatch.setattr(loop, "free_gb", lambda p: 5.0)
+        assert loop.check_disk_space() is False, (
+            "5 GB free must stop the loop; one design needs ~9 GB")
+
+    def test_guard_allows_when_space_is_ample(self, tmp_path, monkeypatch):
+        import run_mobo_loop as loop
+        monkeypatch.setattr(loop, "RESULTS_DIR", str(tmp_path))
+        monkeypatch.setattr(loop, "free_gb", lambda p: 5000.0)
+        assert loop.check_disk_space() is True
+
+    def test_unreadable_path_does_not_block(self, tmp_path, monkeypatch):
+        """A failure to CHECK must not halt a healthy campaign."""
+        import run_mobo_loop as loop
+        monkeypatch.setattr(loop, "RESULTS_DIR", "/definitely/not/here")
+        assert loop.check_disk_space() is True
+
+    def test_threshold_covers_at_least_one_design(self):
+        import run_mobo_loop as loop
+        assert loop.MIN_FREE_GB >= 9.0, (
+            "threshold must exceed the ~8.9 GB one design writes, or the guard "
+            "passes and the iteration still fails halfway")
