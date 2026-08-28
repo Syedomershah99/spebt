@@ -35,6 +35,12 @@
 #
 #SBATCH --mem=160G
 #SBATCH --time=72:00:00
+# Controllers send no mail on success (there are only a handful, and they run
+# for days), but a controller dying is the expensive failure: in Aug 2026 four
+# of them died silently when /vscratch filled and it went unnoticed for two
+# days. FAIL and TIMEOUT are worth an email.
+#SBATCH --mail-user=syedomer@buffalo.edu
+#SBATCH --mail-type=FAIL,TIMEOUT
 #SBATCH --job-name=mobo_h2h
 #SBATCH --output=results/slurm_logs/out/h2h_%j.out
 #SBATCH --error=results/slurm_logs/err/h2h_%j.err

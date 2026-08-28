@@ -11,7 +11,13 @@
 #SBATCH --mem=4G                        # Request 4 GB of memory per task
 #SBATCH --array=0-1                    # Creates a job array for 20 layouts, indexed 0-19
 #SBATCH --mail-user=syedomer@buffalo.edu
-#SBATCH --mail-type=FAIL,END
+# Mail on FAILURE only, never on END. A campaign submits one of these per
+# iteration, so ~480 across six arms, and an inbox full of successes is an inbox
+# nobody reads. Failures are rare and worth seeing: since Aug 2026 this script
+# exits 1 when the geometry generator CRASHES (as opposed to legitimately
+# rejecting an infeasible design, which exits 0 and is data), so a FAIL mail
+# means the toolchain is broken.
+#SBATCH --mail-type=FAIL,TIMEOUT
 
 # --- Output/Error Logging ---
 # Create a directory for logs if it doesn't exist

@@ -11,7 +11,13 @@
 #SBATCH --output=/vscratch/grp-rutaoyao/Omer/spebt/spebt/recon/slurm_logs/recon_compare_%j.out
 #SBATCH --error=/vscratch/grp-rutaoyao/Omer/spebt/spebt/recon/slurm_logs/recon_compare_%j.err
 #SBATCH --mail-user=syedomer@buffalo.edu
-#SBATCH --mail-type=FAIL,END
+# Mail on FAILURE only, never on END. A campaign submits one of these per
+# iteration, so ~480 across six arms, and an inbox full of successes is an inbox
+# nobody reads. Failures are rare and worth seeing: since Aug 2026 this script
+# exits 1 when the geometry generator CRASHES (as opposed to legitimately
+# rejecting an infeasible design, which exits 0 and is data), so a FAIL mail
+# means the toolchain is broken.
+#SBATCH --mail-type=FAIL,TIMEOUT
 
 # ============================================================
 # Reconstruction comparison: Baseline vs BO-Optimized vs LHS_16
