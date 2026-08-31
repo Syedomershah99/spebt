@@ -424,7 +424,7 @@ def _ring_weight_vector(n_det: int, n_det_ring1: int,
     return np.repeat(np.asarray(ring_weights, dtype=np.float64), sizes)
 
 
-def _ppds_components(work_dir: str, n_det_ring1: int = None):
+def _ppds_components(work_dir: str, n_det_ring1: int = None, fwhm_max: float = None):
     """
     Compute PPDS (Projection Probability Density Sensitivity), following the
     SPEBT project-strategy document (Eq. 6):
@@ -538,10 +538,23 @@ def _ppds_components(work_dir: str, n_det_ring1: int = None):
                 continue
             if not (np.isfinite(a) and np.isfinite(f_) and f_ > 0.0):
                 continue
+            # fwhm_max windows PPDS the way ASCI and MPXI are windowed: to the
+            # beams narrow enough to carry usable resolution. RY proposed this
+            # in Jul 2026 because ring-1 PPDS goes flat inside the small-aperture
+            # region where the best designs sit, so unwindowed it separates good
+            # regions from bad but carries no signal within the good one.
+            if fwhm_max is not None and f_ >= fwhm_max:
+                continue
             info[(int(d), int(b))] = (float(f_), float(a))
 
-        # Per-detector: sum V_{i,b} = FWHM_tang * FWHM_rad over its beams
+        # Per-detector: sum V_{i,b} = FWHM_tang * FWHM_rad over its beams.
+        #
+        # When windowing, the NUMERATOR must be restricted to the same beams as
+        # the denominator. Filtering only the V sum would shrink the denominator
+        # while leaving every beam's probability in the numerator, which inflates
+        # PPDS for exactly the wide-beam designs the window exists to penalise.
         sumV = np.zeros(n_det, dtype=np.float64)
+        keep_pix = None if fwhm_max is None else np.zeros_like(ppdfs, dtype=bool)
         for det_i in range(n_det):
             mask_row = masks[det_i, :]
             unique_beams = np.unique(mask_row[mask_row > 0])
@@ -557,6 +570,10 @@ def _ppds_components(work_dir: str, n_det_ring1: int = None):
                 fwhm_r = _per_beam_radial_fwhm(mask_row, ppdf_row, int(b), angle)
                 if fwhm_r > 0.0:
                     sumV[det_i] += fwhm_t * fwhm_r
+                    if keep_pix is not None:
+                        keep_pix[det_i, mask_row == b] = True
+        if keep_pix is not None:
+            ppdfs = np.where(keep_pix, ppdfs, 0.0)
 
         valid = sumV > 0
         if not valid.any():
@@ -589,7 +606,7 @@ def compute_ppds(work_dir: str, n_det_ring1: int = None,
     With `n_det_ring1` the per-ring contributions are combined using
     `ring_weights`; without it the plain unweighted total is returned.
     """
-    comps = _ppds_components(work_dir, n_det_ring1)
+    comps = _ppds_components(work_dir, n_det_ring1, fwhm_max=fwhm_max)
     if comps is None:
         return float("nan")
     if comps.size == 1:
@@ -615,7 +632,7 @@ def compute_windowed_asci(work_dir: str, threshold_mm: float = ASCI_FWHM_WINDOW_
         return float("nan")
 
 
-def compute_ppds_per_ring(work_dir: str, n_det_ring1: int):
+def compute_ppds_per_ring(work_dir: str, n_det_ring1: int, fwhm_max: float = None):
     """Per-ring PPDS contributions (length 4), or None if unavailable.
 
     Storing these lets any ring weighting be evaluated as a dot product, instead

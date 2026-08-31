@@ -1498,3 +1498,86 @@ class TestDiskSpaceGuard:
         assert loop.MIN_FREE_GB >= 9.0, (
             "threshold must exceed the ~8.9 GB one design writes, or the guard "
             "passes and the iteration still fails halfway")
+
+
+class TestPpdsWindowing:
+    """RY proposed an FWHM-windowed PPDS in Jul 2026. The window must restrict
+    the NUMERATOR as well as the V sum: filtering only the denominator shrinks
+    it while leaving every beam's probability in the numerator, which inflates
+    PPDS for exactly the wide-beam designs the window exists to penalise."""
+
+    def _make(self, wd, fwhms, n_slots=4):
+        """One layout, one detector, beams occupying 6 pixels each.
+
+        n_slots fixes the pixel count regardless of how many beams are present.
+        Real configs always share a 200x200 FOV, so a fixture that varied the
+        pixel count would vary something physical designs never vary, and the
+        final mean over pixels would move for reasons unrelated to the window.
+        """
+        os.makedirs(wd, exist_ok=True)
+        n_beams = len(fwhms)
+        assert n_beams <= n_slots
+        n_pix = 6 * n_slots
+        mask = np.zeros((1, n_pix), dtype=np.int32)
+        ppdf = np.zeros((1, n_pix), dtype=np.float64)
+        for b, _ in enumerate(fwhms, start=1):
+            sl = slice((b - 1) * 6, b * 6)
+            mask[0, sl] = b
+            ppdf[0, sl] = 1.0
+        with h5py.File(os.path.join(wd, "position_000_ppdfs_t8_00.hdf5"), "w") as f:
+            f.create_dataset("ppdfs", data=ppdf)
+        with h5py.File(os.path.join(wd, "beams_masks_configuration_000.hdf5"), "w") as f:
+            f.create_dataset("beam_mask", data=mask)
+        bp = np.zeros((n_beams, 8), dtype=np.float64)
+        for b, fw in enumerate(fwhms, start=1):
+            bp[b - 1, 1] = 0        # detector id
+            bp[b - 1, 2] = b        # beam id
+            bp[b - 1, 3] = 0.0      # angle
+            bp[b - 1, 4] = fw       # FWHM
+            bp[b - 1, 7] = 1.0      # sensitivity
+        with h5py.File(os.path.join(wd, "beams_properties_configuration_000.hdf5"), "w") as f:
+            f.create_dataset("beam_properties", data=bp)
+
+    def test_wide_beams_do_not_affect_the_windowed_value(self, tmp_path):
+        """The invariant that actually pins the numerator restriction.
+
+        Windowed PPDS is EXPECTED to exceed the unwindowed value: PPDS is
+        probability mass per unit beam volume, and narrow beams have small
+        volume, so restricting to them raises the density. Magnitude therefore
+        proves nothing.
+
+        What must hold is that beams outside the window are invisible. Two
+        designs sharing the same narrow beams must give the same windowed PPDS
+        however many wide beams one of them also has. If the numerator were not
+        restricted, the extra wide beams would add probability mass with no
+        matching volume and inflate the result.
+        """
+        import compute_metrics as cm
+        narrow_only = str(tmp_path / "narrow")
+        with_wide = str(tmp_path / "wide")
+        self._make(narrow_only, [0.30, 0.35])          # 2 beams, 4 slots
+        self._make(with_wide, [0.30, 0.35, 0.90, 1.20])  # same 2, plus 2 wide
+        a = cm._ppds_components(narrow_only, fwhm_max=0.45)
+        b = cm._ppds_components(with_wide, fwhm_max=0.45)
+        assert a is not None and b is not None
+        assert float(b[0]) == pytest.approx(float(a[0]), rel=1e-9), (
+            f"wide beams changed the windowed value ({a[0]} vs {b[0]}); "
+            f"they are leaking into the numerator")
+
+    def test_window_above_all_beams_is_a_noop(self, tmp_path):
+        import compute_metrics as cm
+        wd = str(tmp_path / "cfg2")
+        self._make(wd, [0.30, 0.35])
+        full = cm._ppds_components(wd)
+        win = cm._ppds_components(wd, fwhm_max=10.0)
+        assert full is not None and win is not None
+        assert win[0] == pytest.approx(full[0]), (
+            "a window wider than every beam must change nothing")
+
+    def test_window_below_all_beams_yields_nothing(self, tmp_path):
+        import compute_metrics as cm
+        wd = str(tmp_path / "cfg3")
+        self._make(wd, [0.90, 1.20])
+        win = cm._ppds_components(wd, fwhm_max=0.45)
+        assert win is None or float(win[0]) == pytest.approx(0.0), (
+            "excluding every beam must give zero, not a stale full-population value")
