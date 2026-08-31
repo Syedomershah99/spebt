@@ -600,7 +600,8 @@ def _ppds_components(work_dir: str, n_det_ring1: int = None, fwhm_max: float = N
 
 
 def compute_ppds(work_dir: str, n_det_ring1: int = None,
-                 ring_weights=DEFAULT_RING_WEIGHTS) -> float:
+                 ring_weights=DEFAULT_RING_WEIGHTS,
+                 fwhm_max: float = None) -> float:
     """Mean PPDS over the FOV, optionally ring-weighted. NaN if files are missing.
 
     With `n_det_ring1` the per-ring contributions are combined using
@@ -638,7 +639,7 @@ def compute_ppds_per_ring(work_dir: str, n_det_ring1: int, fwhm_max: float = Non
     Storing these lets any ring weighting be evaluated as a dot product, instead
     of re-reading gigabytes of HDF5 per candidate weighting.
     """
-    comps = _ppds_components(work_dir, n_det_ring1)
+    comps = _ppds_components(work_dir, n_det_ring1, fwhm_max=fwhm_max)
     if comps is None or comps.size != 4:
         return None
     return comps
