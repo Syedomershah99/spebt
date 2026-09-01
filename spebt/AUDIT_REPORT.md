@@ -187,3 +187,147 @@ overnight. When the CNR row count reaches ~35-45 (currently 37, growing at
 `run_mobo_loop.py` edits together with all the audit fixes as one clean commit.
 The test suite catches the most likely regression paths (matcher, column
 alignment, PPDS math), so future edits have a safety net.
+
+---
+
+# Fresh-eyes audit — 2 Sep 2026
+
+Re-checked the code and the results that the MIC claims rest on, with no
+assumption that earlier passes got it right. Four things changed as a result;
+two of them change what we should say to Dr. Yao.
+
+## 1. The headline reproduces exactly
+
+Recomputed from the raw per-seed CNR outputs rather than from any summary:
+
+| design | n seeds | CNR sector-mean | sd |
+|---|---|---|---|
+| `mobo_0296` (ours) | 5 | 4.7224 | 0.0694 |
+| `tmi_reference_000` | 5 | 3.5887 | 0.0553 |
+
+Gap 1.1336, SE 0.0397, t = 28.6, **+31.6%**. Same seeds 0-4 on both sides,
+150 ML-EM iterations on both sides, identical `rod_radii_mm`
+(0.100-0.225 mm). No numerical code changed between the two evaluations: the
+only commits since 1 Aug touching geometry/PPDF/recon/CNR were `9e37419`
+(mail settings), `bc68303` (venv path) and `545aa09` (error handling on the
+failure branch only). The comparison is like-for-like.
+
+## 2. The head-to-head conclusion was overstated — corrected
+
+Five paired replicates completed, not three. Best CNR per arm:
+
+| rep | 2obj | 5obj | 2obj - 5obj | feasible 2obj / 5obj |
+|---|---|---|---|---|
+| r0 | 4.7811 | 4.7365 | +0.0446 | 101 / 101 |
+| r1 | 4.8599 | 4.7192 | +0.1408 | 75 / 62 |
+| r2 | 4.7940 | 4.6887 | +0.1053 | 75 / 70 |
+| r4 | 4.7591 | 4.7640 | -0.0049 | 99 / 100 |
+| r5 | 4.8233 | 4.8300 | -0.0067 | 99 / 100 |
+
+All five: mean difference +0.056, t = 1.89, 2obj ahead in 3 of 5.
+**Restricted to the three replicates with complete data (r0, r4, r5): mean
+difference +0.011, t = 0.65, 2obj ahead in 1 of 3.**
+
+The entire apparent two-objective advantage sits in r1 and r2 — the two
+replicates that overlapped the crash window, where 25-38% of evaluations were
+lost and the five-objective arm lost more of them (62 and 70 feasible against
+75 and 75). Once the crashes are excluded the formulations are
+indistinguishable. Keep the five-objective set: it costs nothing in CNR and it
+is the one that reports the physics trade-offs.
+
+## 3. Cross-run convergence — a stronger result than the headline
+
+Eleven independent searches (10 head-to-head arms + the main campaign), from
+different LHS seed sets and under two different objective sets, recover the
+same aperture:
+
+| parameter | mean +/- sd | sd as % of searched range |
+|---|---|---|
+| aperture_diam_mm | 0.287 +/- 0.014 | **1.8%** |
+| n_apertures | 186 +/- 25 | 11.8% |
+| n_det_ring1 | 499 +/- 62 | 11.5% |
+| n_det_ring2 | 821 +/- 145 | 12.2% |
+| d2_inner_mm | 382 +/- 34 | 13.6% |
+| d3_inner_mm | 489 +/- 65 | 27.9% |
+
+`fwhm_weighted_mean` at those eleven optima spans 0.482-0.487 — under 1%.
+
+Aperture diameter is pinned to ~1.8% of its range; the ring geometry is barely
+constrained at all. This answers the obvious reviewer question ("is this a
+lucky local optimum?") with reproducibility rather than assertion, and it says
+the design lever is the aperture, not the rings.
+
+## 4. The n_det_ring2 headroom test ran and was never read
+
+`ring2_000..007` completed on 12 Aug (8 configs, 16 PPDFs each, full beam
+outputs) and the results sat in `results/ring2_seed_out/` **without ever being
+merged into `results_summary_mobo.csv`**. Consequences: the optimizer never
+trained on them, and nobody read the answer. Holding the `mobo_0296` aperture
+fixed and sweeping ring 2 outward:
+
+| n_det_ring2 | d2_inner (mm) | CNR sector-mean |
+|---|---|---|
+| 964 | 393.2 | 4.476 |
+| 1016 | 414.1 | 4.483 |
+| 1066 | 435.1 | 4.544 |
+| 1116 | 456.1 | 4.485 |
+| 1168 | 477.1 | 4.507 |
+| 1218 | 498.0 | 4.455 |
+| 1268 | 519.0 | 4.277 |
+| 1320 | 540.0 | 4.266 |
+
+Flat from 964 to 1218, then falling. **No headroom above the 960 ceiling** —
+consistent with finding 3, where the ring parameters are the unconstrained
+ones. This also explains why the archive has 104 rows pinned at exactly 960
+and none above it: raising the bound opened a region that has nothing in it.
+
+Caveat, unresolved: `ring2_000` is `mobo_0296` with 4 extra ring-2 crystals,
+yet it reads 4.476 against `mobo_0296`'s 4.722 +/- 0.069 — about 3 sigma low,
+and the whole batch sits ~0.25 below the archive scale. The deterministic
+metrics reproduce (`ppds_ring1` identical to 10 significant figures,
+`fwhm_weighted_mean` within 0.3%, ASCI within 1.7%), so the geometry and PPDF
+path are fine and it is isolated to the CNR step. **Do not merge these 8 rows
+into the archive** until this is settled; a 5-seed re-measurement of
+`ring2_000` decides it. The within-batch conclusion (no headroom) does not
+depend on it, since all 8 ran identically on the same day.
+
+## 5. In-loop CNR is an unseeded single draw
+
+`run_sai_pipeline.sh` calls `compute_cnr.py` without `--seed`, so every
+`cnr_sector_mean` in the archive is one irreproducible Poisson realisation
+(sigma ~= 0.08). This is deliberate and documented in the docstring, and it is
+fine for ranking, but two consequences are worth stating plainly:
+
+- The archive CNR column cannot be reproduced exactly.
+- Selecting the maximum over ~100 draws inflates it. Measured directly: for
+  all five designs that were re-measured over seeds, the archive value exceeds
+  the 5-seed mean (+0.116, +0.038, +0.211, +0.046, +0.107; mean +0.104). Five
+  of five positive is the selection effect, not a bug.
+
+The headline is unaffected because both sides use re-measured 5-seed means,
+and the reference was never selected on.
+
+## 6. Silent NaN paths closed
+
+Four returns produced NaN with no message — `compute_cnr.py:78`,
+`compute_metrics.py:70`, `:214`, `:612`. Both of August's expensive incidents
+were NaN appearing without explanation. Each now names its reason. No bare
+`except:` and no `fillna` remain anywhere in the optimization package.
+Committed as `35b5a2f`; 112 tests pass.
+
+## Bounds check
+
+323 archive rows, no duplicate config names, no partially-NaN rows (52 are
+all-NaN, all of them crash-window or legacy 4D seeds). Six rows lie outside
+the declared bounds; four are all-NaN legacy `lhs4d_*` seeds, and two
+(`mobo_0190`, `mobo_0193`) carry real data at `d3_inner_mm` = 640 against a
+bound of 618 — proposed under the earlier wider bound and never re-flagged.
+They are GP training points outside the current search box, which is harmless
+extrapolation, and neither is near the optimum.
+
+## Open, not resolvable from the files
+
+Whether the SAI baseline (0.4 mm, 180 apertures) was itself the product of the
+systematic resolution-variance screening Dr. Yao described. The +31.6% claim
+rests on his characterisation of it, and it is the one thing a reviewer will
+push on.
