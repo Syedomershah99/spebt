@@ -312,6 +312,13 @@ python "${CODE_DIR}/optimization/compute_metrics.py" \
 # Adds ~5-10 min per config on CPU (much less on GPU). Uses 150 ML-EM
 # iterations by default (see CNR_ITERATIONS env var), which is enough for
 # ranking; 500 is only needed for clean publication images.
+#
+# --seed_from_config derives the Poisson noise seed from the config name.
+# Before Sep 2026 this step ran unseeded, so every archive CNR was a single
+# irreproducible draw (sigma ~= 0.08) and no row could be re-derived from its
+# work_dir. Different configs still get independent draws, so the GP sees the
+# same honest across-design noise it always did; only re-running one config
+# is now deterministic. Rows written earlier keep their unseeded values.
 # -------------------------------------------------------
 echo "[4/4] Computing in-loop CNR (${CNR_ITERATIONS} ML-EM iterations)..."
 python "${CODE_DIR}/optimization/compute_cnr.py" \
@@ -319,7 +326,8 @@ python "${CODE_DIR}/optimization/compute_cnr.py" \
   --phantom_path "${PHANTOM_PATH}" \
   --out_csv "${RESULTS_CSV}" \
   --config_name "${CONFIG_NAME}" \
-  --iterations "${CNR_ITERATIONS}"
+  --iterations "${CNR_ITERATIONS}" \
+  --seed_from_config
 
 echo "=================================================="
 echo "PIPELINE COMPLETE | $(date)"

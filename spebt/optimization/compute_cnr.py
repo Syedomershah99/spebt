@@ -28,6 +28,7 @@ Design notes:
     so an infeasible config does not crash the SLURM job.
 """
 import argparse
+import hashlib
 import os
 import sys
 import time
@@ -39,6 +40,22 @@ import torch
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.normpath(os.path.join(_HERE, "..", "recon")))
 import run_recon_comparison as rrc  # noqa: E402
+
+
+def seed_from_config_name(config_name: str) -> int:
+    """Stable per-config noise seed derived from the config name.
+
+    Python's built-in hash() is salted per process (PYTHONHASHSEED), so it
+    would give a different seed on every SLURM task and defeat the point.
+    sha256 is stable across processes, machines and Python versions.
+
+    Distinct configs get effectively independent draws, so the GP still sees
+    honest across-design observation noise; re-running one config reproduces
+    its value exactly. Repeat measurements of a single design should still pass
+    explicit --seed 0..4 rather than relying on this.
+    """
+    digest = hashlib.sha256(config_name.encode("utf-8")).digest()
+    return int.from_bytes(digest[:4], "big") & 0x7FFFFFFF
 
 
 def compute_cnr_for_work_dir(
@@ -58,14 +75,19 @@ def compute_cnr_for_work_dir(
     The forward projection applies Poisson noise (rrc.forward_project ->
     torch.poisson), so CNR is a random variable: repeat runs of the same
     design differ by ~0.1 CNR. Pass `seed` to fix the noise realisation and
-    make a run reproducible; leave it None (the in-loop default) so the GP
-    sees honest observation noise rather than one frozen draw.
+    make a run reproducible. The pipeline passes --seed_from_config, which
+    derives a stable seed from the config name: different designs still get
+    independent draws, so the GP sees honest across-design observation noise,
+    but a config re-run reproduces its own value. Leaving `seed` None gives a
+    fresh irreproducible draw, which is what the archive rows written before
+    Sep 2026 contain.
     """
     out_dir = os.path.join(work_dir, out_subdir)
     os.makedirs(out_dir, exist_ok=True)
 
     if seed is not None:
         torch.manual_seed(int(seed))
+        np.random.seed(int(seed) % (2 ** 32))
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -166,8 +188,12 @@ def main():
                              "(default: cnr_inloop). Use a distinct value for "
                              "repeat runs so they do not overwrite each other.")
     parser.add_argument("--seed", type=int, default=None,
-                        help="Seed the Poisson noise in forward projection. Omit "
-                             "for the in-loop default (fresh noise each run).")
+                        help="Seed the Poisson noise in forward projection. "
+                             "Takes precedence over --seed_from_config.")
+    parser.add_argument("--seed_from_config", action="store_true",
+                        help="Derive the noise seed from --config_name so the run "
+                             "is reproducible while different designs still get "
+                             "independent draws. This is what the pipeline uses.")
     args = parser.parse_args()
 
     if args.force_nan:
@@ -175,12 +201,17 @@ def main():
         _write_cnr_to_csv(args.out_csv, args.config_name, float("nan"))
         return
 
+    seed = args.seed
+    if seed is None and args.seed_from_config:
+        seed = seed_from_config_name(args.config_name)
+        print(f"[{args.config_name}] noise seed {seed} (derived from config name)")
+
     t0 = time.time()
     cnr, sector_mean, sectors = compute_cnr_for_work_dir(
         args.work_dir, args.phantom_path,
         iterations=args.iterations,
         T_sec=args.T_sec, e_hot=args.e_hot, e_bg=args.e_bg,
-        out_subdir=args.out_subdir, seed=args.seed,
+        out_subdir=args.out_subdir, seed=seed,
     )
     elapsed = time.time() - t0
 

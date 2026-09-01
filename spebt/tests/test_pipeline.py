@@ -1656,3 +1656,184 @@ class TestAllNanGuards:
         src = inspect.getsource(apw.main)
         assert "enough_values(" in src, (
             "main() no longer calls the guard; an all-NaN table can be printed again")
+
+
+# =============================================================================
+# compute_cnr.seed_from_config_name — reproducible in-loop noise
+# =============================================================================
+class TestCnrSeedDerivation:
+    """The in-loop CNR ran unseeded until Sep 2026, so no archive row could be
+    reproduced from its work_dir and selecting the maximum over ~100 noisy
+    draws inflated it by a measured +0.10 CNR. The seed is now derived from the
+    config name, which keeps draws independent ACROSS designs while making any
+    single design re-runnable."""
+
+    def test_seed_is_stable_for_a_given_name(self):
+        import compute_cnr
+        a = compute_cnr.seed_from_config_name("mobo_0296_ap0.2718")
+        b = compute_cnr.seed_from_config_name("mobo_0296_ap0.2718")
+        assert a == b
+
+    def test_seed_survives_a_fresh_interpreter(self):
+        """The whole point. Python's hash() is salted per process, so a seed
+        built on it would differ on every SLURM task and reproduce nothing."""
+        import compute_cnr
+        opt_dir = os.path.join(_REPO_ROOT, "optimization")
+        prog = ("import sys; sys.path.insert(0, %r); import compute_cnr; "
+                "print(compute_cnr.seed_from_config_name('mobo_0296'))" % opt_dir)
+        seen = set()
+        for salt in ("0", "1", "random"):
+            env = dict(os.environ, PYTHONHASHSEED=salt)
+            out = subprocess.run([sys.executable, "-c", prog], env=env,
+                                 capture_output=True, text=True, check=True)
+            seen.add(out.stdout.strip())
+        assert len(seen) == 1, (
+            f"seed changed with PYTHONHASHSEED: {seen}; it must not be built "
+            f"on Python's salted hash()")
+        assert seen.pop() == str(compute_cnr.seed_from_config_name("mobo_0296"))
+
+    def test_different_configs_get_different_seeds(self):
+        import compute_cnr
+        names = [f"mobo_{i:04d}" for i in range(500)]
+        seeds = {compute_cnr.seed_from_config_name(n) for n in names}
+        assert len(seeds) == len(names), "seed collisions across 500 configs"
+
+    def test_seed_is_a_valid_torch_seed(self):
+        import compute_cnr
+        for n in ("", "x", "mobo_0296", "ring2_007", "tmi_reference_000"):
+            s = compute_cnr.seed_from_config_name(n)
+            assert isinstance(s, int) and 0 <= s < 2 ** 31
+
+    def test_pipeline_asks_for_the_derived_seed(self):
+        """A seed nothing passes is a seed that does nothing."""
+        sh = os.path.join(_REPO_ROOT, "optimization", "run_sai_pipeline.sh")
+        with open(sh) as f:
+            src = f.read()
+        assert "--seed_from_config" in src, (
+            "run_sai_pipeline.sh no longer passes --seed_from_config; in-loop "
+            "CNR is back to irreproducible single draws")
+
+    def test_explicit_seed_still_wins(self):
+        """The repeat harness passes --seed 0..4 and must keep overriding."""
+        import compute_cnr
+        import inspect
+        src = inspect.getsource(compute_cnr.main)
+        assert "if seed is None and args.seed_from_config" in src, (
+            "--seed_from_config must only fill in when --seed was omitted, or "
+            "the 5-seed repeat runs all collapse onto one realisation")
+
+
+# =============================================================================
+# mobo_agent.report_out_of_bounds — training points outside the search box
+# =============================================================================
+class TestOutOfBoundsReporting:
+    """mobo_0190 and mobo_0193 carry real measurements at d3_inner_mm = 640
+    against a ceiling of 618, so they normalise outside the unit cube the
+    acquisition searches. Keeping them is right; not knowing is not."""
+
+    def test_clean_training_set_reports_nothing(self):
+        import torch
+        import mobo_agent
+        x = torch.tensor([mobo_agent.BOUNDS_MIN, mobo_agent.BOUNDS_MAX],
+                         dtype=torch.double)
+        assert mobo_agent.report_out_of_bounds(x) == 0
+
+    def test_counts_rows_not_violations(self):
+        import torch
+        import mobo_agent
+        bad = list(mobo_agent.BOUNDS_MAX)
+        bad[4] += 50.0
+        bad[5] += 50.0          # one row, two violated parameters
+        x = torch.tensor([mobo_agent.BOUNDS_MIN, bad], dtype=torch.double)
+        assert mobo_agent.report_out_of_bounds(x) == 1
+
+    def test_detects_the_real_d3_case(self):
+        import torch
+        import mobo_agent
+        row = list(mobo_agent.BOUNDS_MIN)
+        row[5] = 640.0          # mobo_0190 / mobo_0193
+        x = torch.tensor([row], dtype=torch.double)
+        assert mobo_agent.report_out_of_bounds(x) == 1
+
+    def test_detects_values_below_the_floor(self):
+        import torch
+        import mobo_agent
+        row = list(mobo_agent.BOUNDS_MIN)
+        row[0] = 0.05
+        x = torch.tensor([row], dtype=torch.double)
+        assert mobo_agent.report_out_of_bounds(x) == 1
+
+    def test_out_of_bounds_points_are_kept_not_dropped(self):
+        """Dropping them would silently discard real measurements."""
+        import inspect
+        import mobo_agent
+        src = inspect.getsource(mobo_agent.get_next_candidate)
+        i = src.index("report_out_of_bounds(train_x)")
+        after = src[i:i + 400]
+        assert "train_x = train_x[" not in after and "drop" not in after.lower(), (
+            "out-of-bounds handling must warn, not filter the training set")
+
+
+# =============================================================================
+# check_unmerged_results — finished batches nobody merged
+# =============================================================================
+class TestUnmergedResults:
+    """The ring2 headroom sweep finished on 12 Aug 2026 and sat unmerged and
+    unread for three weeks. Nothing checked."""
+
+    @pytest.fixture
+    def tree(self, tmp_path):
+        res = tmp_path / "results"
+        (res / "ring2_seed_out").mkdir(parents=True)
+        (res / "lhs6d_seed_out").mkdir(parents=True)
+        pd.DataFrame({"config": ["ring2_000", "ring2_001"],
+                      "cnr_sector_mean": [4.4, 4.5]}).to_csv(
+            res / "ring2_seed_out" / "task_0.csv", index=False)
+        pd.DataFrame({"config": ["lhs6d_000"], "cnr_sector_mean": [4.1]}).to_csv(
+            res / "lhs6d_seed_out" / "task_0.csv", index=False)
+        arc = res / "results_summary_mobo.csv"
+        pd.DataFrame({"config": ["lhs6d_000"], "cnr_sector_mean": [4.1]}).to_csv(
+            arc, index=False)
+        return str(res), str(arc)
+
+    def test_finds_the_unmerged_batch_only(self, tree):
+        import check_unmerged_results as cur
+        res, arc = tree
+        got = cur.find_unmerged(res, arc)
+        assert len(got) == 1
+        d, names = next(iter(got.items()))
+        assert d.endswith("ring2_seed_out")
+        assert names == ["ring2_000", "ring2_001"]
+
+    def test_reports_nothing_once_merged(self, tree):
+        import check_unmerged_results as cur
+        res, arc = tree
+        pd.DataFrame({"config": ["lhs6d_000", "ring2_000", "ring2_001"],
+                      "cnr_sector_mean": [4.1, 4.4, 4.5]}).to_csv(arc, index=False)
+        assert cur.find_unmerged(res, arc) == {}
+
+    def test_missing_archive_means_everything_is_unmerged(self, tree):
+        import check_unmerged_results as cur
+        res, _ = tree
+        got = cur.find_unmerged(res, os.path.join(res, "does_not_exist.csv"))
+        assert len(got) == 2
+
+    def test_a_truncated_task_file_does_not_stop_the_report(self, tree):
+        """A dead array job is exactly when the rest of the report matters."""
+        import check_unmerged_results as cur
+        res, arc = tree
+        with open(os.path.join(res, "ring2_seed_out", "task_9.csv"), "w") as f:
+            f.write("")
+        got = cur.find_unmerged(res, arc)
+        assert next(iter(got.values())) == ["ring2_000", "ring2_001"]
+
+    def test_nonzero_exit_when_rows_are_unmerged(self, tree):
+        """So a submit script can gate on it."""
+        import check_unmerged_results as cur
+        res, arc = tree
+        rc = subprocess.run(
+            [sys.executable, os.path.join(_REPO_ROOT, "optimization",
+                                          "check_unmerged_results.py"),
+             "--results_dir", res, "--out_csv", arc],
+            capture_output=True, text=True).returncode
+        assert rc == 1

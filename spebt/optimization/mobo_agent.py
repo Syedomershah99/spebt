@@ -197,6 +197,28 @@ def is_ring_packing_ok(n_det1, n_det2, d2_inner, d3_inner):
     )
 
 
+def report_out_of_bounds(train_x) -> int:
+    """Log every training point outside the current bounds; return how many.
+
+    Returns the count of ROWS with at least one out-of-range parameter, not the
+    count of violations, so it can be compared against len(train_x).
+    """
+    lo = torch.tensor(BOUNDS_MIN, dtype=torch.double)
+    hi = torch.tensor(BOUNDS_MAX, dtype=torch.double)
+    below, above = train_x < lo, train_x > hi
+    bad_rows = (below | above).any(dim=1)
+    n_bad = int(bad_rows.sum())
+    if n_bad:
+        for j, name in enumerate(PARAM_NAMES):
+            col = train_x[:, j]
+            n_lo, n_hi = int((col < lo[j]).sum()), int((col > hi[j]).sum())
+            if n_lo or n_hi:
+                logger.warning(
+                    f"  {name}: {n_lo} below {BOUNDS_MIN[j]}, {n_hi} above "
+                    f"{BOUNDS_MAX[j]} (observed {col.min():.4g} to {col.max():.4g})")
+    return n_bad
+
+
 def is_feasible_full(diam, n_ap, n_det1, n_det2, d2_inner, d3_inner):
     """All design constraints together."""
     return (
@@ -466,6 +488,21 @@ def get_next_candidate(results_csv: str):
     train_y = train_y_raw * directions
 
     bounds = torch.tensor([BOUNDS_MIN, BOUNDS_MAX], dtype=torch.double)
+
+    # Designs proposed under an earlier, wider box stay in the archive and keep
+    # their measurements, so training points can sit outside the CURRENT bounds
+    # -- mobo_0190 and mobo_0193 carry real data at d3_inner_mm = 640 against a
+    # ceiling of 618. normalize() does not clamp, so those land outside the unit
+    # cube the acquisition optimises over. The GP extrapolates them harmlessly
+    # and dropping them would throw away real measurements, but it should never
+    # be invisible: a bounds change that silently strands half the training set
+    # outside the search box is exactly the kind of thing that goes unnoticed
+    # for weeks.
+    n_oob = report_out_of_bounds(train_x)
+    if n_oob:
+        logger.warning(f"{n_oob} of {len(train_x)} training points lie outside the "
+                       f"current search box; kept as training data (see above)")
+
     train_x_norm = normalize(train_x, bounds)
 
     # Log current objective ranges
