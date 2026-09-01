@@ -39,6 +39,49 @@ OUTCOME = "cnr_sector_mean"
 SMALL_APERTURE = (0.20, 0.45)
 
 
+def configs_with_raw_files(df, work_dir_col="work_dir"):
+    """Rows whose PPDF files still exist on disk.
+
+    The vscratch purge strips raw simulation output from older designs, leaving
+    the row in the CSV and a cnr/ subdirectory behind. Those rows look complete
+    and recompute to NaN. Filtering them out here is what keeps a sweep from
+    reporting a full table of NaN as though it were a measurement.
+    """
+    import glob as _glob
+    keep = df[work_dir_col].astype(str).map(
+        lambda w: bool(_glob.glob(os.path.join(w, "position_*_ppdfs_t8_*.hdf5"))))
+    return df[keep]
+
+
+def stratified_sample(df, limit, band=SMALL_APERTURE, col="aperture_diam_mm",
+                      random_state=0):
+    """Sample `limit` rows, keeping half inside the aperture band that matters.
+
+    A plain head() picks the oldest rows, which are the ones the purge stripped.
+    A plain random sample can leave too few designs inside the 0.20 to 0.45 mm
+    band, and that band is the whole point: unwindowed ring-1 PPDS is
+    uninformative there, so a sweep that under-samples it cannot answer the
+    question it was run to answer.
+    """
+    if limit is None or len(df) <= limit:
+        return df
+    small = df[(df[col] >= band[0]) & (df[col] <= band[1])]
+    rest = df[~df.index.isin(small.index)]
+    n_small = min(len(small), max(limit // 2, 1))
+    n_rest = min(len(rest), limit - n_small)
+    return pd.concat([small.sample(n_small, random_state=random_state),
+                      rest.sample(n_rest, random_state=random_state)])
+
+
+def enough_values(series, minimum=10):
+    """True when a column has enough non-NaN entries to correlate.
+
+    Correlating a mostly-empty column returns NaN, and a table of NaN reads
+    like a result. Callers should stop rather than print one.
+    """
+    return int(pd.Series(series).notna().sum()) >= minimum
+
+
 def main():
     ap = argparse.ArgumentParser(description="Sweep an FWHM window for PPDS")
     ap.add_argument("--results_csv", required=True)
@@ -60,11 +103,8 @@ def main():
     # their cnr/ subdirectory, and head(limit) picks exactly those because they
     # are first in the CSV. Sampling the wrong subset produced a full table of
     # NaN that looked like a result.
-    import glob as _glob
-    has_ppdf = df.work_dir.astype(str).map(
-        lambda w: bool(_glob.glob(os.path.join(w, "position_*_ppdfs_t8_*.hdf5"))))
     n_before = len(df)
-    df = df[has_ppdf]
+    df = configs_with_raw_files(df)
     print(f"{len(df)} of {n_before} configs still have their PPDF files "
           f"({n_before - len(df)} stripped by the scratch purge)")
     if df.empty:
@@ -72,17 +112,11 @@ def main():
         sys.exit(1)
 
     if args.limit and len(df) > args.limit:
-        # Keep the small-aperture band intact: it is the band the test turns on,
-        # and a plain head() or random sample can leave too few of them.
-        small = df[(df.aperture_diam_mm >= SMALL_APERTURE[0])
-                   & (df.aperture_diam_mm <= SMALL_APERTURE[1])]
-        rest = df[~df.index.isin(small.index)]
-        keep_small = min(len(small), max(args.limit // 2, 1))
-        df = pd.concat([small.sample(keep_small, random_state=0),
-                        rest.sample(min(len(rest), args.limit - keep_small),
-                                    random_state=0)])
-        print(f"sampled {len(df)}: {keep_small} in the 0.20-0.45 mm aperture band, "
-              f"{len(df) - keep_small} outside it")
+        df = stratified_sample(df, args.limit)
+        in_band = int(((df.aperture_diam_mm >= SMALL_APERTURE[0])
+                       & (df.aperture_diam_mm <= SMALL_APERTURE[1])).sum())
+        print(f"sampled {len(df)}: {in_band} in the 0.20-0.45 mm aperture band, "
+              f"{len(df) - in_band} outside it")
 
     print(f"recomputing PPDS at {len(THRESHOLDS)} thresholds for {len(df)} configs")
     print("(about 20 s per config per threshold, so this is not quick)\n", flush=True)
@@ -112,7 +146,7 @@ def main():
         out.to_csv(args.out, index=False)
         print(f"\nwrote {args.out}")
 
-    if out["ppds_ring1"].notna().sum() < 10:
+    if not enough_values(out["ppds_ring1"]):
         print(f"\nERROR: only {int(out['ppds_ring1'].notna().sum())} configs produced "
               f"a PPDS value.\nWithout usable inputs the correlations below would all "
               f"be NaN, which reads\nlike a result and is not one. Stopping.")

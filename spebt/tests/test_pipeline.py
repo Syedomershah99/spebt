@@ -1581,3 +1581,78 @@ class TestPpdsWindowing:
         win = cm._ppds_components(wd, fwhm_max=0.45)
         assert win is None or float(win[0]) == pytest.approx(0.0), (
             "excluding every beam must give zero, not a stale full-population value")
+
+
+class TestAllNanGuards:
+    """Sep 2026: a PPDS sweep ran in 4 seconds and printed a full table of NaN
+    correlations that read exactly like a result. Nothing errored. The cause was
+    input SELECTION, not computation: --limit took head(80), which is the oldest
+    designs, and the scratch purge had stripped their raw PPDF files months
+    earlier while leaving the CSV rows and a cnr/ subdirectory intact.
+
+    Three guards, each tested here, because this is the third failure of the
+    same shape this month: the code was right, the inputs were wrong, and the
+    output looked plausible."""
+
+    def _work_dir(self, root, name, with_ppdf):
+        d = os.path.join(str(root), name)
+        os.makedirs(os.path.join(d, "cnr_inloop"), exist_ok=True)
+        if with_ppdf:
+            for i in range(2):
+                open(os.path.join(d, f"position_00{i}_ppdfs_t8_00.hdf5"), "w").close()
+        return d
+
+    def test_configs_missing_raw_files_are_dropped(self, tmp_path):
+        import analyze_ppds_window as apw
+        rows = [
+            {"work_dir": self._work_dir(tmp_path, "purged_a", False)},
+            {"work_dir": self._work_dir(tmp_path, "purged_b", False)},
+            {"work_dir": self._work_dir(tmp_path, "intact_a", True)},
+        ]
+        kept = apw.configs_with_raw_files(pd.DataFrame(rows))
+        assert len(kept) == 1
+        assert "intact_a" in str(kept.work_dir.iloc[0]), (
+            "a purged config, which recomputes to NaN, was kept")
+
+    def test_a_cnr_subdir_alone_does_not_count_as_intact(self, tmp_path):
+        """The exact shape the purge leaves behind: the directory exists and
+        looks populated, but the raw files it needs are gone."""
+        import analyze_ppds_window as apw
+        d = self._work_dir(tmp_path, "looks_fine", False)
+        assert os.path.isdir(os.path.join(d, "cnr_inloop"))
+        kept = apw.configs_with_raw_files(pd.DataFrame([{"work_dir": d}]))
+        assert len(kept) == 0
+
+    def test_sample_keeps_the_band_the_test_turns_on(self):
+        import analyze_ppds_window as apw
+        # 5 designs inside the 0.20-0.45 band, 45 outside it
+        df = pd.DataFrame({"aperture_diam_mm":
+                           [0.25] * 5 + [0.80] * 45})
+        got = apw.stratified_sample(df, limit=10)
+        lo, hi = apw.SMALL_APERTURE
+        in_band = ((got.aperture_diam_mm >= lo) & (got.aperture_diam_mm <= hi)).sum()
+        assert len(got) == 10
+        assert in_band == 5, (
+            f"only {in_band} of the 5 in-band designs survived sampling; a plain "
+            f"random draw would leave about 1 and the sweep could not answer "
+            f"the question it exists for")
+
+    def test_sample_is_a_noop_below_the_limit(self):
+        import analyze_ppds_window as apw
+        df = pd.DataFrame({"aperture_diam_mm": [0.25, 0.30, 0.80]})
+        assert len(apw.stratified_sample(df, limit=10)) == 3
+
+    def test_enough_values_rejects_a_mostly_empty_column(self):
+        import analyze_ppds_window as apw
+        assert not apw.enough_values([float("nan")] * 80)
+        assert not apw.enough_values([1.0] * 9 + [float("nan")] * 71)
+        assert apw.enough_values([1.0] * 10)
+
+    def test_enough_values_is_what_the_sweep_actually_calls(self):
+        """Guard against the check being loosened to a truthiness test, which
+        NaN passes."""
+        import analyze_ppds_window as apw
+        import inspect
+        src = inspect.getsource(apw.main)
+        assert "enough_values(" in src, (
+            "main() no longer calls the guard; an all-NaN table can be printed again")
