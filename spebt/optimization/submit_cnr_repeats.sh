@@ -55,8 +55,21 @@ OUT_CSV="${REPEATS_DIR}/task_${SLURM_ARRAY_TASK_ID}.csv"
 # Configs to repeat. Override with CONFIG_LIST=<file> (one config name per line)
 # and size the array to match: --array=0-$((n_configs*N_SEEDS - 1)).
 # Default: the top designs from the 180-iteration campaign.
+# CONFIG_LIST must live on shared storage, not /tmp: compute nodes each have
+# their own /tmp, so a list written on the login node is simply absent when the
+# task runs. That failed as "CONFIGS[$cfg_idx]: unbound variable" 60 lines
+# later rather than saying the file was missing.
 if [[ -n "${CONFIG_LIST:-}" ]]; then
+  if [[ ! -r "${CONFIG_LIST}" ]]; then
+    echo "ERROR: CONFIG_LIST '${CONFIG_LIST}' is not readable from this node." >&2
+    echo "       Put it on shared storage (e.g. alongside this script), not /tmp." >&2
+    exit 2
+  fi
   mapfile -t CONFIGS < <(grep -v '^\s*$' "${CONFIG_LIST}")
+  if [[ ${#CONFIGS[@]} -eq 0 ]]; then
+    echo "ERROR: CONFIG_LIST '${CONFIG_LIST}' has no config names in it." >&2
+    exit 2
+  fi
 else
   CONFIGS=(
     "mobo_0069_ap0.3138_nap124_nd1_612_nd2_230"
@@ -68,6 +81,12 @@ N_SEEDS="${N_SEEDS:-5}"
 
 cfg_idx=$(( SLURM_ARRAY_TASK_ID / N_SEEDS ))
 seed=$(( SLURM_ARRAY_TASK_ID % N_SEEDS ))
+if (( cfg_idx >= ${#CONFIGS[@]} )); then
+  echo "ERROR: array task ${SLURM_ARRAY_TASK_ID} maps to config index ${cfg_idx}," >&2
+  echo "       but only ${#CONFIGS[@]} config(s) were given with N_SEEDS=${N_SEEDS}." >&2
+  echo "       Size the array as --array=0-\$(( ${#CONFIGS[@]} * N_SEEDS - 1 ))." >&2
+  exit 2
+fi
 config="${CONFIGS[$cfg_idx]}"
 
 echo "[array ${SLURM_ARRAY_TASK_ID}] config=${config} seed=${seed}"
