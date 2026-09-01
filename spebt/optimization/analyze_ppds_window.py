@@ -54,8 +54,36 @@ def main():
         print(f"ERROR: results CSV lacks {missing}")
         sys.exit(1)
     df = df.dropna(subset=need)
-    if args.limit:
-        df = df.head(args.limit)
+
+    # Only configs whose PPDF files still exist can be recomputed. The vscratch
+    # purge stripped the raw files from the older lhs4d_* designs, leaving just
+    # their cnr/ subdirectory, and head(limit) picks exactly those because they
+    # are first in the CSV. Sampling the wrong subset produced a full table of
+    # NaN that looked like a result.
+    import glob as _glob
+    has_ppdf = df.work_dir.astype(str).map(
+        lambda w: bool(_glob.glob(os.path.join(w, "position_*_ppdfs_t8_*.hdf5"))))
+    n_before = len(df)
+    df = df[has_ppdf]
+    print(f"{len(df)} of {n_before} configs still have their PPDF files "
+          f"({n_before - len(df)} stripped by the scratch purge)")
+    if df.empty:
+        print("\nERROR: no config has the raw files this test needs. Nothing to do.")
+        sys.exit(1)
+
+    if args.limit and len(df) > args.limit:
+        # Keep the small-aperture band intact: it is the band the test turns on,
+        # and a plain head() or random sample can leave too few of them.
+        small = df[(df.aperture_diam_mm >= SMALL_APERTURE[0])
+                   & (df.aperture_diam_mm <= SMALL_APERTURE[1])]
+        rest = df[~df.index.isin(small.index)]
+        keep_small = min(len(small), max(args.limit // 2, 1))
+        df = pd.concat([small.sample(keep_small, random_state=0),
+                        rest.sample(min(len(rest), args.limit - keep_small),
+                                    random_state=0)])
+        print(f"sampled {len(df)}: {keep_small} in the 0.20-0.45 mm aperture band, "
+              f"{len(df) - keep_small} outside it")
+
     print(f"recomputing PPDS at {len(THRESHOLDS)} thresholds for {len(df)} configs")
     print("(about 20 s per config per threshold, so this is not quick)\n", flush=True)
 
@@ -83,6 +111,12 @@ def main():
     if args.out:
         out.to_csv(args.out, index=False)
         print(f"\nwrote {args.out}")
+
+    if out["ppds_ring1"].notna().sum() < 10:
+        print(f"\nERROR: only {int(out['ppds_ring1'].notna().sum())} configs produced "
+              f"a PPDS value.\nWithout usable inputs the correlations below would all "
+              f"be NaN, which reads\nlike a result and is not one. Stopping.")
+        sys.exit(1)
 
     small = out[(out.aperture_diam_mm >= SMALL_APERTURE[0])
                 & (out.aperture_diam_mm <= SMALL_APERTURE[1])]
