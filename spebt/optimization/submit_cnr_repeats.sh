@@ -39,8 +39,18 @@ PHANTOM_PATH="/vscratch/grp-rutaoyao/Omer/spebt/spebt/spebt/data/sai_10mm/hot_ro
 # One CSV per array task: _write_cnr_to_csv does a read-modify-write, so 15
 # concurrent tasks sharing one file would silently drop rows. The analysis
 # script globs these back together (and can also read the per-seed npz files).
-mkdir -p results/cnr_repeats
-OUT_CSV="results/cnr_repeats/task_${SLURM_ARRAY_TASK_ID}.csv"
+#
+# REPEATS_DIR keeps a new measurement out of an old one's files. Task ids
+# restart at 0 every submission, so a second array writes task_0.csv on top of
+# the first array's task_0.csv. _write_cnr_to_csv adds rows rather than
+# truncating, so nothing is lost, but the two runs end up interleaved in one
+# directory and analyze_cnr_repeats.py globs them together as if they belonged
+# to the same experiment. Give an unrelated measurement its own directory:
+#
+#     REPEATS_DIR=results/cnr_ring2_recheck CONFIG_LIST=... sbatch ...
+REPEATS_DIR="${REPEATS_DIR:-results/cnr_repeats}"
+mkdir -p "${REPEATS_DIR}"
+OUT_CSV="${REPEATS_DIR}/task_${SLURM_ARRAY_TASK_ID}.csv"
 
 # Configs to repeat. Override with CONFIG_LIST=<file> (one config name per line)
 # and size the array to match: --array=0-$((n_configs*N_SEEDS - 1)).
