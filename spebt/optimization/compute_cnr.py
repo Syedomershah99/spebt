@@ -75,6 +75,10 @@ def compute_cnr_for_work_dir(
         print(f"  [cnr] no PPDF files in {work_dir}: {e}")
         return float("nan"), float("nan"), np.array([])
     if not flist:
+        # A NaN with no explanation is what made the Aug 2026 failures take days
+        # to find: the archive gained an empty row and nothing said why.
+        print(f"  [cnr] file list is empty for {work_dir}; no PPDFs to project. "
+              f"Returning NaN.")
         return float("nan"), float("nan"), np.array([])
 
     projs_path = rrc.forward_project(

@@ -67,6 +67,8 @@ def compute_sensitivity(work_dir: str):
         successful += 1
 
     if aggregated_ppdfs is None or successful == 0:
+        print(f"  [warn] sensitivity: no readable PPDF files in {work_dir}. "
+              f"Returning NaN.")
         return np.nan, np.nan, 0
 
     # Sum over crystals (axis 0) → sensitivity per pixel
@@ -211,6 +213,7 @@ def compute_mpxi(work_dir: str):
     """
     mask_files = sorted(glob.glob(os.path.join(work_dir, "beams_masks_configuration_*.hdf5")))
     if not mask_files:
+        print(f"  [warn] MPXI: no beam mask files in {work_dir}. Returning NaN.")
         return np.nan
 
     all_k = []
@@ -609,6 +612,8 @@ def compute_ppds(work_dir: str, n_det_ring1: int = None,
     """
     comps = _ppds_components(work_dir, n_det_ring1, fwhm_max=fwhm_max)
     if comps is None:
+        print(f"  [warn] PPDS: required PPDF/beam files missing in {work_dir}. "
+              f"Returning NaN.")
         return float("nan")
     if comps.size == 1:
         return float(comps[0])
