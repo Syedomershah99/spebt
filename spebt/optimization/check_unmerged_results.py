@@ -12,6 +12,15 @@ was to test whether n_det_ring2 had headroom above 960 -- finished on 12 Aug
 2026 with all 8 configs complete, and sat unread in `results/ring2_seed_out/`
 for three weeks. The optimizer never trained on it and nobody saw the answer.
 
+A config counts as merged if it appears in ANY known archive, not just the main
+one: the head-to-head arms keep their own `results_h2h_*/results_summary_mobo.csv`,
+and the 21 shared LHS seeds legitimately live there. A checker that reports 21
+false positives is a checker nobody reads.
+
+Deliberate exclusions go in `unmerged_ignore.txt`, one config name per line with
+a `#` comment saying why, so "we meant to leave that out" is recorded rather
+than remembered.
+
 Run this after any seed sweep, and before quoting the archive as complete:
 
     python check_unmerged_results.py
@@ -56,17 +65,62 @@ def configs_in_batch_dir(batch_dir: str) -> set:
     return names
 
 
-def find_unmerged(results_dir: str, out_csv: str) -> dict:
-    """Map batch dir -> sorted config names absent from the archive."""
-    archive = set()
-    if os.path.exists(out_csv):
-        arc = pd.read_csv(out_csv)
-        if "config" in arc.columns:
-            archive = set(arc["config"].dropna().astype(str))
+def known_archives(out_csv: str, extra=()) -> list:
+    """Every results CSV a config could legitimately have landed in.
+
+    The head-to-head campaigns write their own archive per arm and replicate,
+    beside the main one, and the shared LHS seeds are merged into those.
+    """
+    paths = [out_csv]
+    parent = os.path.dirname(os.path.dirname(os.path.abspath(out_csv)))
+    paths += sorted(glob.glob(os.path.join(parent, "results_h2h_*",
+                                           os.path.basename(out_csv))))
+    paths += list(extra)
+    seen, out = set(), []
+    for p in paths:
+        rp = os.path.abspath(p)
+        if rp not in seen and os.path.exists(rp):
+            seen.add(rp)
+            out.append(p)
+    return out
+
+
+def configs_in_archives(paths) -> set:
+    """Union of config names across every archive."""
+    names = set()
+    for p in paths:
+        try:
+            df = pd.read_csv(p)
+        except Exception as e:
+            print(f"  [warn] unreadable archive, skipping: {p} ({e})")
+            continue
+        if "config" in df.columns:
+            names.update(df["config"].dropna().astype(str))
+    return names
+
+
+def load_ignore(path: str) -> set:
+    """Config names deliberately left out, from a `#`-commented list."""
+    if not path or not os.path.exists(path):
+        return set()
+    out = set()
+    with open(path) as f:
+        for line in f:
+            line = line.split("#", 1)[0].strip()
+            if line:
+                out.add(line)
+    return out
+
+
+def find_unmerged(results_dir: str, out_csv: str, extra_archives=(),
+                  ignore_path: str = None) -> dict:
+    """Map batch dir -> sorted config names in no archive and not ignored."""
+    merged = configs_in_archives(known_archives(out_csv, extra_archives))
+    ignored = load_ignore(ignore_path)
 
     unmerged = {}
     for d in batch_output_dirs(results_dir):
-        missing = configs_in_batch_dir(d) - archive
+        missing = configs_in_batch_dir(d) - merged - ignored
         if missing:
             unmerged[d] = sorted(missing)
     return unmerged
@@ -77,9 +131,16 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--results_dir", default="results")
     ap.add_argument("--out_csv", default="results/results_summary_mobo.csv")
+    ap.add_argument("--archive", action="append", default=[],
+                    help="Additional results CSV to count as merged. Repeatable.")
+    ap.add_argument("--ignore_file", default="unmerged_ignore.txt",
+                    help="Config names deliberately left unmerged, with reasons.")
     args = ap.parse_args()
 
-    unmerged = find_unmerged(args.results_dir, args.out_csv)
+    archives = known_archives(args.out_csv, args.archive)
+    print(f"Checking against {len(archives)} archive(s).")
+    unmerged = find_unmerged(args.results_dir, args.out_csv, args.archive,
+                             args.ignore_file)
     if not unmerged:
         print(f"All batch outputs under {args.results_dir}/ are merged into "
               f"{args.out_csv}.")

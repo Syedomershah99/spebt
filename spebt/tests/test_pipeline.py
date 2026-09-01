@@ -1837,3 +1837,52 @@ class TestUnmergedResults:
              "--results_dir", res, "--out_csv", arc],
             capture_output=True, text=True).returncode
         assert rc == 1
+
+    def test_a_sibling_h2h_archive_counts_as_merged(self, tmp_path):
+        """The 21 shared LHS seeds live in the head-to-head arms' own archives.
+        Reporting them as unmerged is 21 false positives, and a report that
+        cries wolf is one nobody reads."""
+        import check_unmerged_results as cur
+        opt = tmp_path / "optimization"
+        res = opt / "results"
+        (res / "lhs6d_seed_out").mkdir(parents=True)
+        pd.DataFrame({"config": ["lhs6d_000"]}).to_csv(
+            res / "lhs6d_seed_out" / "task_0.csv", index=False)
+        arc = res / "results_summary_mobo.csv"
+        pd.DataFrame({"config": ["mobo_0001"]}).to_csv(arc, index=False)
+
+        assert cur.find_unmerged(str(res), str(arc)) != {}, "precondition"
+
+        h2h = opt / "results_h2h_2obj"
+        h2h.mkdir()
+        pd.DataFrame({"config": ["lhs6d_000"]}).to_csv(
+            h2h / "results_summary_mobo.csv", index=False)
+        assert cur.find_unmerged(str(res), str(arc)) == {}
+
+    def test_ignore_file_suppresses_deliberate_exclusions(self, tree):
+        import check_unmerged_results as cur
+        res, arc = tree
+        ign = os.path.join(res, "ignore.txt")
+        with open(ign, "w") as f:
+            f.write("# deliberate\nring2_000  # benchmark\nring2_001\n")
+        assert cur.find_unmerged(res, arc, ignore_path=ign) == {}
+
+    def test_ignore_file_strips_comments_and_blanks(self, tmp_path):
+        import check_unmerged_results as cur
+        p = tmp_path / "ig.txt"
+        p.write_text("# header\n\n  ring2_000   # why\nring2_001\n   \n")
+        assert cur.load_ignore(str(p)) == {"ring2_000", "ring2_001"}
+
+    def test_missing_ignore_file_is_not_an_error(self, tmp_path):
+        import check_unmerged_results as cur
+        assert cur.load_ignore(str(tmp_path / "nope.txt")) == set()
+
+    def test_the_committed_ignore_file_explains_every_entry(self):
+        """An exclusion with no reason is how the ring2 sweep got lost."""
+        import check_unmerged_results as cur
+        path = os.path.join(_REPO_ROOT, "optimization", "unmerged_ignore.txt")
+        assert cur.load_ignore(path), "ignore list is empty"
+        with open(path) as f:
+            body = f.read()
+        assert "AUDIT_REPORT" in body and "ring2" in body and "tmi_reference" in body
+
