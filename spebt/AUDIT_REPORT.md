@@ -331,3 +331,47 @@ Whether the SAI baseline (0.4 mm, 180 apertures) was itself the product of the
 systematic resolution-variance screening Dr. Yao described. The +31.6% claim
 rests on his characterisation of it, and it is the one thing a reviewer will
 push on.
+
+## Fixes implemented (2 Sep 2026)
+
+| # | Fix | Commit |
+|---|---|---|
+| 1 | Every silent NaN return now names its reason | `35b5a2f` |
+| 2 | In-loop CNR seed derived from the config name | `7981723` |
+| 3 | Training points outside the current bounds are reported | `7981723` |
+| 4 | `check_unmerged_results.py` finds finished-but-unmerged batches | `7981723` |
+| 5 | Checker counts sibling h2h archives, reads `unmerged_ignore.txt` | `0927144` |
+| 6 | `REPEATS_DIR` keeps a repeat measurement out of an older one's files | `2a9e818` |
+
+Test suite 112 -> 133.
+
+**On fix 2.** `run_sai_pipeline.sh` now passes `--seed_from_config`, and the
+seed comes from sha256 of the config name rather than Python's `hash()`, which
+is salted per process and would have produced a different seed on every SLURM
+task. Different designs still draw independent noise, so the GP sees the same
+honest across-design variance it always did; only re-running one config is now
+deterministic. Explicit `--seed` still wins, so the 5-seed repeat harness is
+unaffected. Rows written before today keep their unseeded values.
+
+**What the checker found.** 36 evaluated configs were absent from
+`results_summary_mobo.csv`. 21 of those are the shared LHS seeds, which
+correctly live in the head-to-head arms' own archives, and one is the TMI
+reference, deliberately excluded so a fixed benchmark never becomes GP training
+data. After teaching the checker about both, 6 remain:
+
+`seed6d_00..05` (the July D2/D3 expansion seeds) were evaluated, and their raw
+files all survive — 16 PPDFs and 2 mask files each — but they predate the
+August MPXI change and so have no `mpxi_windowed_active_mean` column. Merging
+them as-is would add six partially-measured rows, which `get_next_candidate`
+excludes from training anyway. To actually use them they need the documented
+backfill (`analyze_mpxi_variants.py` then `backfill_mpxi_variants.py`) first.
+That is worth doing: they are six deliberately-placed points at the d2/d3
+corners, which is exactly where the archive is thin.
+
+**Gating both merges.** Job `25952484` re-measures `ring2_000` over 5 seeds
+into `results/cnr_ring2_recheck/`. If it returns ~4.72 the Aug 12 batch value
+was wrong and the sweep should be re-read; if it returns ~4.48 the difference
+is real and belongs to the geometry. Either answer settles whether the ring2
+and seed6d batches sit on the archive's CNR scale, which is what decides if
+they can be merged. `results/cnr_repeats/` was backed up first and verified
+byte-identical.
