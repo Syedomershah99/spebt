@@ -188,11 +188,19 @@ metric in that column, not merely overall.""")
                   f"rather than\n   rising monotonically, which would just mean the "
                   f"threshold is arbitrary.")
         else:
+            cv = 100 * small["ppds_ring1"].std() / small["ppds_ring1"].mean()
             print(f"\n-> No window helps materially. Best is {t:.2f} mm at "
-                  f"{s:+.2f} against {base_small:+.2f} unwindowed.\n   Ring-1 PPDS "
-                  f"appears to carry no signal inside the region we care about, "
-                  f"windowed\n   or not, which is an argument for dropping it "
-                  f"rather than redefining it.")
+                  f"{s:+.2f} against {base_small:+.2f} unwindowed.\n   Windowing "
+                  f"does not change ring-1 PPDS's relationship to CNR, so there is "
+                  f"no\n   reason to adopt the windowed form.")
+            print(f"\n   Note what this does NOT say. Ring-1 PPDS still varies "
+                  f"widely in this band\n   ({cv:.0f}% of its mean), so it is not a "
+                  f"dead metric -- its variation is simply\n   unrelated to CNR. "
+                  f"That makes it an INDEPENDENT objective, which in a\n   "
+                  f"multi-objective search is a reason to keep it if we want it for "
+                  f"its own\n   sake. Whether detector utilisation is a design goal "
+                  f"in itself is a\n   judgement call, not something this "
+                  f"correlation can settle.")
 
 
 if __name__ == "__main__":
