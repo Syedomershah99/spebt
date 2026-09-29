@@ -58,27 +58,53 @@ def main():
         print(f"[warn] {n} duplicate configs in the variants file; keeping the last")
         var = var.drop_duplicates(subset=["config"], keep="last")
 
-    # Drop any existing copies so a rerun refreshes rather than making _x/_y
-    # column pairs that silently leave the optimizer reading a stale one.
-    res = res.drop(columns=[c for c in have if c in res.columns])
-    merged = res.merge(var, on="config", how="left")
+    key = "mpxi_windowed_active_mean"
+    before = int(res[key].notna().sum()) if key in res.columns else 0
+
+    # FILL, do not REPLACE. This used to drop the existing variant columns and
+    # left-join the incoming file, which is correct only when that file covers
+    # the whole archive. Run on a subset -- the documented way to backfill a few
+    # rows -- it silently erased every config the subset did not mention. On
+    # 2026-09-30 that would have taken the archive from 279 usable MPXI values
+    # to 6 and cut the GP's training set by 98%, reported as the unremarkable
+    # line "331 still missing it".
+    merged = res.copy()
+    for c in have:
+        incoming = var.set_index("config")[c]
+        mapped = merged["config"].map(incoming)
+        if c in merged.columns:
+            merged[c] = mapped.combine_first(merged[c])
+        else:
+            merged[c] = mapped
 
     if len(merged) != len(res):
         print(f"ERROR: merge changed the row count ({len(res)} -> {len(merged)}); "
               f"aborting rather than corrupting the archive")
         sys.exit(1)
 
-    key = "mpxi_windowed_active_mean"
-    n_filled = int(merged[key].notna().sum()) if key in merged.columns else 0
-    n_missing = len(merged) - n_filled
+    after = int(merged[key].notna().sum())
+    n_missing = len(merged) - after
     print(f"{len(merged)} configs in the archive")
-    print(f"  {n_filled} now have {key}")
+    print(f"  {before} had {key} before, {after} after (+{after - before})")
+    print(f"  {len(var)} config(s) supplied by {os.path.basename(args.variants_csv)}")
     print(f"  {n_missing} still missing it")
     if n_missing:
         missing = merged.loc[merged[key].isna(), "config"].head(10).tolist()
         print(f"  first few missing: {missing}")
         print("  (these will be dropped from training until their work_dirs are"
               "\n   readable and analyze_mpxi_variants.py is rerun)")
+
+    # A backfill must never reduce what the archive knows. If it would, the
+    # variants file is the wrong shape for this archive and the run is a
+    # mistake, not a refresh.
+    if after < before:
+        print(f"\nERROR: this would REDUCE populated {key} values from {before} "
+              f"to {after}.")
+        print("       A backfill only ever adds. Check that --variants_csv "
+              "covers the configs")
+        print("       you intend to change, and rerun analyze_mpxi_variants.py "
+              "if it does not.")
+        sys.exit(1)
 
     if args.dry_run:
         print("\ndry run, nothing written")

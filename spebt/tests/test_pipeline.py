@@ -1937,3 +1937,71 @@ class TestMergeCompletenessReport:
         out = self._run(tmp_path)
         assert f"1 of 1 seeds have all {len(ma.OBJ_COLUMNS)} objectives" in out
         assert "MISSING COLUMN" not in out
+
+
+# =============================================================================
+# backfill_mpxi_variants must fill, never replace
+# =============================================================================
+class TestBackfillDoesNotErase:
+    """It dropped the existing variant columns and left-joined the incoming
+    file. Correct when that file covers the whole archive; catastrophic on a
+    subset. On 2026-09-30 a 6-row variants file would have taken the archive
+    from 279 populated MPXI values to 6."""
+
+    KEY = "mpxi_windowed_active_mean"
+
+    def _tree(self, tmp_path, archive_vals, variant_rows):
+        arc = tmp_path / "arc.csv"
+        pd.DataFrame({"config": [f"c{i}" for i in range(len(archive_vals))],
+                      self.KEY: archive_vals}).to_csv(arc, index=False)
+        var = tmp_path / "var.csv"
+        pd.DataFrame(variant_rows).to_csv(var, index=False)
+        return str(arc), str(var)
+
+    def _run(self, arc, var, dry=True):
+        cmd = [sys.executable,
+               os.path.join(_REPO_ROOT, "optimization", "backfill_mpxi_variants.py"),
+               "--results_csv", arc, "--variants_csv", var]
+        if dry:
+            cmd.append("--dry_run")
+        return subprocess.run(cmd, capture_output=True, text=True)
+
+    def test_subset_backfill_preserves_untouched_rows(self, tmp_path):
+        arc, var = self._tree(
+            tmp_path, [1.0, 2.0, 3.0, float("nan")],
+            {"config": ["c3"], self.KEY: [9.0]})
+        r = self._run(arc, var, dry=False)
+        assert r.returncode == 0, r.stdout + r.stderr
+        got = pd.read_csv(arc).set_index("config")[self.KEY]
+        assert got["c0"] == 1.0 and got["c1"] == 2.0 and got["c2"] == 3.0, (
+            "existing values were erased by a subset backfill")
+        assert got["c3"] == 9.0, "the row being backfilled was not filled"
+
+    def test_refuses_to_reduce_populated_values(self, tmp_path):
+        """The guard that would have caught the 279 -> 6 wipe."""
+        arc = tmp_path / "arc.csv"
+        pd.DataFrame({"config": ["c0", "c1"], self.KEY: [1.0, 2.0]}).to_csv(arc, index=False)
+        var = tmp_path / "var.csv"
+        pd.DataFrame({"config": ["c0"], self.KEY: [float("nan")]}).to_csv(var, index=False)
+        # combine_first keeps the old value, so this stays flat rather than
+        # shrinking; assert the count never drops.
+        r = self._run(str(arc), str(var), dry=False)
+        got = pd.read_csv(arc)[self.KEY].notna().sum()
+        assert got == 2, f"populated values dropped to {got}"
+
+    def test_reports_before_and_after_counts(self, tmp_path):
+        arc, var = self._tree(
+            tmp_path, [1.0, float("nan")], {"config": ["c1"], self.KEY: [5.0]})
+        out = self._run(arc, var).stdout
+        assert "before" in out and "after" in out
+        assert "+1" in out, f"did not report one newly filled value:\n{out}"
+
+    def test_full_archive_refresh_still_works(self, tmp_path):
+        arc, var = self._tree(
+            tmp_path, [1.0, 2.0],
+            {"config": ["c0", "c1"], self.KEY: [10.0, 20.0]})
+        r = self._run(arc, var, dry=False)
+        assert r.returncode == 0, r.stdout + r.stderr
+        got = pd.read_csv(arc).set_index("config")[self.KEY]
+        assert got["c0"] == 10.0 and got["c1"] == 20.0, (
+            "a full refresh must still overwrite with recomputed values")
