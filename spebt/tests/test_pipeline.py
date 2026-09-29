@@ -1886,3 +1886,54 @@ class TestUnmergedResults:
             body = f.read()
         assert "AUDIT_REPORT" in body and "ring2" in body and "tmi_reference" in body
 
+
+
+# =============================================================================
+# merge_d2d3_seeds completeness report
+# =============================================================================
+class TestMergeCompletenessReport:
+    """It announced "all five objectives" for the July D2/D3 seeds, which were
+    missing mpxi_windowed_active_mean entirely. Those rows merge but cannot
+    train the GP, so a false all-clear hides why the merge changed nothing."""
+
+    def _run(self, tmp_path, drop_cols=()):
+        import mobo_agent as ma
+        seed_dir = tmp_path / "seed_out"
+        seed_dir.mkdir()
+        row = {"config": "seed6d_00", "work_dir": str(tmp_path / "wd")}
+        for c in ma.PARAM_NAMES:
+            row[c] = 1.0
+        for c in ma.OBJ_COLUMNS:
+            row[c] = 1.0
+        for c in drop_cols:
+            row.pop(c, None)
+        pd.DataFrame([row]).to_csv(seed_dir / "task_0.csv", index=False)
+
+        arc = tmp_path / "arc.csv"
+        base = {"config": "mobo_0001"}
+        base.update({c: 1.0 for c in ma.PARAM_NAMES})
+        base.update({c: 1.0 for c in ma.OBJ_COLUMNS})
+        pd.DataFrame([base]).to_csv(arc, index=False)
+
+        return subprocess.run(
+            [sys.executable,
+             os.path.join(_REPO_ROOT, "optimization", "merge_d2d3_seeds.py"),
+             "--results_csv", str(arc), "--seed_dir", str(seed_dir), "--dry_run"],
+            capture_output=True, text=True).stdout
+
+    def test_missing_objective_column_is_named(self, tmp_path):
+        out = self._run(tmp_path, drop_cols=("mpxi_windowed_active_mean",))
+        assert "MISSING COLUMN(S) ENTIRELY" in out
+        assert "mpxi_windowed_active_mean" in out
+        assert "1 of 1 seeds have all" not in out, (
+            "a row missing an objective must not be reported as complete")
+
+    def test_backfill_command_is_offered(self, tmp_path):
+        out = self._run(tmp_path, drop_cols=("mpxi_windowed_active_mean",))
+        assert "backfill_mpxi_variants.py" in out
+
+    def test_genuinely_complete_rows_still_report_complete(self, tmp_path):
+        import mobo_agent as ma
+        out = self._run(tmp_path)
+        assert f"1 of 1 seeds have all {len(ma.OBJ_COLUMNS)} objectives" in out
+        assert "MISSING COLUMN" not in out

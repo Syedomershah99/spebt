@@ -70,9 +70,26 @@ def main():
     show = ["config", "d2_inner_mm", "d3_inner_mm"] + obj
     print(new[[c for c in show if c in new.columns]].to_string(index=False))
 
-    complete = len(new.dropna(subset=[c for c in ma.OBJ_COLUMNS if c in new.columns]))
-    print(f"\n{complete} of {len(new)} seeds have all five objectives")
-    if complete < len(new):
+    # Report against the FULL objective set, not just the columns that happen to
+    # be present. Filtering to `obj` and then announcing "all five objectives"
+    # told us the July D2/D3 seeds were complete when they were missing
+    # mpxi_windowed_active_mean entirely, which is the one column the Aug 2026
+    # objective change added. A row missing an objective does not train the GP,
+    # so claiming completeness here hides the reason a merge changed nothing.
+    absent = [c for c in ma.OBJ_COLUMNS if c not in new.columns]
+    complete = 0 if absent else len(new.dropna(subset=ma.OBJ_COLUMNS))
+    print(f"\n{complete} of {len(new)} seeds have all "
+          f"{len(ma.OBJ_COLUMNS)} objectives")
+    if absent:
+        print(f"  MISSING COLUMN(S) ENTIRELY: {absent}")
+        print(f"  These rows predate an objective change. They will merge but "
+              f"will NOT train the GP")
+        print(f"  until backfilled. For the Aug 2026 MPXI change:")
+        print(f"    python analyze_mpxi_variants.py --results_csv <csv> "
+              f"--out results/mpxi_variants.csv")
+        print(f"    python backfill_mpxi_variants.py --results_csv <csv> "
+              f"--variants_csv results/mpxi_variants.csv")
+    elif complete < len(new):
         print("  (incomplete rows still merge; they just will not train the GP)")
 
     if args.dry_run:
