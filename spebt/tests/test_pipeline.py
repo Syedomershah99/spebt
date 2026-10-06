@@ -2005,3 +2005,76 @@ class TestBackfillDoesNotErase:
         got = pd.read_csv(arc).set_index("config")[self.KEY]
         assert got["c0"] == 10.0 and got["c1"] == 20.0, (
             "a full refresh must still overwrite with recomputed values")
+
+
+# =============================================================================
+# analyze_search_convergence — seeds must not be mistaken for search results
+# =============================================================================
+class TestSearchConvergence:
+    """Merging the hand-placed ring2_* and seed6d_* designs into the archive on
+    2026-09-30 made seed6d_02 the highest in-loop CNR row (4.8744 against
+    mobo_0296's 4.7686), which silently moved the reported aperture spread from
+    1.8% to 1.7%. Its 5-seed mean is 4.6850, below mobo_0296, so the archive
+    value was a high Poisson draw, not a better design."""
+
+    def _df(self):
+        import mobo_agent as ma
+        base = {c: 1.0 for c in ma.PARAM_NAMES}
+        rows = []
+        for name, cnr, ap in [
+            ("mobo_0296_ap0.2718", 4.7686, 0.2718),
+            ("mobo_0100_ap0.2900", 4.5000, 0.2900),
+            ("seed6d_02_ap0.2938", 4.8744, 0.2938),   # seed, highest raw CNR
+            ("ring2_000", 4.4760, 0.2718),
+            ("lhs6d_000", 4.1000, 0.8000),
+        ]:
+            r = dict(base)
+            r.update({"config": name, "cnr_sector_mean": cnr,
+                      "aperture_diam_mm": ap, "fwhm_weighted_mean": 0.484})
+            rows.append(r)
+        return pd.DataFrame(rows)
+
+    def test_seed_rows_cannot_be_a_search_optimum(self):
+        import analyze_search_convergence as asc
+        got = asc.best_proposed(self._df(), "test")
+        assert got is not None
+        assert got["config"].startswith("mobo_"), (
+            f"selected {got['config']}; a hand-placed seed is not something "
+            f"the optimizer found")
+
+    def test_picks_the_highest_proposed_design(self):
+        import analyze_search_convergence as asc
+        got = asc.best_proposed(self._df(), "test")
+        assert got["config"] == "mobo_0296_ap0.2718"
+
+    def test_lhs_seeds_are_excluded_too(self):
+        """The head-to-head starting seeds are shared across arms and are not
+        search output either."""
+        import analyze_search_convergence as asc
+        df = self._df()
+        df.loc[df["config"] == "lhs6d_000", "cnr_sector_mean"] = 99.0
+        assert asc.best_proposed(df, "test")["config"].startswith("mobo_")
+
+    def test_returns_none_rather_than_crashing_when_nothing_qualifies(self):
+        import analyze_search_convergence as asc
+        df = self._df()
+        df = df[~df["config"].str.startswith("mobo_")]
+        assert asc.best_proposed(df, "test") is None
+
+    def test_rows_missing_a_design_vector_are_skipped(self):
+        import analyze_search_convergence as asc
+        import mobo_agent as ma
+        df = self._df()
+        df.loc[df["config"] == "mobo_0296_ap0.2718", ma.PARAM_NAMES[0]] = float("nan")
+        got = asc.best_proposed(df, "test")
+        assert got["config"] == "mobo_0100_ap0.2900", (
+            "a row without a complete design vector cannot contribute a spread")
+
+    def test_contaminated_mode_is_opt_in(self):
+        """--include_seeds must exist and must not be the default, or the
+        1.8% figure silently becomes 1.7% on the next run."""
+        import analyze_search_convergence as asc
+        import inspect
+        src = inspect.getsource(asc.main)
+        assert "--include_seeds" in src
+        assert 'action="store_true"' in src

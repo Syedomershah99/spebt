@@ -77,7 +77,10 @@ def main():
     ax.set_ylabel("CNR (mean of 5 runs)", fontsize=11, color=INK)
     ax.set_title(
         f"Optimized design beats the published reference by "
-        f"{overall_gain:.0f}% overall\n"
+        # One decimal, not zero. The slide that carries this figure also
+        # states +31.6% beside it, and "32%" next to "+31.6%" on one slide
+        # reads as two different numbers.
+        f"{overall_gain:.1f}% overall\n"
         f"sector mean {OURS_OVERALL[0]:.2f} $\\pm$ {OURS_OVERALL[1]:.2f} vs "
         f"{REF_OVERALL[0]:.2f} $\\pm$ {REF_OVERALL[1]:.2f}, largest gains at "
         f"0.125 to 0.150 mm",
