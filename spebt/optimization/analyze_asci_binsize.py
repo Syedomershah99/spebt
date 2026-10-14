@@ -134,16 +134,36 @@ def main():
     ap.add_argument("--results_csv", default="results/results_summary_mobo.csv")
     ap.add_argument("--results_dir", default="results")
     ap.add_argument("--bins", type=int, nargs="+", default=[360, 720, 1800, 3600])
-    ap.add_argument("--limit", type=int, default=40)
+    ap.add_argument("--limit", type=int, default=60)
     ap.add_argument("--out", default="results/asci_binsize.csv")
     args = ap.parse_args()
 
     from scipy.stats import spearmanr
 
-    df = pd.read_csv(args.results_csv).dropna(
-        subset=["cnr_sector_mean", "aperture_diam_mm"])
+    # Read every archive, not just the main one. The head-to-head arms keep
+    # their own results CSV, and most surviving beam files belong to configs
+    # recorded there: reading the main archive alone found 14 usable designs,
+    # all inside the aperture band, so there was no out-of-band comparison at
+    # all. The same widening that check_unmerged_results.py already does.
+    frames = []
+    for f in [args.results_csv] + sorted(glob.glob(
+            os.path.join(os.path.dirname(os.path.dirname(
+                os.path.abspath(args.results_csv))),
+                "results_h2h_*", os.path.basename(args.results_csv)))):
+        if not os.path.exists(f):
+            continue
+        try:
+            frames.append(pd.read_csv(f))
+        except Exception as e:
+            print(f"  [warn] unreadable archive {f}: {e}")
+    if not frames:
+        sys.exit(f"ERROR: no readable archive at {args.results_csv}")
+    df = pd.concat(frames, ignore_index=True)
+    df = df.dropna(subset=["cnr_sector_mean", "aperture_diam_mm"])
+    df = df.drop_duplicates(subset=["config"], keep="first")
+    print(f"{len(frames)} archive(s), {len(df)} measured configs")
     rows = configs_with_beam_files(df, args.results_dir)
-    print(f"{len(df)} measured configs, {len(rows)} still have their beam files")
+    print(f"{len(rows)} of them still have their beam files")
     if len(rows) < 8:
         sys.exit("ERROR: too few configs with surviving beam files to say anything.")
 
