@@ -47,10 +47,15 @@ def main():
         print("ERROR: both CSVs need a 'config' column to join on")
         sys.exit(1)
 
-    have = [c for c in VARIANT_COLS if c in var.columns]
+    # Columns come from the variants file, not a hardcoded list, so this also
+    # backfills metrics added later (ASCI at a finer bin, say) without a
+    # second copy of the fill-don't-replace logic that was already got wrong
+    # once here.
+    have = [c for c in var.columns if c != "config"]
     if not have:
-        print(f"ERROR: {args.variants_csv} has none of {VARIANT_COLS}")
+        print(f"ERROR: {args.variants_csv} has no columns besides 'config'")
         sys.exit(1)
+    print(f"columns to backfill: {have}")
 
     var = var[["config"] + have].dropna(subset=["config"])
     if var["config"].duplicated().any():
@@ -58,7 +63,7 @@ def main():
         print(f"[warn] {n} duplicate configs in the variants file; keeping the last")
         var = var.drop_duplicates(subset=["config"], keep="last")
 
-    key = "mpxi_windowed_active_mean"
+    key = "mpxi_windowed_active_mean" if "mpxi_windowed_active_mean" in have else have[0]
     before = int(res[key].notna().sum()) if key in res.columns else 0
 
     # FILL, do not REPLACE. This used to drop the existing variant columns and
