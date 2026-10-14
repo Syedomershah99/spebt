@@ -104,6 +104,19 @@ def asci_at_bins(work_dir, n_bins):
         ok = np.isfinite(angles)
         if not ok.any():
             continue
+
+        # Fail loudly if the data does not fit the binning range. Binning
+        # 0..2pi angles over -pi..pi silently made half the bins unreachable
+        # and produced ASCI = 50.00% with zero variance across every design:
+        # a clean-looking number that was pure artifact. np.clip would hide
+        # the same mistake again, so check before clipping.
+        amin, amax = angles[ok].min(), angles[ok].max()
+        if amin < edges[0] - 1e-9 or amax > edges[-1] + 1e-9:
+            raise ValueError(
+                f"beam angles span [{amin:.4f}, {amax:.4f}] but bins cover "
+                f"[{edges[0]:.4f}, {edges[-1]:.4f}] in {work_dir}. "
+                f"Fix the bin range rather than clipping.")
+
         bins = np.clip(np.digitize(angles, edges) - 1, 0, n_bins - 1)
 
         for k in np.flatnonzero(ok):

@@ -2078,3 +2078,58 @@ class TestSearchConvergence:
         src = inspect.getsource(asc.main)
         assert "--include_seeds" in src
         assert 'action="store_true"' in src
+
+
+# =============================================================================
+# analyze_asci_binsize angle-range guard
+# =============================================================================
+class TestAsciAngleRangeGuard:
+    """Binning 0..2pi beam angles over -pi..pi made half the bins unreachable
+    and produced ASCI = 50.00% with sd 0.000 across every design. np.clip hid
+    the mismatch, so the output looked like a measurement rather than an
+    artifact. The guard must fire instead of clipping."""
+
+    def _work_dir(self, tmp_path, angles):
+        wd = tmp_path / "cfg"
+        wd.mkdir()
+        n = len(angles)
+        props = np.zeros((n, 11), dtype=np.float64)
+        props[:, 1] = 0                      # detector id
+        props[:, 2] = np.arange(n)           # beam id
+        props[:, 3] = angles
+        with h5py.File(wd / "beams_properties_configuration_000.hdf5", "w") as f:
+            f.create_dataset("beam_properties", data=props)
+        with h5py.File(wd / "beams_masks_configuration_000.hdf5", "w") as f:
+            f.create_dataset("beam_mask", data=np.zeros((1, 40000), dtype=np.int32))
+        return str(wd)
+
+    def test_angles_outside_the_bin_range_raise(self, tmp_path):
+        """A negative angle is exactly what the -pi..pi convention produces."""
+        import analyze_asci_binsize as ab
+        wd = self._work_dir(tmp_path, [-1.0, 1.5, 3.0])
+        with pytest.raises(ValueError, match="bins cover"):
+            ab.asci_at_bins(wd, 360)
+
+    def test_the_error_names_both_ranges(self, tmp_path):
+        import analyze_asci_binsize as ab
+        wd = self._work_dir(tmp_path, [-1.0, 1.5, 3.0])
+        try:
+            ab.asci_at_bins(wd, 360)
+            pytest.fail("expected ValueError")
+        except ValueError as e:
+            msg = str(e)
+            assert "-1.0" in msg and "6.283" in msg, (
+                f"message must show the data range and the bin range: {msg}")
+
+    def test_angles_filling_the_full_range_are_accepted(self, tmp_path):
+        """0..2pi is the real convention and must pass, including near 2pi."""
+        import analyze_asci_binsize as ab
+        wd = self._work_dir(tmp_path, [0.0003, 3.0, 6.283])
+        assert np.isfinite(ab.asci_at_bins(wd, 360))
+
+    def test_out_of_range_is_not_silently_clipped(self, tmp_path):
+        """The behaviour that matters: a mismatch must not return a number."""
+        import analyze_asci_binsize as ab
+        wd = self._work_dir(tmp_path, [-2.0, 0.5])
+        with pytest.raises(ValueError):
+            ab.asci_at_bins(wd, 360)
