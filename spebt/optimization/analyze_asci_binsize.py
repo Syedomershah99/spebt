@@ -86,7 +86,7 @@ def asci_at_bins(work_dir, n_bins):
         return np.nan
 
     covered = np.zeros((N_FOV, n_bins), dtype=bool)
-    edges = np.linspace(-np.pi, np.pi, n_bins + 1)
+    edges = np.linspace(0.0, 2 * np.pi, n_bins + 1)   # beam angles are 0..2pi
 
     for pf, mf in zip(props, masks):
         try:
