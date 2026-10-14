@@ -93,7 +93,7 @@ def asci_at_bins(work_dir, n_bins):
             with h5py.File(pf, "r") as f:
                 bp = f["beam_properties"][:]
             with h5py.File(mf, "r") as f:
-                bm = f["beams_masks"][:]
+                bm = f["beam_mask"][:]
         except Exception as e:
             print(f"    [warn] unreadable beam file in {work_dir}: {e}")
             return np.nan
