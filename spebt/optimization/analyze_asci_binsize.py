@@ -110,12 +110,18 @@ def asci_at_bins(work_dir, n_bins):
         # and produced ASCI = 50.00% with zero variance across every design:
         # a clean-looking number that was pure artifact. np.clip would hide
         # the same mistake again, so check before clipping.
+        # Angles are stored as float32, so one that is exactly 2*pi reads back
+        # as 6.2831855 -- about 1.7e-07 above the float64 2*pi. Tolerate that
+        # much; a real binning mistake (0..2pi data against -pi..pi bins) is
+        # wrong by radians, not by a ten-millionth of one.
+        TOL = 1e-6
         amin, amax = angles[ok].min(), angles[ok].max()
-        if amin < edges[0] - 1e-9 or amax > edges[-1] + 1e-9:
+        if amin < edges[0] - TOL or amax > edges[-1] + TOL:
             raise ValueError(
-                f"beam angles span [{amin:.4f}, {amax:.4f}] but bins cover "
-                f"[{edges[0]:.4f}, {edges[-1]:.4f}] in {work_dir}. "
-                f"Fix the bin range rather than clipping.")
+                f"beam angles span [{amin!r}, {amax!r}] but bins cover "
+                f"[{edges[0]!r}, {edges[-1]!r}] (overshoot low "
+                f"{edges[0] - amin:.3e}, high {amax - edges[-1]:.3e}) in "
+                f"{work_dir}. Fix the bin range rather than clipping.")
 
         bins = np.clip(np.digitize(angles, edges) - 1, 0, n_bins - 1)
 

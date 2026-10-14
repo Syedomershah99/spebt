@@ -65,3 +65,7 @@ spebt/direction1_pipeline_figures.py
 spebt/pymatcal/debug_*.py
 spebt/pymatcal/test_subdivision_fix.py
 spebt/pymatcal/subdivision_fix_validation.png
+
+# Figure scripts write their PNG next to themselves; the copy that ships
+# lives in deck_figures/ (see deck_figures/SOURCES.md).
+spebt/optimization/*.png

@@ -2133,3 +2133,32 @@ class TestAsciAngleRangeGuard:
         wd = self._work_dir(tmp_path, [-2.0, 0.5])
         with pytest.raises(ValueError):
             ab.asci_at_bins(wd, 360)
+
+    def test_float32_two_pi_is_tolerated(self, tmp_path):
+        """The real beams_properties files are float32, where an angle of
+        exactly 2*pi reads back as 6.2831855 -- 1.7e-07 ABOVE the float64
+        2*pi. A 1e-9 tolerance rejected that and killed a 45-minute cluster
+        job on one angle out of 74,945. The fixture must be float32 or it
+        cannot reproduce this."""
+        import analyze_asci_binsize as ab
+        wd = tmp_path / "cfg"
+        wd.mkdir()
+        angles = np.array([0.0002, 3.0, 2 * np.pi], dtype=np.float32)
+        assert float(angles[-1]) > 2 * np.pi, (
+            "fixture is not reproducing the float32 overshoot")
+        props = np.zeros((3, 11), dtype=np.float32)
+        props[:, 2] = np.arange(3)
+        props[:, 3] = angles
+        with h5py.File(wd / "beams_properties_configuration_000.hdf5", "w") as f:
+            f.create_dataset("beam_properties", data=props)
+        with h5py.File(wd / "beams_masks_configuration_000.hdf5", "w") as f:
+            f.create_dataset("beam_mask", data=np.zeros((1, 40000), dtype=np.int32))
+        assert np.isfinite(ab.asci_at_bins(str(wd), 3600))
+
+    def test_tolerance_is_far_below_one_bin(self, tmp_path):
+        """Widening the tolerance must not blunt the guard: an angle over by
+        a hundredth of a radian is a real mistake and must still raise."""
+        import analyze_asci_binsize as ab
+        wd = self._work_dir(tmp_path, [0.5, 2 * np.pi + 0.01])
+        with pytest.raises(ValueError, match="bins cover"):
+            ab.asci_at_bins(wd, 360)

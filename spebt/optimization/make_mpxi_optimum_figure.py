@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MIC figure: MPXI has an optimum, not a direction.
+MIC figure: where CNR peaks against multiplexing.
 
 The history this figure exists to settle. MPXI was originally MINIMIZED, on the
 assumption that multiplexing costs image quality. Measured in physical units it
@@ -79,9 +79,8 @@ def main():
 
     ax.set_xlabel("MPXI (windowed, active detectors)", fontsize=11, color=INK)
     ax.set_ylabel("CNR sector mean", fontsize=11, color=INK)
-    ax.set_title("MPXI has an optimum, not a direction\n"
-                 f"CNR rises with multiplexing to roughly {lo_x:.1f} to {hi_x:.1f}, "
-                 f"then falls away",
+    ax.set_title(f"CNR rises with multiplexing to roughly {lo_x:.1f} to "
+                 f"{hi_x:.1f}, then falls away",
                  fontsize=12.5, color=INK, pad=14)
 
     ax.yaxis.grid(True, color=GRID, lw=0.8, zorder=0)
