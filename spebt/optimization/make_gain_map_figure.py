@@ -106,12 +106,9 @@ def main():
     ax.set_title("Gain by rod size", fontsize=14, fontweight="bold",
                  color=INK, pad=8)
     peak = int(np.argmax(gains))
-    fig.text(0.5, 0.045,
-             f"Gain peaks at {ROD_RADII[peak]:.3f} mm, among the finest rods "
-             f"either\ngeometry resolves. More counts alone would lift all six "
-             f"alike.",
-             ha="center", fontsize=10.5, color=MUTED)
-    fig.tight_layout(rect=(0, 0.11, 1, 0.97))
+    # No caption: the slide's own bullets already say this, and Dr. Yao
+    # objected to a figure restating the text beside it.
+    fig.tight_layout(rect=(0, 0.02, 1, 0.97))
     fig.savefig(a.out, dpi=a.dpi, facecolor="white")
     # The caption claims an interior peak. The smallest rods sit near the
     # resolution limit of BOTH geometries, so they do not gain the most --
