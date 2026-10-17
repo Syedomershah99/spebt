@@ -63,25 +63,36 @@ def main():
     fig.patch.set_facecolor("white")
     ax.set_facecolor("white")
 
-    ax.scatter(df[MPXI], df[CNR], s=26, color=C_POINTS, alpha=0.35,
-               edgecolors="none", zorder=2, label=f"designs (n={len(df)})")
+    # Dr. Yao, 16 Oct: beginner-friendly. 285 raw points drown the one line
+    # that carries the claim, so they fade into the background and the
+    # trend is what the eye lands on.
+    ax.scatter(df[MPXI], df[CNR], s=16, color=C_POINTS, alpha=0.13,
+               edgecolors="none", zorder=2, label=f"one dot = one design "
+               f"(n={len(df)})")
     ax.errorbar(g["x"], g["y"], yerr=g["sd"], color=C_TREND, lw=2.4,
                 marker="o", ms=8, capsize=4, zorder=4,
                 markeredgecolor="white", markeredgewidth=1.4,
-                label="binned mean CNR")
+                label="average contrast, in bands")
 
     # One annotation carrying the claim, rather than a label on every bin.
-    ax.annotate(f"peak {lo_x:.1f} to {hi_x:.1f}",
-                xy=(peak_x, peak_y), xytext=(peak_x - 0.05, peak_y + 0.55),
-                fontsize=11, fontweight="bold", color=INK, ha="center",
+    ax.annotate(f"best here,\nbetween {lo_x:.1f} and {hi_x:.1f}",
+                xy=(peak_x, peak_y), xytext=(peak_x - 0.42, peak_y + 0.62),
+                fontsize=12, fontweight="bold", color=INK, ha="center",
                 arrowprops=dict(arrowstyle="->", color=INK_MUTED, lw=1.4,
                                 shrinkA=2, shrinkB=4))
+    # Plain-language captions in a clear band under the data, in axes
+    # fractions so they cannot drift into the error bars.
+    ax.text(0.22, 0.045, "more beams per crystal, more signal",
+            transform=ax.transAxes, fontsize=11, color=INK_MUTED, ha="center")
+    ax.text(0.72, 0.045, "too many beams, less certain where they came from",
+            transform=ax.transAxes, fontsize=11, color=INK_MUTED, ha="center")
 
-    ax.set_xlabel("MPXI (windowed, active detectors)", fontsize=11, color=INK)
-    ax.set_ylabel("CNR sector mean", fontsize=11, color=INK)
-    ax.set_title(f"CNR rises with multiplexing to roughly {lo_x:.1f} to "
-                 f"{hi_x:.1f}, then falls away",
-                 fontsize=12.5, color=INK, pad=14)
+    ax.set_xlabel("multiplexing: how many beams share a crystal (MPXI)",
+                  fontsize=12, color=INK)
+    ax.set_ylabel("contrast of the reconstruction (CNR)", fontsize=12,
+                  color=INK)
+    ax.set_title(f"More sharing helps, up to a point, then it hurts",
+                 fontsize=13.5, color=INK, pad=14)
 
     ax.yaxis.grid(True, color=GRID, lw=0.8, zorder=0)
     ax.set_axisbelow(True)
@@ -95,6 +106,7 @@ def main():
     for t in leg.get_texts():
         t.set_color(INK)
 
+    ax.set_ylim(bottom=float(df[CNR].min()) - 0.52)
     fig.tight_layout()
     fig.savefig(args.out, dpi=args.dpi, facecolor="white")
     print(f"wrote {args.out}")

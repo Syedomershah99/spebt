@@ -46,83 +46,73 @@ INK, INK_MUTED, GRID = "#0b0b0b", "#52514e", "#d8d7d2"
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    """Two stacked panels, one scale each.
+
+    Dr. Yao, 16 Oct: the dual-axis version was not readable. Two y-axes on one
+    frame force the reader to work out which curve belongs to which scale
+    before they can see the point. Stacked panels sharing the x-axis say the
+    same thing with no decoding: this rises all the way, that turns over.
+    """
+    ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="asci_cnr_tradeoff.png")
     ap.add_argument("--dpi", type=int, default=300)
     args = ap.parse_args()
 
-    fig, ax = plt.subplots(figsize=(9.5, 5.2))
+    sem = [sd / np.sqrt(N_SEEDS) for sd in CNR_SD]
+    # The argmax alone is over-precise: 414, 435 and 456 mm are all within
+    # two standard errors of each other. The honest statement is where
+    # contrast FIRST drops clearly below the peak.
+    k = int(np.argmax(CNR))
+    sem_all = [sd / np.sqrt(N_SEEDS) for sd in CNR_SD]
+    below = [i for i in range(k + 1, len(CNR))
+             if (CNR[k] - CNR[i]) / np.sqrt(sem_all[i] ** 2 + sem_all[k] ** 2) > 2]
+    if not below:
+        raise SystemExit("ERROR: contrast never drops clearly below the peak")
+    turn = D2[below[0] - 1]
+
+    fig, (ax_a, ax_c) = plt.subplots(
+        2, 1, figsize=(9.2, 5.6), sharex=True,
+        gridspec_kw=dict(hspace=0.42, height_ratios=[1, 1]))
     fig.patch.set_facecolor("white")
-    ax.set_facecolor("white")
 
-    ax.plot(D2, ASCI, "-o", color=C_ASCI, lw=2.2, ms=7, zorder=3,
-            label="ASCI @ 0.45 mm (angular coverage)")
-    ax.set_xlabel("Ring-2 inner diameter (mm)", color=INK, fontsize=11)
-    ax.set_ylabel("ASCI @ 0.45 mm  (%)", color=C_ASCI, fontsize=11)
-    ax.tick_params(axis="y", colors=C_ASCI)
-    ax.tick_params(axis="x", colors=INK_MUTED)
-    ax.set_ylim(55, 66)
+    ax_a.plot(D2, ASCI, "-o", color=C_ASCI, lw=2.4, ms=7, zorder=3)
+    ax_a.set_ylabel("angular coverage\nASCI (%)", fontsize=12, color=C_ASCI)
+    ax_a.set_title("Move ring 2 outward and angular coverage keeps rising",
+                   fontsize=12.5, color=INK, pad=7, loc="left")
 
-    ax2 = ax.twinx()
-    sem = np.array(CNR_SD) / np.sqrt(N_SEEDS)
-    ax2.errorbar(D2, CNR, yerr=sem, fmt="-s", color=C_CNR, lw=2.2, ms=7,
-                 capsize=3, elinewidth=1.4, zorder=3,
-                 label="CNR sector-mean (contrast), 5 seeds")
-    ax2.set_ylabel("CNR sector-mean", color=C_CNR, fontsize=11)
-    ax2.tick_params(axis="y", colors=C_CNR)
-    ax2.set_ylim(4.20, 4.78)
+    ax_c.errorbar(D2, CNR, yerr=sem, fmt="-s", color=C_CNR, lw=2.4, ms=7,
+                  capsize=4, zorder=3)
+    ax_c.set_ylabel("contrast\nCNR", fontsize=12, color=C_CNR)
+    ax_c.set_xlabel("ring-2 inner diameter (mm)", fontsize=12, color=INK)
+    ax_c.set_title(f"but contrast is flat to about {turn:.0f} mm, then falls away",
+                   fontsize=12.5, color=INK, pad=7, loc="left")
 
-    ax.grid(True, axis="y", color=GRID, lw=0.8, zorder=0)
-    ax.set_axisbelow(True)
-    for sp in ("top",):
-        ax.spines[sp].set_visible(False)
-        ax2.spines[sp].set_visible(False)
-    for a in (ax, ax2):
-        for sp in ("left", "right", "bottom"):
-            a.spines[sp].set_color(GRID)
+    # One vertical marker on both panels: the place the two disagree.
+    for ax in (ax_a, ax_c):
+        ax.axvline(turn, color=INK_MUTED, lw=1.2, ls="--", zorder=1)
+        ax.set_facecolor("white")
+        ax.yaxis.grid(True, color=GRID, lw=0.8)
+        ax.set_axisbelow(True)
+        for side in ("top", "right"):
+            ax.spines[side].set_visible(False)
+        for side in ("left", "bottom"):
+            ax.spines[side].set_color(GRID)
+        ax.tick_params(colors=INK_MUTED, labelsize=10.5)
+    # No cross-panel annotation: it ran through the lower title. The
+    # dashed line and the panel titles carry it.
 
-    # Crystal count on a secondary x-axis: it rises with radius along this
-    # sweep, and leaving it off invites the reading that count is the driver.
-    axt = ax.secondary_xaxis("top")
-    axt.set_xticks(D2[::2])
-    axt.set_xticklabels([str(n) for n in ND2[::2]])
-    axt.set_xlabel("Ring-2 crystal count (rises with radius here)",
-                   color=INK_MUTED, fontsize=9, labelpad=3)
-    axt.tick_params(colors=INK_MUTED, labelsize=9)
-    axt.spines["top"].set_color(GRID)
-
-    h1, l1 = ax.get_legend_handles_labels()
-    h2, l2 = ax2.get_legend_handles_labels()
-    leg = ax.legend(h1 + h2, l1 + l2, loc="lower left", frameon=False,
-                    fontsize=10)
-    for t in leg.get_texts():
-        t.set_color(INK)
-
-    # Title and subtitle live at figure level with an explicit top margin, so
-    # they cannot collide with the secondary axis label the way an axes-level
-    # title did.
-    fig.text(0.075, 0.955,
-             "Angular coverage rises throughout; contrast holds, then falls "
-             "past ~455 mm",
-             color=INK, fontsize=13.5, ha="left", va="top", weight="semibold")
-    fig.text(0.075, 0.900,
-             "Every CNR point is a 5-seed mean; bars are standard errors. "
-             "The last three sit clearly below the first four.",
-             color=INK_MUTED, fontsize=9.5, ha="left", va="top")
-
-    fig.tight_layout(rect=[0, 0, 1, 0.83])
+    fig.text(0.5, 0.012,
+             f"Every contrast point is a mean over {N_SEEDS} noise "
+             f"realizations; bars are standard errors.",
+             ha="center", fontsize=10, color=INK_MUTED, style="italic")
+    fig.tight_layout(rect=(0, 0.04, 1, 1))
     fig.savefig(args.out, dpi=args.dpi, facecolor="white")
     print(f"wrote {args.out}")
-
-    print("\nsanity check against the source numbers:")
-    from scipy.stats import spearmanr
-    print("  Spearman(d2, ASCI) = %+.2f" % spearmanr(D2, ASCI).correlation)
-    print("  Spearman(d2, CNR)  = %+.2f" % spearmanr(D2, CNR).correlation)
-    print("  ASCI %.2f to %.2f  (+%.0f%%)" % (min(ASCI), max(ASCI),
-                                              100*(max(ASCI)-min(ASCI))/min(ASCI)))
-    print("  CNR  %.3f to %.3f  (-%.0f%%)" % (min(CNR), max(CNR),
-                                              100*(max(CNR)-min(CNR))/max(CNR)))
+    print(f"  contrast flat to d2 = {turn:.0f} mm; coverage rises "
+          f"{ASCI[0]:.1f} to {ASCI[-1]:.1f}%")
+    if k in (0, len(CNR) - 1):
+        raise SystemExit("ERROR: contrast does not turn over inside the range; "
+                         "the panel titles would be wrong.")
 
 
 if __name__ == "__main__":
