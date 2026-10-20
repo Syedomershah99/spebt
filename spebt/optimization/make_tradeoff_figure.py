@@ -112,7 +112,7 @@ def main():
     ax_a.plot(x[~moved], asci[~moved], "o", color=C_ASCI, ms=7.5, zorder=4)
     ax_a.plot(x[moved], asci[moved], "o", color=C_ASCI, ms=7.5, mfc="white",
               mec=C_ASCI, mew=2.0, zorder=4)
-    ax_a.set_ylabel("ASCI, beams\nunder 0.45 mm (%)", fontsize=FS_LABEL,
+    ax_a.set_ylabel("ASCI, strips\nunder 0.45 mm (%)", fontsize=FS_LABEL,
                     color=C_ASCI)
     ax_a.set_title("Move ring II outward and ASCI keeps rising",
                    fontsize=FS_TITLE, color=INK, pad=8, loc="left")

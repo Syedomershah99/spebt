@@ -100,14 +100,14 @@ def main():
     # Plain-language captions in a clear band under the data and under the
     # lowest grid line, in axes fractions so they cannot drift into the
     # error bars.
-    ax.text(0.175, 0.025, "more beams per detector,\nmore signal",
+    ax.text(0.175, 0.025, "more strips per detector,\nmore signal",
             transform=ax.transAxes, fontsize=FS_TEXT, color=INK_MUTED,
             ha="center", va="bottom")
-    ax.text(0.69, 0.025, "too many beams, less certain\nwhere they came from",
+    ax.text(0.69, 0.025, "too many strips, less certain\nwhere they came from",
             transform=ax.transAxes, fontsize=FS_TEXT, color=INK_MUTED,
             ha="center", va="bottom")
 
-    ax.set_xlabel("MPXI, beams under 0.45 mm: average per detector that sees one",
+    ax.set_xlabel("MPXI, strips under 0.45 mm: average per detector that sees one",
                   fontsize=FS_LABEL, color=INK)
     ax.set_ylabel("CNR", fontsize=FS_LABEL, color=INK)
     ax.set_title("More sharing helps, up to a point, then it hurts",
