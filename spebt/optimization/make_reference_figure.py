@@ -66,10 +66,10 @@ def main():
     # A 2px-equivalent gap between adjacent bars: width 0.38 inside a 0.5 slot.
     w = 0.38
     ax.bar(x - w / 2, REF_MEAN, w, yerr=REF_STD, capsize=3.5,
-           color=C_REF, label="Published reference", zorder=3,
+           color=C_REF, label="Published benchmark", zorder=3,
            error_kw=dict(ecolor=INK_MUTED, lw=1.3, capthick=1.3))
     ax.bar(x + w / 2, OURS_MEAN, w, yerr=OURS_STD, capsize=3.5,
-           color=C_OURS, label="MOBO optimized", zorder=3,
+           color=C_OURS, label="MOBO-optimized", zorder=3,
            error_kw=dict(ecolor=INK_MUTED, lw=1.3, capthick=1.3))
 
     # Direct labels carry the story; a number on every bar would not.
@@ -89,8 +89,10 @@ def main():
     # One decimal, not zero. The slide that carries this figure also
     # states +31.6% beside it, and "32%" next to "+31.6%" on one slide
     # reads as two different numbers.
-    line1 = (f"Optimized design: {overall_gain:.1f}% higher CNR than the "
-             f"published reference")
+    # Dr. Yao, 22 Oct: "benchmark" for the published design, "MOBO-optimized"
+    # for ours, as on the slides.
+    line1 = (f"MOBO-optimized design: {overall_gain:.1f}% higher CNR than the "
+             f"published benchmark")
     line2 = (f"sector mean {OURS_OVERALL[0]:.2f} ± {OURS_OVERALL[1]:.2f} vs "
              f"{REF_OVERALL[0]:.2f} ± {REF_OVERALL[1]:.2f} (mean ± SD), largest "
              f"gains at rod radii 0.125 to 0.150 mm")

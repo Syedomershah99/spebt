@@ -22,13 +22,21 @@ diameters), grey what is fixed. Text is 12 pt, 11.5 pt inside the inset circles;
 376 dpi used here (1880 px over the 5.0 in slide box) cap heights are 45 and 43 px.
 
 Usage:
-  python make_scanner_zoom_figure.py [--out PATH]
+  python make_scanner_zoom_figure.py [--out PATH] [--layers]
+
+--layers leaves PATH alone and writes the slide-8 click-build layers beside it:
+<stem>_l1_scanner.png (the drawing, ring labels, Ø key, scale bar) and <stem>_l2_zooms.png
+(zoom windows and connectors, both insets, captions, searched/fixed key). Each is RGBA,
+transparent where it draws nothing. The full figure is rendered and checked in the same
+run, and the layers are written only if, laid over white in that order, they equal it to
+within 2 levels.
 """
 import argparse
 import ast
 import importlib.util
 import math
 import sys
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -74,6 +82,7 @@ R_IN = 390                                 # inset radius, px
 A_CEN, B_CEN = (590.0, 1502.0), (1478.0, 1502.0)
 M_A, M_B = 80, 24                          # magnification relative to the main view
 SLIDE_TEXT_CORNER = (1700, 720)            # keep x > 1700, y < 720 empty (slide text)
+LAYERS = ("scanner", "zooms")              # slide-8 click-build layers, bottom first
 
 
 def wedge(r0, r1, a, b):
@@ -144,6 +153,14 @@ class Figure:
         ax.set_xlim(0, WPX); ax.set_ylim(HPX, 0); ax.axis("off")
         self.texts = []                          # (artist, inset or None)
         self.renderer = self.fig.canvas.get_renderer()
+        self.layer_of, self.cur = {}, LAYERS[0]  # artist -> click-build layer
+
+    def layer(self, name):
+        """Artists added from here on belong to layer `name`; None closes the last one."""
+        for a in self.fig.axes:
+            for art in a.get_children():
+                self.layer_of.setdefault(art, self.cur)
+        self.cur = name
 
     # main-view coordinates: mm -> px
     @staticmethod
@@ -246,7 +263,7 @@ class Inset:
                                  zorder=50, clip_on=False))
 
 
-def build(out_path):
+def build(out_path, layers=False):
     check_generator()
     rings, stats, walls, (r_in_c, r_out_c, r_c_ap, d_cell, d_open) = load_geometry()
     F = Figure(); ax = F.ax; P = F.P
@@ -308,12 +325,14 @@ def build(out_path):
     F.text(ax, CX, CY - 80, f"Ø{FOV_D:.0f} mm", color=GREY, ha="center", va="bottom")
     F.text(ax, CX, CY - 142, "FOV", color=GREY, ha="center", va="bottom")
 
-    # key and scale bar
+    # key and scale bar; the searched / fixed key shows with the zooms (slide 8, click 3)
+    F.layer("zooms")
     ax.add_patch(Rectangle((KEY_X, KEY_Y - 13), 26, 26, fc=UBB, ec="none"))
     ax.add_patch(Rectangle((KEY_X + 34, KEY_Y - 13), 26, 26, fc=CORAL, ec="none"))
     F.text(ax, KEY_X + 78, KEY_Y, "searched", color=INK, va="center")
     ax.add_patch(Rectangle((KEY_X, KEY_Y + 57), 26, 26, fc=GREY, ec="none"))
     F.text(ax, KEY_X + 78, KEY_Y + 70, "fixed", color=INK, va="center")
+    F.layer("scanner")
     F.text(ax, KEY_X, KEY_Y + 140, "Ø: ring inner diameter", color=INK, va="center")
     yb = KEY_Y + 225; bar = 100 * S
     seg(ax, (KEY_X, yb), (KEY_X + bar, yb), INK, lw=2.0)
@@ -322,6 +341,7 @@ def build(out_path):
     F.text(ax, KEY_X + bar + 18, yb, "100 mm", color=INK, va="center")
 
     # ------------------------------------------------ (a) collimator, apertures at 266..272 deg
+    F.layer("zooms")                         # windows, connectors, insets and captions
     A = Inset(F, A_CEN, R_IN, M_A, ang_pt(r_c_ap, 269.0))
     A.ax.add_collection(PolyCollection(walls, facecolor=TUNG, edgecolor=TUNG, lw=0.25, zorder=2))
     hb = COL_T / 2 * A.k
@@ -376,13 +396,17 @@ def build(out_path):
             (f", {M_A}×", INK, "normal")], va="top")
     F.runs(ax, B_CEN[0], B_CEN[1] + R_IN + 12,
            [("(b) detector ring I, ", INK, "normal"), (f"{M_B}×", INK, "normal")], va="top")
+    F.layer(None)
 
-    F.fig.savefig(out_path, dpi=DPI, facecolor="white")
+    full = out_path
+    if layers:                                   # leave out_path alone; check a scratch copy
+        tmp = tempfile.TemporaryDirectory(); full = Path(tmp.name) / "full.png"
+    F.fig.savefig(full, dpi=DPI, facecolor="white")
     from PIL import Image
-    with Image.open(out_path) as im:             # opaque RGB, white background
+    with Image.open(full) as im:                 # opaque RGB, white background
         rgb = im.convert("RGB")
-    rgb.save(out_path, dpi=(DPI, DPI))
-    problems = check_layout(F, out_path)
+    rgb.save(full, dpi=(DPI, DPI))
+    problems = check_layout(F, full)
     # each connector keeps clear of the other inset's window and of the other connector
     clear = min(seg_dist(B.src, *A.link) - B.src_r, seg_dist(A.src, *B.link) - A.src_r,
                 min(seg_dist(q, *B.link) for q in np.linspace(*A.link, 400)))
@@ -391,7 +415,54 @@ def build(out_path):
     facts = dict(gap_mid=gap_mid, gap_inner=gap_inner, gap_outer=gap_outer, gap_formula=gap_formula,
                  gap_pair=gap_pair, cw=cw, ch=ch, opening=opening, pitch_arc=pitch_arc,
                  pitch_chord=pitch_chord, r_c_ap=r_c_ap, clear=clear)
+    if layers:
+        facts["layers"], facts["stack"] = write_layers(F, out_path, full, (A.clip, B.clip))
+        tmp.cleanup()
     return problems, facts
+
+
+def write_layers(F, out_path, full_png, discs):
+    """Write each layer beside out_path as straight-alpha RGBA, alpha 0 where it draws
+    nothing. Drawn on a transparent canvas, the stack came out up to 4 levels light where
+    many antialiased edges overlap (the main-view tungsten ring), so each layer is drawn on
+    white and on black: alpha = 1 - (white - black) / 255, and the colour is the one that,
+    laid over white, gives the layer drawn on white. Nothing is written unless the layers
+    laid over white in order equal the full figure to within 2 levels. Returns the paths
+    written and (max, mean |difference| in levels, pixels off by more than 8)."""
+    import io
+    from PIL import Image
+    for d in discs:                  # the white under each inset covers no layer-1 ink
+        d.set_facecolor("none")      # (the stack check below would show it); clip path only
+
+    def draw(name, bg):
+        for art, lay in F.layer_of.items():
+            art.set_visible(lay == name)
+        buf = io.BytesIO()
+        F.fig.savefig(buf, format="png", dpi=DPI, facecolor=bg)
+        with Image.open(buf) as im:
+            return np.asarray(im.convert("RGB"), float)
+
+    layers = []
+    for name in LAYERS:
+        w, b = draw(name, "white"), draw(name, "black")
+        a = np.clip(np.rint(255 - (w - b).mean(axis=2)), 0, 255)[..., None]
+        c = np.clip(np.rint(255 - (255 - w) * 255 / np.maximum(a, 1)), 0, 255) * (a > 0)
+        layers.append(np.dstack([c, a]).astype(np.uint8))
+    with Image.open(full_png) as im:
+        want = np.asarray(im.convert("RGB"), float)
+    got = np.full_like(want, 255.0)
+    for lay in layers:
+        a = lay[..., 3:] / 255
+        got = lay[..., :3] * a + got * (1 - a)
+    d = np.abs(np.rint(got) - want)
+    stack = (d.max(), d.mean(), int((d.max(axis=2) > 8).sum()))
+    if stack[0] > 2 or stack[2]:
+        return [], stack
+    out = Path(out_path); paths = []
+    for k, (name, lay) in enumerate(zip(LAYERS, layers), 1):
+        p = out.with_name(f"{out.stem}_l{k}_{name}{out.suffix}")
+        Image.fromarray(lay).save(p, dpi=(DPI, DPI)); paths.append(p)
+    return paths, stack
 
 
 def check_layout(F, out_path):
@@ -437,9 +508,20 @@ def check_layout(F, out_path):
 def main():
     ap = argparse.ArgumentParser(description="Build the slide-8 scanner figure")
     ap.add_argument("--out", default=str(DEFAULT_OUT))
-    out = ap.parse_args().out
-    problems, f = build(out)
-    print(f"saved {out}")
+    ap.add_argument("--layers", action="store_true",
+                    help="write the click-build layers beside --out instead of --out itself")
+    args = ap.parse_args(); out = args.out
+    problems, f = build(out, args.layers)
+    if args.layers:
+        mx, mean, n8 = f["stack"]
+        print(f"layers laid over white vs the full figure: max {mx:.0f}, mean {mean:.4f} levels, "
+              f"{n8} px off by more than 8")
+        if f["layers"]:
+            print("saved " + ", ".join(str(p) for p in f["layers"]))
+        else:
+            problems.append("the layers do not stack to the full figure; nothing written")
+    else:
+        print(f"saved {out}")
     print(f"ring I gap between pairs: {f['gap_mid']:.4f} mm at mid-depth "
           f"(formula {f['gap_formula']:.4f}; inner face {f['gap_inner']:.4f}, outer face {f['gap_outer']:.4f})")
     print(f"gap inside a pair {f['gap_pair']:.4f} mm; crystal {f['cw']:.4f} x {f['ch']:.4f} mm")

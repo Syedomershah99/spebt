@@ -4,7 +4,7 @@ equations need to be better looking ... use a better editor").
 
 Calibri has no union sign, no subscript letters and no double-struck E, so the
 argmax that slides 7 and 20 show is set here with matplotlib's mathtext in the
-STIX fonts (a Times-like math face), in the deck's ink or green, on a
+Times New Roman (italic variables, as on the slide), in the deck's ink or green, on a
 transparent background, at the size it has on the slide.
 
 Usage:  python make_equation_figures.py [--outdir DIR]
@@ -31,7 +31,12 @@ EQS = {
 
 
 def render(tex, colour, size, path):
-    plt.rcParams["mathtext.fontset"] = "stix"
+    # Times New Roman, italic for variables, to match the slide's x and P runs
+    # (Dr. Yao, 21 Oct: one italic Times face for math symbols, text and equations)
+    plt.rcParams["mathtext.fontset"] = "custom"
+    plt.rcParams["mathtext.rm"] = "Times New Roman"
+    plt.rcParams["mathtext.it"] = "Times New Roman:italic"
+    plt.rcParams["mathtext.bf"] = "Times New Roman:bold"
     fig = plt.figure(figsize=(0.01, 0.01), dpi=DPI)
     fig.text(0, 0, tex, fontsize=size, color=colour)
     fig.savefig(path, dpi=DPI, transparent=True, bbox_inches="tight", pad_inches=0.02)
