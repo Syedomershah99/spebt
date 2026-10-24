@@ -271,7 +271,8 @@ def main():
                                ms=7.5, zorder=4)
     layer["asci"] += ax_a.plot(x[moved], asci[moved], "o", color=C_ASCI, ms=7.5,
                                mfc="white", mec=C_ASCI, mew=2.0, zorder=4)
-    layer["asci"].append(ax_a.set_ylabel("ASCI, strips\nunder 0.45 mm (%)",
+    # 22 Oct rehearsal: "strips under 0.45 mm" said in words, as on slide 10.
+    layer["asci"].append(ax_a.set_ylabel("ASCI (%), only strips\nunder 0.45 mm wide",
                                          fontsize=FS_LABEL, color=C_ASCI))
     layer["asci"].append(ax_a.set_title(
         "Move ring II outward and ASCI keeps rising",

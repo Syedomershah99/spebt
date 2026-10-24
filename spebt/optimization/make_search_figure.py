@@ -29,6 +29,12 @@ from botorch.fit import fit_gpytorch_mll
 from botorch.models import SingleTaskGP
 from gpytorch.mlls import ExactMarginalLogLikelihood
 
+# Math as on the slides (Dr. Yao, 22 Oct; QA, 24 Oct): symbols in italic Times New Roman.
+plt.rcParams.update({"mathtext.fontset": "custom", "mathtext.rm": "Times New Roman",
+                     "mathtext.it": "Times New Roman:italic",
+                     "mathtext.bf": "Times New Roman:bold",
+                     "mathtext.bfit": "Times New Roman:bold:italic"})
+
 UBB, CORAL = "#005BBB", "#E56D54"
 INK, MUTED, GRID = "#1A1A1A", "#5A5A5A", "#D8D7D2"
 
@@ -97,7 +103,7 @@ def panel(ax, d, n, grid, title):
     # s is the posterior SD of the fitted function (no measurement noise), so
     # the band is exactly mean +/- 2 SD.
     ax.fill_between(grid, m - 2 * s, m + 2 * s, color=UBB, alpha=0.16, lw=0,
-                    label="model uncertainty (±2σ)", zorder=2)
+                    label="model uncertainty (±2$\\sigma$)", zorder=2)
     ax.plot(grid, m, color=UBB, lw=2.2, label="model’s best guess", zorder=3)
     ax.scatter(sub.aperture_diam_mm, sub.cnr_sector_mean, s=30, color=INK,
                alpha=0.75, zorder=4, label=f"designs simulated ({n})")
@@ -152,7 +158,7 @@ def main():
     # The model entries go in the empty upper right of (a), the data entry in
     # the upper right of (b), each clear of the points and the band.
     h, l = axes[0].get_legend_handles_labels()
-    axes[0].legend(h[:2], ["model uncertainty\n(±2σ)", l[1]],
+    axes[0].legend(h[:2], ["model uncertainty\n(±2$\\sigma$)", l[1]],
                    frameon=False, fontsize=12, loc="upper right",
                    handlelength=1.4, handletextpad=0.5, borderaxespad=0.2)
     h, l = axes[1].get_legend_handles_labels()

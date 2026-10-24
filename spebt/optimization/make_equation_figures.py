@@ -27,13 +27,41 @@ EQS = {
                      r"\mathrm{E}[\mathrm{HV}(P\cup\{x\}) - \mathrm{HV}(P)]$", INK, 15),
     "eq_xnext_green.png": (r"$x_{\mathrm{next}} = \mathrm{arg\,max}_{x}\, "
                            r"\mathrm{E}[\mathrm{HV}(P\cup\{x\}) - \mathrm{HV}(P)]$", GREEN, 15),
+    # Slide 9 (Dr. Yao, 22 Oct rehearsal: "what is the mathematical definition of
+    # Spearman rho?"): the correlation coefficient of the ranks r and s, which is
+    # what pandas' corr(method="spearman") computes, ties at their average rank.
+    "eq_spearman.png": (r"$\rho = \dfrac{\mathrm{cov}(r,\,s)}{\sigma_r\,\sigma_s}$", INK, 16),
+    # Dr. Yao's own equation from his R7-rY edit of slide 7 (23 Oct), laid out as he
+    # typed it: x and f(x) bold vectors, x in the design space under argmax, f(x)
+    # added to the front. STIX (Times-compatible) for the script X and the
+    # double-struck E. \mathrm keeps that E upright, as his is (bare \mathbb{E} is
+    # STIX's slanted form), and HV is upright as in his 22 Oct rule.
+    "eq_xnext_ry.png": (r"$\mathbfit{x}_{\mathrm{next}} = \underset{\mathbfit{x}\in\mathcal{X}}{\mathrm{argmax}}\;"
+                        r"\mathrm{\mathbb{E}}[\mathrm{HV}(P\cup\{\mathbfit{f}(\mathbfit{x})\}) - \mathrm{HV}(P)]$", INK, 15, "stix"),
+    "eq_xnext_ry_green.png": (r"$\mathbfit{x}_{\mathrm{next}} = \underset{\mathbfit{x}\in\mathcal{X}}{\mathrm{argmax}}\;"
+                              r"\mathrm{\mathbb{E}}[\mathrm{HV}(P\cup\{\mathbfit{f}(\mathbfit{x})\}) - \mathrm{HV}(P)]$", GREEN, 15, "stix"),
+    # Backup slide 21 (QA, 24 Oct), at its 14 pt body size and in the same style:
+    # vectors and matrices (x, k(x), K, y) bold italic, the kernel k(x, x') and the
+    # scalars italic, the identity I, the transpose T and the operators upright.
+    # Typeset, since Times has no superscript minus, subscript j, union or
+    # double-struck E. The expectation is written as on slides 7 and 20.
+    "eq_gp_mean.png": (r"$\mu(\mathbfit{x}) = m + \mathbfit{k}(\mathbfit{x})^{\mathrm{T}}"
+                       r"(\mathbfit{K} + \eta^{2}\mathbf{I})^{-1}(\mathbfit{y} - m)$", INK, 14, "stix"),
+    "eq_gp_var.png": (r"$\sigma^{2}(\mathbfit{x}) = k(\mathbfit{x}, \mathbfit{x}) - \mathbfit{k}(\mathbfit{x})^{\mathrm{T}}"
+                      r"(\mathbfit{K} + \eta^{2}\mathbf{I})^{-1}\mathbfit{k}(\mathbfit{x})$", INK, 14, "stix"),
+    # The slide's exp(-1/2 sum ...), written exp(-sum .../(2 l^2)) on one line;
+    # Sigma, not \sum, keeps j beside it rather than under it.
+    "eq_gp_kernel.png": (r"$k(\mathbfit{x}, \mathbfit{x}^{\prime}) = \exp(-\Sigma_{j}\,"
+                         r"(x_{j} - x_{j}^{\prime})^{2}/(2\ell_{j}^{2}))$", INK, 14, "stix"),
+    "eq_ehvi.png": (r"$\mathrm{EHVI}(\mathbfit{x}) = \mathrm{\mathbb{E}}[\mathrm{HV}(P\cup\{\mathbfit{f}"
+                    r"(\mathbfit{x})\}) - \mathrm{HV}(P)]$", INK, 14, "stix"),
 }
 
 
-def render(tex, colour, size, path):
+def render(tex, colour, size, path, fontset="custom"):
     # Times New Roman, italic for variables, to match the slide's x and P runs
     # (Dr. Yao, 21 Oct: one italic Times face for math symbols, text and equations)
-    plt.rcParams["mathtext.fontset"] = "custom"
+    plt.rcParams["mathtext.fontset"] = fontset
     plt.rcParams["mathtext.rm"] = "Times New Roman"
     plt.rcParams["mathtext.it"] = "Times New Roman:italic"
     plt.rcParams["mathtext.bf"] = "Times New Roman:bold"
@@ -48,9 +76,9 @@ def main():
     ap.add_argument("--outdir", default=OUTDIR)
     a = ap.parse_args()
     from PIL import Image
-    for name, (tex, colour, size) in EQS.items():
+    for name, (tex, colour, size, *fs) in EQS.items():
         path = os.path.join(a.outdir, name)
-        render(tex, colour, size, path)
+        render(tex, colour, size, path, *fs)
         with Image.open(path) as im:
             w, h = im.size
             if im.mode != "RGBA" or im.getextrema()[3][0] != 0:

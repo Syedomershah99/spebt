@@ -24,6 +24,12 @@ from scipy import ndimage
 
 from make_reference_figure import ROD_RADII, REF_MEAN, OURS_MEAN
 
+# Math as on the slides (Dr. Yao, 22 Oct; QA, 24 Oct): symbols in italic Times New Roman.
+plt.rcParams.update({"mathtext.fontset": "custom", "mathtext.rm": "Times New Roman",
+                     "mathtext.it": "Times New Roman:italic",
+                     "mathtext.bf": "Times New Roman:bold",
+                     "mathtext.bfit": "Times New Roman:bold:italic"})
+
 PHANTOM = ("/Users/Omer/Desktop/RA/pyrecon/custom_phantoms/"
            "hot_rods_phantom_10.0_mm_x_10.0_mm.pt")
 INK, MUTED = "#1A1A1A", "#5A5A5A"
@@ -147,7 +153,7 @@ def main():
     ax.set_facecolor("white")
     ax.imshow(canvas, interpolation="nearest")
 
-    labels = {g: f"r = {ROD_RADII[g]:.3f} mm\n+{gains[g]:.0f}%" for g in groups}
+    labels = {g: f"$\\mathbfit{{r}}$ = {ROD_RADII[g]:.3f} mm\n+{gains[g]:.0f}%" for g in groups}
     style = dict(ha="center", va="center", fontsize=13, fontweight="bold",
                  color=INK, linespacing=1.25,
                  bbox=dict(boxstyle="round,pad=0.25", fc="white",

@@ -44,8 +44,8 @@ fitted hyperparameters, predictions and acquisition value at this step.
 What is drawn, in raw score units (the model works in standardized units;
 the map is linear per axis, so shapes and area ratios are unchanged):
   grey dots      the 33 designs simulated before the step
-  green steps    their non-dominated set, "best trade-off so far"
-  light fill     the area that front covers, measured from the reference point
+  green steps    their non-dominated set, "P: Pareto front so far"
+  light fill     HV(P), the area that front covers, measured from the reference point
   blue cross     the model's prediction for the chosen design, mean +/- 2 SD
                  of the fitted score (not including measurement noise)
   coral fill     the area the design adds if it lands on its predicted mean
@@ -530,7 +530,12 @@ def main():
         raise SystemExit("ERROR: the design did not extend the best trade-off")
 
     # ------------------------------------------------------------ figure
-    plt.rcParams.update({"font.family": FONT, "font.size": FS_ANN, "axes.unicode_minus": True})
+    # Math as on the slides (Dr. Yao, 22 Oct): P italic, HV upright, Times New Roman.
+    plt.rcParams.update({"font.family": FONT, "font.size": FS_ANN, "axes.unicode_minus": True,
+                         "mathtext.fontset": "custom", "mathtext.rm": "Times New Roman",
+                         "mathtext.it": "Times New Roman:italic",
+                         "mathtext.bf": "Times New Roman:bold",
+                         "mathtext.bfit": "Times New Roman:bold:italic"})
     fig = plt.figure(figsize=(FW, FH), dpi=DPI)
     fig.patch.set_facecolor("white")
     axL = fig.add_axes([LEFT_BOX[0] / FW, LEFT_BOX[1] / FH, LEFT_BOX[2] / FW, LEFT_BOX[3] / FH])
@@ -575,7 +580,9 @@ def main():
     pct_act = 100 * gain_act / hv0
 
     # Left panel: the front, the area it covers, and where that area is measured from.
-    t_front = label(axL, 2.50, 4.58, "best trade-off\nso far", color=GREEN, weight="bold",
+    # P and HV(P) named as Dr. Yao's R7-rY slide 7 defines them (23 Oct): Pareto
+    # front of nondominated designs, expected hypervolume improvement; no "trade-off".
+    t_front = label(axL, 2.50, 4.58, "$\\mathbfit{P}$: Pareto front\nso far", color=GREEN, weight="bold",
                     ha="left", va="center", linespacing=1.05)
     # Leader to the horizontal run at CNR 3.60, between the third and fourth
     # front designs.
@@ -583,22 +590,24 @@ def main():
     if not F[2, 0] < lead[1, 0] < F[3, 0]:
         raise SystemExit("ERROR: the front label's leader no longer ends on the front")
     axL.plot(lead[:, 0], lead[:, 1], color=TUNGSTEN, lw=1.0, zorder=10)
-    label(axL, 2.45, 2.25, "area it\ncovers", color=UB_BLUE, ha="center", va="center",
-          linespacing=1.05)
+    label(axL, 2.45, 2.25, "$\\mathrm{HV}(P)$", color=UB_BLUE, ha="center", va="center",
+          fontsize=FS_ANN + 3)
     label(axL, 1.12, 1.13, "reference point", group="ref", color=INK, ha="left", va="center")
     label(axL, 1.12, 0.84, "(lowest scores \u2212 0.1 SD)", group="ref", color=TUNGSTEN,
           ha="left", va="center", fontsize=FS_NOTE)
 
     # Right panel: the chosen design, as predicted and as simulated.
-    label(axR, 1.0, 4.80, "predicted gain", group="gain", color=CORAL, weight="bold",
+    # QA, 24 Oct: the percentages name what they measure, the hypervolume, since
+    # beside a CNR axis a bare "+2.0%" reads as a CNR change.
+    label(axR, 1.0, 4.80, "predicted", group="gain", color=CORAL, weight="bold",
           ha="left", va="center")
-    label(axR, 1.0, 4.725, f"area +{pct_pred:.1f}%", group="gain", color=CORAL, weight="medium",
-          ha="left", va="center")
-    label(axR, mu[0] + 2 * sd[0] + 0.035, mu[1] + 1.5 * sd[1], "prediction\n\u03bc \u00b1 2\u03c3",
+    label(axR, 1.0, 4.725, f"$\\mathrm{{HV}}(P)$ +{pct_pred:.1f}%", group="gain", color=CORAL,
+          weight="medium", ha="left", va="center")
+    label(axR, mu[0] + 2 * sd[0] + 0.035, mu[1] + 1.5 * sd[1], "prediction\n$\\mathbfit{\\mu}\\ \\mathbf{\\pm}\\ \\mathbf{2}\\mathbfit{\\sigma}$",
           color=UB_BLUE, weight="bold", ha="left", va="center", linespacing=1.05)
     label(axR, act[0] + 0.045, act[1] + 0.003, "actual", group="act", color=UB_BLUE,
           weight="bold", ha="left", va="center")
-    label(axR, act[0] + 0.045, act[1] - 0.058, f"area +{pct_act:.1f}%", group="act",
+    label(axR, act[0] + 0.045, act[1] - 0.058, f"$\\mathrm{{HV}}(P)$ +{pct_act:.1f}%", group="act",
           color=UB_BLUE, weight="medium", ha="left", va="center")
 
     t_left = fig.text(LEFT_BOX[0] / FW, TITLE_Y / FH, f"The first {n_before} designs",

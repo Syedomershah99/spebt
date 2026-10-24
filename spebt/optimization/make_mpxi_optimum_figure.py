@@ -20,9 +20,18 @@ standard deviation of CNR within each band, not standard errors.
 The figure is sized to its box on the slide (8.45 x 5.1 in) so it is shown at
 scale 1 and the font sizes below are the sizes the audience sees.
 
-Usage (from optimization/):
+R8 (24 Oct) plots the aperture band only, pooled over all eleven searches. Over
+the main campaign's 285 designs, apertures run from 0.20 to 1.00 mm: wide
+apertures make strips wider than 0.45 mm, which MPXI does not count, and blur
+the image, so they sat at low MPXI with low CNR and most of the rise was an
+aperture effect (Spearman MPXI vs CNR +0.56 over the 285, -0.47 inside the
+band). In the band the 796 designs of the eleven searches give, in the fixed
+bins the talk quotes, 3.91 / 4.13 / 4.18 / 3.50 / 2.89.
+
+Usage (from optimization/), as on slide 10:
   python make_mpxi_optimum_figure.py \
       --data ../archive_backup/results_summary_mobo.csv \
+      --h2h ../archive_backup/h2h --band 0.20,0.45 --edges 1.5,1.8,2.1,2.5 \
       --out ../../deck_figures/mpxi_optimum.png
 
 Add --layers to write slide 10's two click-build layers beside --out instead of
@@ -55,6 +64,8 @@ CNR = "cnr_sector_mean"
 # Slide 12 box, in inches. At this size the figure is placed at scale 1.
 FIG_W, FIG_H = 8.45, 5.1
 FS_TITLE, FS_LABEL, FS_TICK, FS_TEXT, FS_CALLOUT = 15, 13, 12, 12, 13
+# CNR axis. The two notes along the bottom sit under 1.15, where the peak band stops.
+Y_LO, Y_HI = 0.30, 4.98
 
 
 def write_layers(fig, ax, drawn, layers, out, dpi):
@@ -119,23 +130,52 @@ def main():
     ap.add_argument("--dpi", type=int, default=300)
     ap.add_argument("--layers", action="store_true",
                     help="write the click-build layers beside --out instead of it")
+    ap.add_argument("--h2h", help="pool the head-to-head CSVs in this directory "
+                    "with --data, deduplicated by design, --data first")
+    ap.add_argument("--band", help="keep aperture diameters LO,HI mm only")
+    ap.add_argument("--edges", help="fixed MPXI bin edges, e.g. 1.5,1.8,2.1,2.5, "
+                    "in place of --bins quantile bins")
     args = ap.parse_args()
 
-    df = pd.read_csv(args.data).dropna(subset=[MPXI, CNR])
-    # Quantile bins keep the counts comparable. Equal-width bins would put most
-    # designs in the first one, since MPXI is right-skewed.
-    df["bin"] = pd.qcut(df[MPXI], q=args.bins, duplicates="drop")
+    df = pd.read_csv(args.data)
+    if args.h2h:
+        frames = [df.assign(search="main")]
+        for f in sorted(Path(args.h2h).glob("results_h2h_*.csv")):
+            frames.append(pd.read_csv(f).assign(search=f.stem[len("results_h2h_"):]))
+        df = pd.concat(frames, ignore_index=True).dropna(subset=[CNR])
+        # mobo_NNNN names restart in every search; lhs and seed names are shared
+        # designs, scored once.
+        df["key"] = [c if not str(c).startswith("mobo") else f"{s}:{c}"
+                     for c, s in zip(df["config"], df["search"])]
+        df = df.drop_duplicates("key", keep="first")
+    df = df.dropna(subset=[MPXI, CNR])
+    if args.band:
+        lo, hi = (float(v) for v in args.band.split(","))
+        df = df[df["aperture_diam_mm"].between(lo, hi)]
+    if args.edges:
+        edges = [float(v) for v in args.edges.split(",")]
+        df["bin"] = pd.cut(df[MPXI], [-np.inf, *edges, np.inf], right=False)
+    else:
+        # Quantile bins keep the counts comparable. Equal-width bins would put
+        # most designs in the first one, since MPXI is right-skewed.
+        df["bin"] = pd.qcut(df[MPXI], q=args.bins, duplicates="drop")
     # sd is the spread of CNR across the designs in a band (ddof=1), which is
     # what the bars show.
     g = df.groupby("bin", observed=True).agg(
         x=(MPXI, "mean"), y=(CNR, "mean"), sd=(CNR, "std"), n=(CNR, "size"))
     peak = g["y"].idxmax()
     peak_x, peak_y = g.loc[peak, "x"], g.loc[peak, "y"]
-    # The top two bins are close, so the honest claim is a REGION rather than a
-    # point. Quoting a single peak the trend does not clearly resolve would
-    # overstate what 8 bins can say.
-    top2 = g.nlargest(2, "y")["x"].sort_values()
-    lo_x, hi_x = float(top2.iloc[0]), float(top2.iloc[-1])
+    if args.edges:
+        # Fixed edges: the claim is the peak bin itself, edge to edge.
+        lo_x, hi_x = peak.left, peak.right
+        if not (np.isfinite(lo_x) and np.isfinite(hi_x)):
+            raise SystemExit("ERROR: the peak is an open end bin")
+    else:
+        # The top two bins are close, so the honest claim is a REGION rather
+        # than a point. Quoting a single peak the trend does not clearly
+        # resolve would overstate what 8 bins can say.
+        top2 = g.nlargest(2, "y")["x"].sort_values()
+        lo_x, hi_x = float(top2.iloc[0]), float(top2.iloc[-1])
 
     fig, ax = plt.subplots(figsize=(FIG_W, FIG_H))
     fig.patch.set_facecolor("white")
@@ -146,23 +186,23 @@ def main():
     # what the eye lands on. Alpha 0.25 rather than 0.13 so they still show
     # on a projector.
     dots = ax.scatter(df[MPXI], df[CNR], s=16, color=C_POINTS, alpha=0.25,
-                      edgecolors="none", zorder=2, label=f"one dot = one design "
-                      f"(n={len(df)})")
+                      edgecolors="none", zorder=2,
+                      label=f"one dot = one design, {len(df)} in all")
     trend = ax.errorbar(g["x"], g["y"], yerr=g["sd"], color=C_TREND, lw=2.4,
                         marker="o", ms=8, capsize=4, zorder=4,
                         markeredgecolor="white", markeredgewidth=1.4,
                         label="average CNR in each bin, ±1 SD")
 
-    # One annotation carrying the claim, rather than a label on every bin.
-    # It sits above every dot in the upper left (the highest there are at
-    # MPXI 1.33 and 1.38, CNR 4.59 and 4.58) and may run past the top of the axes,
-    # where there is no grid line, so no dot or line runs through the text.
-    best = ax.annotate(f"best here,\nbetween {lo_x:.1f} and {hi_x:.1f}",
-                       xy=(peak_x, peak_y), xytext=(peak_x - 0.52, 4.64),
-                       fontsize=FS_CALLOUT, fontweight="bold", color=INK,
-                       ha="center", va="bottom", annotation_clip=False,
-                       arrowprops=dict(arrowstyle="->", color=INK_MUTED, lw=1.4,
-                                       shrinkA=2, shrinkB=4))
+    # One note carrying the claim, rather than a label on every bin: the peak
+    # region as a band behind the designs, named just above the axes. In the
+    # aperture band the designs under the peak reach CNR 4.87, so a note with an
+    # arrow inside the axes would sit on them.
+    span = ax.axvspan(lo_x, hi_x, ymin=(1.15 - Y_LO) / (Y_HI - Y_LO),
+                      color=C_TREND, alpha=0.12, lw=0, zorder=1)
+    best = ax.text((lo_x + hi_x) / 2, 1.012,
+                   f"best here, between {lo_x:.1f} and {hi_x:.1f}",
+                   transform=ax.get_xaxis_transform(), fontsize=FS_CALLOUT,
+                   fontweight="bold", color=INK, ha="center", va="bottom")
     # Plain-language captions in a clear band under the data and under the
     # lowest grid line, in axes fractions so they cannot drift into the
     # error bars.
@@ -174,11 +214,14 @@ def main():
                      transform=ax.transAxes, fontsize=FS_TEXT, color=INK_MUTED,
                      ha="center", va="bottom")
 
-    ax.set_xlabel("MPXI, strips under 0.45 mm: average per detector that sees one",
+    # Dr. Yao, 22 Oct rehearsal: "strips under 0.45 mm" rewritten so others can
+    # follow it. The average is over the detectors that see a strip (the notes say so).
+    ax.set_xlabel("MPXI: strips per detector, counting only those under 0.45 mm wide",
                   fontsize=FS_LABEL, color=INK)
     ax.set_ylabel("CNR", fontsize=FS_LABEL, color=INK)
-    ax.set_title("More sharing helps, up to a point, then it hurts",
-                 fontsize=FS_TITLE, color=INK, pad=30)
+    # Critique 3 (23 Oct): what the data establish, not a causal rule.
+    ax.set_title("Mean CNR peaks at intermediate multiplexing",
+                 fontsize=FS_TITLE, color=INK, pad=34)
 
     ax.yaxis.grid(True, color=GRID, lw=0.8, zorder=0)
     ax.set_axisbelow(True)
@@ -192,9 +235,9 @@ def main():
     # below 1, the legend and the annotation above 4. The top stops just
     # short of 5 so no grid line is drawn through the annotation.
     ax.yaxis.set_major_locator(MultipleLocator(1.0))
-    if float(df[CNR].max()) >= 4.98:
+    if float(df[CNR].max()) >= Y_HI:
         raise SystemExit("ERROR: a design is above the axis top; rethink ylim")
-    ax.set_ylim(0.30, 4.98)
+    ax.set_ylim(Y_LO, Y_HI)
 
     # Upper right is empty of data above CNR 4 (no design past MPXI 2.3
     # reaches 3.8), so the legend sits there, under the axis top.
@@ -211,10 +254,19 @@ def main():
                            zip(leg.findobj(DrawingArea), leg.get_texts()))
     layers = {"points": [ax.xaxis, ax.yaxis, ax.spines["left"],
                          ax.spines["bottom"], dots, *key_dots],
-              "trend": [*trend.get_children(), best, note_l, note_r, ax.title,
-                        *key_trend]}
+              "trend": [*trend.get_children(), span, best, note_l, note_r,
+                        ax.title, *key_trend]}
 
     fig.tight_layout()
+    # The note sits between the axes and the title, and the legend under it.
+    fig.canvas.draw()
+    r = fig.canvas.get_renderer()
+    box = best.get_window_extent(r)
+    for name, other in (("title", ax.title), ("legend", leg)):
+        if box.overlaps(other.get_window_extent(r)):
+            raise SystemExit(f"ERROR: the 'best here' note overlaps the {name}")
+    if not fig.bbox.contains(box.x0, box.y0) or not fig.bbox.contains(box.x1, box.y1):
+        raise SystemExit("ERROR: the 'best here' note leaves the figure")
     if args.layers:
         # Everything the axes draws, the legend by entry. Each layer shows only
         # its own, so an artist left out of both is missing from the stack and
