@@ -89,3 +89,21 @@ as its objective list, because sbatch splits `--export` values on commas. It
 was cancelled after one minute, before any design finished, and resubmitted as
 148540 (follow-up 148541) with the full list and new search names
 (`armB2_warm_r0` to `armB2_warm_r2`). Nothing from the first job is used.
+
+## Addendum 2, 25 Oct 2026 15:40 (before any result was analyzed)
+
+The budget was raised to 500 to 1,000 SU ("don't compromise on results"). Changes:
+
+- Nodes 5 and 6: the multi-objective arm on fresh starts, LHS seeds 13 to 15
+  and 16 to 18 (`armB2_fresh_s13` to `armB2_fresh_s18`), three searches per
+  node for memory. Their 21 starting designs are the same as those of node 2's
+  CNR-only searches `fresh_s13` to `fresh_s18`, so CNR alone and several
+  objectives are compared on 9 paired starts (3 warm, 6 fresh).
+- Node 7: six more CNR-only fresh starts, LHS seeds 25 to 30.
+- Re-measurement (rules 2 and 4): seeds 0 to 39 for selection and 40 to 79
+  held out, instead of 0 to 19 and 20 to 39.
+- The headline design and both references are also re-measured at T_sec 2.5,
+  5, 20 and 40 (seeds 40 to 59), every iteration 1 to 400.
+- The top 3 in-window designs of each of CCR's six complete head-to-head arms
+  (2- and 5-objective, r0, r4, r5) are rebuilt on Grace and re-measured with the
+  same protocol, so search outcomes are compared on equal terms.
