@@ -67,3 +67,19 @@ advance so that the headline design is not chosen after seeing the numbers.
   evenly spaced apertures.
 - That in-loop CNR values are measurements of a design's CNR: each is one noise
   draw (sigma about 0.08), and picking the largest inflates it by about 0.10.
+
+## Addendum, 25 Oct 2026 15:30 (before any result was analyzed)
+
+ColdFront's report confirmed that Grace is billed per node-hour (3.2 test-QoS
+node-hours were charged 0.8 SU), so the second half of the campaign was
+launched:
+
+- Node 3, the multi-objective arm: the same three paired starts
+  (`armB_warm_r0` to `armB_warm_r2`), optimizing CNR together with FWHM, ASCI
+  and PPDS (qLogNEHVI) under the same soft MPXI window and box. Compared with
+  `warm_r0` to `warm_r2` (CNR alone) and with CCR's arms on the same starts.
+  Its designs are candidates under the selection rule like any other search's.
+- Node 4: six more fresh starts, CNR alone, LHS seeds 19 to 24.
+
+Jobs: nodes 1 to 4 are 148500, 148502, 148535 and 148537, each with an
+afterany follow-up (148501, 148503, 148536, 148538), all standard QoS.
