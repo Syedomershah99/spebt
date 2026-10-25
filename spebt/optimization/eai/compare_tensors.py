@@ -39,7 +39,10 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("new")
     ap.add_argument("ref")
-    ap.add_argument("--atol", type=float, default=1e-9)
+    # Coordinates are float32 millimetres up to about 325 mm, where one float32
+    # step is 3e-5 mm; ARM and x86 round the same geometry differently at that
+    # level (step 1 on Grace: largest difference 3.8e-6 mm).
+    ap.add_argument("--atol", type=float, default=1e-4)
     a = ap.parse_args()
     if filecmp.cmp(a.new, a.ref, shallow=False):
         print("IDENTICAL (byte for byte)")

@@ -2657,3 +2657,43 @@ echo "$CONFIG_NAME,$APERTURE_DIAM,$N_APERTURES,$N_DET_RING1,$N_DET_RING2,$D2_INN
         assert len(man) == 3
         assert set(man.status) == {"no_row"}
         assert "stopping this search" in r.stdout
+
+
+class TestPruneMpxiWindow:
+    """prune_ppdfs.py --mpxi_window keeps the best in-window designs as well as
+    the best overall, so a windowed search can re-measure its own finalists."""
+
+    def test_keeps_top_overall_and_top_in_window(self, tmp_path):
+        rows = [("mobo_0000_a", 5.0, 3.2),    # best overall, outside the window
+                ("mobo_0001_b", 4.8, 2.0),    # best inside
+                ("mobo_0002_c", 4.5, 1.9),    # inside, not top
+                ("mobo_0003_d", 3.0, 3.0)]    # neither
+        for name, _, _ in rows:
+            (tmp_path / name).mkdir()
+            (tmp_path / name / "position_000_ppdfs_t8_00.hdf5").write_bytes(b"x" * 10)
+        pd.DataFrame(rows, columns=["config", "cnr_sector_mean", "mpxi_windowed_active_mean"]).to_csv(
+            tmp_path / "results_summary_mobo.csv", index=False)
+        r = subprocess.run([sys.executable, os.path.join(_opt_dir(), "prune_ppdfs.py"),
+                            "--results_dir", str(tmp_path), "--keep_top", "1",
+                            "--mpxi_window", "1.5:2.5", "--delete"],
+                           capture_output=True, text=True, timeout=120)
+        assert r.returncode == 0, r.stderr
+        left = {n for n, _, _ in rows if (tmp_path / n / "position_000_ppdfs_t8_00.hdf5").exists()}
+        assert left == {"mobo_0000_a", "mobo_0001_b"}
+
+    def test_design_without_a_row_is_never_pruned(self, tmp_path):
+        """Its pipeline is still running: the PPDFs are in use."""
+        for name in ("mobo_0000_done", "mobo_0001_running", "mobo_0003_in_cnr_step"):
+            (tmp_path / name).mkdir()
+            (tmp_path / name / "position_000_ppdfs_t8_00.hdf5").write_bytes(b"x" * 10)
+        pd.DataFrame([("mobo_0000_done", 2.0, 2.0), ("mobo_0002_other", 5.0, 2.0),
+                      ("mobo_0003_in_cnr_step", float("nan"), 2.0)],
+                     columns=["config", "cnr_sector_mean", "mpxi_windowed_active_mean"]).to_csv(
+            tmp_path / "results_summary_mobo.csv", index=False)
+        r = subprocess.run([sys.executable, os.path.join(_opt_dir(), "prune_ppdfs.py"),
+                            "--results_dir", str(tmp_path), "--keep_top", "1", "--delete"],
+                           capture_output=True, text=True, timeout=120)
+        assert r.returncode == 0, r.stderr
+        assert (tmp_path / "mobo_0001_running" / "position_000_ppdfs_t8_00.hdf5").exists()
+        assert (tmp_path / "mobo_0003_in_cnr_step" / "position_000_ppdfs_t8_00.hdf5").exists()
+        assert not (tmp_path / "mobo_0000_done" / "position_000_ppdfs_t8_00.hdf5").exists()

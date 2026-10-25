@@ -50,6 +50,11 @@ Prune when the disk actually demands it, not pre-emptively.
 Usage:
   python prune_ppdfs.py --results_dir results --keep_top 10           # dry run
   python prune_ppdfs.py --results_dir results --keep_top 10 --delete
+  python prune_ppdfs.py --results_dir results --keep_top 5 --mpxi_window 1.5:2.5 --delete
+
+--mpxi_window also keeps the top --keep_top designs whose MPXI lies in the
+window, for a search that steers MPXI into it: the designs worth re-measuring
+are the best in-window ones, which need not be the best overall.
 """
 import argparse
 import os
@@ -102,6 +107,9 @@ def main():
                          "still be re-measured for error bars (default 10)")
     ap.add_argument("--delete", action="store_true",
                     help="Actually delete. Without this it only reports.")
+    ap.add_argument("--mpxi_window", default=None, metavar="LO:HI",
+                    help="Also keep the top --keep_top designs with "
+                         "mpxi_windowed_active_mean in [LO, HI]")
     args = ap.parse_args()
 
     res_path = os.path.join(args.results_dir, RESULTS_NAME)
@@ -117,20 +125,35 @@ def main():
         print(f"ERROR: {res_path} has no {OUTCOME} column")
         sys.exit(1)
 
-    keep = set(df.dropna(subset=[OUTCOME])
-                 .nlargest(args.keep_top, OUTCOME)["config"].astype(str))
-    print(f"Keeping PPDFs for the top {len(keep)} designs by {OUTCOME}.\n")
+    scored = df.dropna(subset=[OUTCOME])
+    keep = set(scored.nlargest(args.keep_top, OUTCOME)["config"].astype(str))
+    if args.mpxi_window:
+        lo, hi = (float(v) for v in args.mpxi_window.split(":"))
+        mp = scored["mpxi_windowed_active_mean"]
+        inside = scored[(mp >= lo) & (mp <= hi)]
+        keep |= set(inside.nlargest(args.keep_top, OUTCOME)["config"].astype(str))
+    print(f"Keeping PPDFs for {len(keep)} designs: the top {args.keep_top} by {OUTCOME}"
+          + (f", and the top {args.keep_top} with MPXI in [{args.mpxi_window}]" if args.mpxi_window else "")
+          + ".\n")
 
     work_dirs = [d for d in sorted(os.listdir(args.results_dir))
                  if os.path.isdir(os.path.join(args.results_dir, d))
                  and (d.startswith("mobo_") or d.startswith("lhs6d_")
                       or d.startswith("ring2_"))]
 
+    # Only designs whose CNR is recorded are finished with their PPDFs. A design
+    # with no row is still running, and one with a row but no CNR may be in its
+    # CNR step, which reads the PPDFs after the metrics row is written. Both
+    # happen when a prune runs on a node that is also running searches.
+    recorded = set(df.dropna(subset=[OUTCOME])["config"].astype(str))
     freed = kept_bytes = 0
-    n_pruned = 0
+    n_pruned = n_running = 0
     for d in work_dirs:
         wd = os.path.join(args.results_dir, d)
         size = prunable_bytes(wd)
+        if d not in recorded:
+            n_running += size > 0
+            continue
         if d in keep:
             kept_bytes += size
             continue
@@ -147,7 +170,8 @@ def main():
                         print(f"  [warn] {f}: {e}")
 
     verb = "Deleted" if args.delete else "Would delete"
-    print(f"{verb} PPDFs from {n_pruned} of {len(work_dirs)} design directories")
+    print(f"{verb} PPDFs from {n_pruned} of {len(work_dirs)} design directories"
+          + (f" ({n_running} without a CNR yet, left alone)" if n_running else ""))
     print(f"  reclaimed: {freed / 1e12:.2f} TB ({freed / 1e9:.0f} GB)")
     print(f"  retained for the top designs: {kept_bytes / 1e9:.0f} GB")
     print(f"\nMetrics are untouched. {res_path} still holds every measurement.")
