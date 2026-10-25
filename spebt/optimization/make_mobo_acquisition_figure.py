@@ -91,6 +91,7 @@ _m = re.search(r'"\$ARM" == "2obj" \]\]; then\s*\n\s*export MOBO_OBJECTIVES="([^
 if _m is None:
     raise SystemExit(f"ERROR: no 2obj MOBO_OBJECTIVES export found in {SUBMIT}")
 os.environ["MOBO_OBJECTIVES"] = _m.group(1)
+os.environ.pop("MOBO_CONSTRAINTS", None)      # the arm ran unconstrained
 sys.path.insert(0, HERE)
 import mobo_agent as ma  # noqa: E402
 

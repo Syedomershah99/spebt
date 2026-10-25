@@ -181,6 +181,10 @@ def plot_pareto_expansion(df, n_lhs, out_dir):
     pairs = [(0, 2), (1, 3), (3, 4), (2, 4)]
     pairs = [(i, j) for i, j in pairs
              if i < len(METRIC_LABELS) and j < len(METRIC_LABELS)]
+    if not pairs:
+        # A subset run (MOBO_OBJECTIVES) can have too few objectives for any pair.
+        print(f"Skipped pareto_expansion.png: {len(METRIC_LABELS)} objective(s), no panel pairs")
+        return
 
     fig, axes = plt.subplots(1, len(pairs), figsize=(7 * len(pairs), 6))
     if len(pairs) == 1:
@@ -224,6 +228,9 @@ def plot_pareto_expansion(df, n_lhs, out_dir):
 def plot_metric_scatter_combined(df, n_lhs, out_dir):
     """Plot 3: 4x4 pairwise metric scatter, LHS vs MOBO colored."""
     n = len(METRIC_COLS)
+    if n < 2:
+        print("Skipped the pairwise scatter: it needs at least two objectives")
+        return
     obj_max = to_maximization(df)
     all_pareto = is_pareto_optimal(obj_max)
 

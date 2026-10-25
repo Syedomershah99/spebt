@@ -19,7 +19,9 @@ appended by run_sai_pipeline.sh step [4/4]. It exists because the cheap proxy
 metrics do not always align with reconstructed image quality, which is the
 lesson this file's history mostly records.
 
-Uses ModelListGP (one SingleTaskGP per objective) + qLogNEHVI.
+Uses ModelListGP (one SingleTaskGP per objective) + qLogNEHVI, or qLogNEI when
+MOBO_OBJECTIVES names a single objective. MOBO_CONSTRAINTS adds outcome bounds
+(see _select_constraints).
 
 Design vector: (aperture_diam_mm, n_apertures, n_det_ring1, n_det_ring2,
                 d2_inner_mm, d3_inner_mm)
@@ -38,6 +40,9 @@ from botorch.models.model_list_gp_regression import ModelListGP
 from botorch.fit import fit_gpytorch_mll
 from botorch.utils.transforms import normalize, unnormalize
 from botorch.acquisition.multi_objective.logei import qLogNoisyExpectedHypervolumeImprovement
+from botorch.acquisition.multi_objective.objective import IdentityMCMultiOutputObjective
+from botorch.acquisition.logei import qLogNoisyExpectedImprovement
+from botorch.acquisition.objective import GenericMCObjective
 from botorch.optim import optimize_acqf
 from gpytorch.mlls import ExactMarginalLogLikelihood
 
@@ -325,15 +330,9 @@ def _select_objectives():
             f"Valid names: {_ALL_OBJ_COLUMNS}\n")
     if len(set(wanted)) != len(wanted):
         raise SystemExit(f"\nMOBO_OBJECTIVES repeats an objective: {wanted}\n")
-    if len(wanted) < 2:
-        # The controller optimizes qLogNEHVI, whose hypervolume is undefined for
-        # a single objective. It raises "ref_point has length 1" deep inside
-        # BoTorch, which killed a 5-hour job before this check existed.
-        raise SystemExit(
-            f"\nMOBO_OBJECTIVES needs at least 2 objectives, got {len(wanted)}.\n"
-            f"The controller uses qLogNEHVI and hypervolume is undefined for one\n"
-            f"objective. For a single-objective run the acquisition would have to\n"
-            f"change to qLogNEI.\n")
+    # One objective is allowed: get_next_candidate then uses qLogNEI, since the
+    # hypervolume of qLogNEHVI is undefined for one objective (BoTorch raises
+    # "ref_point has length 1" deep inside, which once killed a 5-hour job).
     return [_ALL_OBJ_COLUMNS.index(w) for w in wanted]
 
 
@@ -342,6 +341,52 @@ OBJ_COLUMNS = [_ALL_OBJ_COLUMNS[i] for i in _OBJ_IDX]
 OBJ_DIRECTIONS = [_ALL_OBJ_DIRECTIONS[i] for i in _OBJ_IDX]
 OBJ_NAMES = [_ALL_OBJ_NAMES[i] for i in _OBJ_IDX]
 OBJ_SHORT = [_ALL_OBJ_SHORT[i] for i in _OBJ_IDX]
+
+
+def _select_constraints():
+    """Outcome constraints via MOBO_CONSTRAINTS, as column:low:high, comma-separated.
+
+        MOBO_CONSTRAINTS=mpxi_windowed_active_mean:1.5:2.5
+
+    steers the search toward designs with MPXI between 1.5 and 2.5 (Empire AI
+    symposium plan, Oct 2026: in the MIC results mean CNR peaks at MPXI 1.8 to
+    2.1, and maximizing MPXI overshoots). Either bound may be left empty, as in
+    "col::2.5". Each constrained column gets its own GP, separate from any
+    objective of the same name, trained on every buildable design that measured
+    it, and the acquisition weights every candidate by its posterior probability
+    of meeting every bound (BoTorch constraint callables, feasible when <= 0).
+    The constraint is soft: it acts on a GP prediction, and nothing rejects a
+    proposal predicted outside, which the log flags. Unset means no outcome
+    constraint and the unconstrained code path, exactly as before.
+    """
+    raw = os.environ.get("MOBO_CONSTRAINTS", "").strip()
+    if not raw:
+        return []
+    out = []
+    for item in raw.split(","):
+        parts = [p.strip() for p in item.split(":")]
+        if len(parts) != 3 or not parts[0]:
+            raise SystemExit(f"\nMOBO_CONSTRAINTS item '{item}' is not column:low:high\n")
+        try:
+            col, lo, hi = parts[0], (float(parts[1]) if parts[1] else None), \
+                (float(parts[2]) if parts[2] else None)
+        except ValueError:
+            raise SystemExit(f"\nMOBO_CONSTRAINTS item '{item}' has a bound that is not a number\n")
+        if any(b is not None and math.isnan(b) for b in (lo, hi)):
+            raise SystemExit(f"\nMOBO_CONSTRAINTS item '{item}' has a NaN bound\n")
+        if lo is None and hi is None:
+            raise SystemExit(f"\nMOBO_CONSTRAINTS item '{item}' sets neither bound\n")
+        if lo is not None and hi is not None and lo >= hi:
+            raise SystemExit(f"\nMOBO_CONSTRAINTS item '{item}' has low >= high\n")
+        out.append((col, lo, hi))
+    if len({c for c, _, _ in out}) != len(out):
+        raise SystemExit(f"\nMOBO_CONSTRAINTS repeats a column: {raw}\n")
+    return out
+
+
+CONSTRAINTS = _select_constraints()
+# Single objective: qLogNEI; two or more: qLogNEHVI. Named here for the logs.
+ACQ_NAME = "qLogNEI" if len(OBJ_COLUMNS) == 1 else "qLogNEHVI"
 
 
 def require_objective_columns(df, results_csv: str):
@@ -370,17 +415,21 @@ def require_objective_columns(df, results_csv: str):
 def get_next_candidate(results_csv: str):
     """
     1. Load results CSV with all OBJ_COLUMNS objectives.
-    2. Fit ModelListGP (one GP per objective).
-    3. Optimize qLogNEHVI, q=1.
+    2. Fit ModelListGP (one GP per objective, then one per MOBO_CONSTRAINTS column).
+    3. Optimize qLogNEHVI (qLogNEI for one objective), q=1.
     4. Return next design point.
     """
-    logger.info("--- Starting Multi-Objective BO Step ---")
+    logger.info("--- Starting Multi-Objective BO Step ---" if len(OBJ_COLUMNS) > 1
+                else "--- Starting single-objective BO step ---")
 
     if not os.path.exists(results_csv):
         raise FileNotFoundError(f"Could not find {results_csv}")
 
     df = pd.read_csv(results_csv)
     require_objective_columns(df, results_csv)
+    missing_c = [c for c, _, _ in CONSTRAINTS if c not in df.columns]
+    if missing_c:
+        raise SystemExit(f"\n{results_csv} has no column(s) {missing_c} named in MOBO_CONSTRAINTS\n")
     # Unfiltered copy: every design ever attempted, valid or not. Used only for
     # deduplication, so a design that failed still counts as "already tried".
     df_all = df.copy()
@@ -425,7 +474,14 @@ def get_next_candidate(results_csv: str):
     df_attempted = df_all[PARAM_NAMES].dropna() if set(PARAM_NAMES).issubset(df_all.columns) else df[PARAM_NAMES].dropna()
 
     df_valid = df.dropna(subset=OBJ_COLUMNS)
-    all_missing = df[OBJ_COLUMNS].isna().all(axis=1)
+    # "Failed" means the design produced no metric at all, judged over every
+    # metric column the archive has rather than only the selected objectives.
+    # With MOBO_OBJECTIVES=cnr_sector_mean, a design whose CNR step crashed after
+    # its other metrics were measured would otherwise be trained on the penalty,
+    # which is the fabrication described above. With all five objectives
+    # selected the two tests are the same.
+    metric_cols = [c for c in _ALL_OBJ_COLUMNS if c in df.columns]
+    all_missing = df[metric_cols].isna().all(axis=1)
     some_missing = df[OBJ_COLUMNS].isna().any(axis=1)
     df_failed = df[all_missing]
     n_total = len(df)
@@ -433,7 +489,7 @@ def get_next_candidate(results_csv: str):
     n_failed = len(df_failed)
     n_partial = int((some_missing & ~all_missing).sum())
     logger.info(f"Loaded {n_total} rows, {n_valid} complete, {n_failed} failed "
-                f"(all objectives missing), {n_partial} partially measured")
+                f"(no metric at all), {n_partial} partially measured")
     if n_partial:
         logger.info(f"  {n_partial} partially-measured rows are EXCLUDED from training "
                     f"rather than penalised; reconstruct them to recover their data")
@@ -555,23 +611,82 @@ def get_next_candidate(results_csv: str):
                            f"(kernel layout not recognised); dimension-usage "
                            f"diagnostic is unavailable for this objective")
 
+    # --- Outcome constraints (MOBO_CONSTRAINTS): one GP per constrained column ---
+    # Trained on every buildable design that measured the column, including ones
+    # missing an objective, and never on penalty values: a failed design has
+    # nothing to constrain. Each GP is appended after the objective GPs, so
+    # output k of the model list is constrained column k - len(OBJ_COLUMNS), and
+    # the bounds are moved into its standardized units.
+    cons, c_info = [], []
+    for j, (col, lo, hi) in enumerate(CONSTRAINTS):
+        dc = df.dropna(subset=[col] + PARAM_NAMES)
+        if len(dc) < 3:
+            raise ValueError(f"Need at least 3 designs with {col} for its constraint GP, got {len(dc)}")
+        cx = normalize(torch.tensor(dc[PARAM_NAMES].values, dtype=torch.double), bounds)
+        cy = torch.tensor(dc[[col]].values, dtype=torch.double)
+        c_mean, c_std = cy.mean(), cy.std().clamp(min=1e-6)
+        gp = SingleTaskGP(cx, (cy - c_mean) / c_std)
+        fit_gpytorch_mll(ExactMarginalLogLikelihood(gp.likelihood, gp))
+        models.append(gp)
+        k = len(OBJ_COLUMNS) + j
+        if hi is not None:
+            cons.append(lambda Z, k=k, t=(hi - c_mean) / c_std: Z[..., k] - t)
+        if lo is not None:
+            cons.append(lambda Z, k=k, t=(lo - c_mean) / c_std: t - Z[..., k])
+        v = cy.squeeze(-1)
+        inside = torch.ones_like(v, dtype=torch.bool)
+        if lo is not None:
+            inside &= v >= lo
+        if hi is not None:
+            inside &= v <= hi
+        logger.info(f"Constraint {col} in [{lo}, {hi}]: GP on {len(v)} measured designs, "
+                    f"{int(inside.sum())} of them inside")
+        c_info.append((col, lo, hi, k, c_mean.item(), c_std.item()))
+
     model = ModelListGP(*models)
     logger.info("ModelListGP trained successfully.")
 
     # --- Reference point (in standardized space) ---
     # Use worst observed value minus a small margin for each objective
     ref_point_std = train_y_std.min(dim=0).values - 0.1
-    logger.info(f"Reference point (standardized): {ref_point_std.tolist()}")
+    if len(OBJ_COLUMNS) > 1:
+        logger.info(f"Reference point (standardized): {ref_point_std.tolist()}")
 
-    # --- Optimize qLogNEHVI ---
-    logger.info("Optimizing qLogNEHVI acquisition function...")
-    acqf = qLogNoisyExpectedHypervolumeImprovement(
-        model=model,
-        ref_point=ref_point_std.tolist(),
-        X_baseline=train_x_norm,
-        prune_baseline=True,
-        cache_root=False,
-    )
+    # --- Acquisition: qLogNEHVI, or qLogNEI for a single objective ---
+    n_obj = len(OBJ_COLUMNS)
+    logger.info(f"Optimizing {ACQ_NAME} acquisition function"
+                f"{f' with {len(cons)} outcome bound(s)' if cons else ''}...")
+    if n_obj == 1:
+        # Expected improvement of the one objective output; the constraint GPs,
+        # if any, follow it in the model list.
+        acqf = qLogNoisyExpectedImprovement(
+            model=model,
+            X_baseline=train_x_norm,
+            objective=GenericMCObjective(lambda Z, X=None: Z[..., 0]),
+            constraints=cons or None,
+            prune_baseline=True,
+            cache_root=False,
+        )
+    elif cons:
+        acqf = qLogNoisyExpectedHypervolumeImprovement(
+            model=model,
+            ref_point=ref_point_std.tolist(),
+            X_baseline=train_x_norm,
+            objective=IdentityMCMultiOutputObjective(outcomes=list(range(n_obj))),
+            constraints=cons,
+            prune_baseline=True,
+            cache_root=False,
+        )
+    else:
+        # Unchanged from before outcome constraints existed (the slide 20 figure
+        # reruns this path and checks it lands on the search's own proposal).
+        acqf = qLogNoisyExpectedHypervolumeImprovement(
+            model=model,
+            ref_point=ref_point_std.tolist(),
+            X_baseline=train_x_norm,
+            prune_baseline=True,
+            cache_root=False,
+        )
 
     # Feasibility constraint in normalized space:
     # aperture_diam < 0.95 * circumference / n_apertures
@@ -764,6 +879,25 @@ def get_next_candidate(results_csv: str):
                 logger.warning("No diverse candidates found — keeping original")
 
     logger.info(f"Acquisition value: {acq_value.item():.6f}")
+    # What the constraint GPs predict for the design actually proposed (after
+    # rounding, repairs and dedup), so a run log shows whether it meets the bounds.
+    if c_info:
+        x_fin = normalize(torch.tensor([[next_diam, float(next_n_ap), float(next_n_det1),
+                                         float(next_n_det2), next_d2, next_d3]],
+                                       dtype=torch.double), bounds)
+        with torch.no_grad():
+            post = model.posterior(x_fin)
+        for col, lo, hi, k, c_mean, c_std in c_info:
+            mu = post.mean[0, k].item() * c_std + c_mean
+            sd = post.variance[0, k].clamp(min=0).sqrt().item() * c_std
+            phi = lambda b: 0.5 * (1 + math.erf((b - mu) / (sd * math.sqrt(2)))) if sd > 0 else float(mu <= b)
+            p_in = (phi(hi) if hi is not None else 1.0) - (phi(lo) if lo is not None else 0.0)
+            logger.info(f"Predicted {col} for this design: {mu:.3f} +/- {sd:.3f} "
+                        f"(bounds [{lo}, {hi}], P(inside) {p_in:.2f})")
+            if p_in < 0.5:
+                # The constraint is soft (it weights the acquisition), so a
+                # proposal can still be predicted outside; say so in the log.
+                logger.warning(f"Proposal more likely outside than inside the {col} bounds")
     logger.info(f"SUGGESTION -> aperture_diam={next_diam:.4f} mm | "
                 f"n_apertures={next_n_ap} | "
                 f"n_det_ring1={next_n_det1} | n_det_ring2={next_n_det2} | "

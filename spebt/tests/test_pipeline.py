@@ -311,8 +311,11 @@ class TestFailedRowClassification:
 
     @staticmethod
     def _classify(df, obj_cols):
-        """Mirrors the classification in mobo_agent.get_next_candidate."""
-        all_missing = df[obj_cols].isna().all(axis=1)
+        """Mirrors the classification in mobo_agent.get_next_candidate:
+        failed means no metric at all, partial means a selected one is missing."""
+        import mobo_agent as ma
+        metric_cols = [c for c in ma._ALL_OBJ_COLUMNS if c in df.columns]
+        all_missing = df[metric_cols].isna().all(axis=1)
         some_missing = df[obj_cols].isna().any(axis=1)
         return {
             "complete": len(df.dropna(subset=obj_cols)),
@@ -1310,6 +1313,7 @@ class TestObjectiveSelection:
             env.pop("MOBO_OBJECTIVES", None)
         else:
             env["MOBO_OBJECTIVES"] = env_val
+        env.pop("MOBO_CONSTRAINTS", None)
         opt = os.path.join(_REPO_ROOT, "optimization")
         return subprocess.run(
             [sys.executable, "-c",
@@ -1337,11 +1341,12 @@ class TestObjectiveSelection:
         assert "[1.0, -1.0]" in out
         assert "FWHM weighted (min)" in out
 
-    def test_single_objective_refused(self):
-        """qLogNEHVI needs m>=2; failing here beats failing 5 hours in."""
-        r = self._run("cnr_sector_mean", "print('reached')")
-        assert r.returncode != 0
-        assert "at least 2 objectives" in (r.stdout + r.stderr)
+    def test_single_objective_uses_qlognei(self):
+        """qLogNEHVI is undefined for one objective, so one objective must
+        switch the acquisition rather than fail 5 hours in."""
+        r = self._run("cnr_sector_mean", "print(ma.OBJ_COLUMNS, ma.ACQ_NAME)")
+        assert r.returncode == 0, r.stderr
+        assert r.stdout.strip() == "['cnr_sector_mean'] qLogNEI"
 
     def test_unknown_name_refused(self):
         r = self._run("cnr_sector_mean,not_a_metric", "print('reached')")
@@ -2162,3 +2167,357 @@ class TestAsciAngleRangeGuard:
         wd = self._work_dir(tmp_path, [0.5, 2 * np.pi + 0.01])
         with pytest.raises(ValueError, match="bins cover"):
             ab.asci_at_bins(wd, 360)
+
+
+# =============================================================================
+# mobo_agent: outcome constraints (MOBO_CONSTRAINTS)
+# =============================================================================
+class TestOutcomeConstraints:
+    """MOBO_CONSTRAINTS=column:low:high steers the search into an outcome
+    window (the Empire AI plan holds MPXI between 1.5 and 2.5). Parsed at
+    import time, so these run mobo_agent in a subprocess."""
+
+    def _run(self, objectives, constraints, code, timeout=300):
+        env = dict(os.environ)
+        for k, v in (("MOBO_OBJECTIVES", objectives), ("MOBO_CONSTRAINTS", constraints)):
+            if v is None:
+                env.pop(k, None)
+            else:
+                env[k] = v
+        opt = os.path.join(_REPO_ROOT, "optimization")
+        return subprocess.run(
+            [sys.executable, "-c",
+             f"import sys; sys.path.insert(0, {opt!r});\nimport mobo_agent as ma\n{code}"],
+            capture_output=True, text=True, env=env, timeout=timeout)
+
+    # Synthetic archive. MPXI = 1 + 2.5 v rises with the aperture count (v is
+    # n_apertures normalized, as in the real data), while CNR = 4 + u + S v also
+    # depends on aperture size u. The window 1.5 to 2.5 is v = 0.2 to 0.6, and
+    # because the constraint GP and the CNR GP learn different functions, a wrong
+    # model output index or wrong scaling of the bounds moves the proposal. S
+    # picks which bound binds: S = +3 sends the unconstrained search to MPXI 3.5,
+    # S = -3 to MPXI 1.0. Three all-NaN rows (failed builds) give the objective
+    # and constraint GPs different training sets, as in real archives. PARTIAL
+    # blanks one design's CNR only, as when its CNR step crashes.
+    SYNTH = """
+import os, tempfile, warnings
+import numpy as np, pandas as pd, torch
+SLOPE, PARTIAL = __SLOPE__, __PARTIAL__
+rng = np.random.default_rng(0)
+rows = []
+while len(rows) < 43:
+    x = [rng.uniform(lo, hi) for lo, hi in zip(ma.BOUNDS_MIN, ma.BOUNDS_MAX)]
+    x[1], x[2], x[3] = round(x[1]), 2 * round(x[2] / 2), 2 * round(x[3] / 2)
+    if not ma.is_feasible_full(*x):
+        continue
+    u = (x[0] - ma.BOUNDS_MIN[0]) / (ma.BOUNDS_MAX[0] - ma.BOUNDS_MIN[0])
+    v = (x[1] - ma.BOUNDS_MIN[1]) / (ma.BOUNDS_MAX[1] - ma.BOUNDS_MIN[1])
+    m = dict(cnr_sector_mean=4 + u + SLOPE * v, mpxi_windowed_active_mean=1 + 2.5 * v,
+             fwhm_weighted_mean=1 - 0.5 * u, asci_pct_fwhm0p45=50 + 10 * u,
+             ppds_ring1=1e-4 * (1 + v))
+    if len(rows) >= 40:
+        m = {k: np.nan for k in m}
+    rows.append(dict(zip(ma.PARAM_NAMES, x), **m))
+if PARTIAL:
+    rows[0]["cnr_sector_mean"] = np.nan
+with tempfile.TemporaryDirectory() as tmp:
+    p = os.path.join(tmp, "r.csv")
+    pd.DataFrame(rows).to_csv(p, index=False)
+    torch.manual_seed(0)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        c = ma.get_next_candidate(p)
+print("MPXI", 1 + 2.5 * (c[1] - ma.BOUNDS_MIN[1]) / (ma.BOUNDS_MAX[1] - ma.BOUNDS_MIN[1]))
+"""
+
+    def _synth(self, slope=3, partial=False):
+        return self.SYNTH.replace("__SLOPE__", str(slope)).replace("__PARTIAL__", str(partial))
+
+    @staticmethod
+    def _mpxi(r):
+        assert r.returncode == 0, r.stderr[-3000:]
+        return float(r.stdout.split("MPXI")[-1])
+
+    def test_unset_means_no_constraint(self):
+        r = self._run(None, None, "print(ma.CONSTRAINTS, ma.ACQ_NAME)")
+        assert r.returncode == 0, r.stderr
+        assert r.stdout.strip() == "[] qLogNEHVI"
+
+    def test_window_and_half_open_bound_parse(self):
+        r = self._run(None, "mpxi_windowed_active_mean:1.5:2.5, ppds_ring1::3",
+                      "print(ma.CONSTRAINTS)")
+        assert r.returncode == 0, r.stderr
+        assert r.stdout.strip() == ("[('mpxi_windowed_active_mean', 1.5, 2.5), "
+                                    "('ppds_ring1', None, 3.0)]")
+
+    @pytest.mark.parametrize("bad, message", [
+        ("mpxi_windowed_active_mean:1.5", "is not column:low:high"),
+        ("mpxi_windowed_active_mean::", "sets neither bound"),
+        ("mpxi_windowed_active_mean:2.5:1.5", "has low >= high"),
+        (":1:2", "is not column:low:high"),
+        ("a:1:2,a:0:3", "repeats a column"),
+        ("mpxi_windowed_active_mean:abc:2.5", "is not a number"),
+        ("mpxi_windowed_active_mean:nan:2.5", "has a NaN bound"),
+    ])
+    def test_malformed_refused(self, bad, message):
+        r = self._run(None, bad, "print('reached')")
+        assert r.returncode != 0
+        assert message in (r.stdout + r.stderr)
+
+    # Each bound gets a control without the constraint, so a pass cannot come
+    # from the archive alone, and the constrained proposal must sit at the
+    # binding bound, not anywhere in the window.
+    def test_upper_bound_control_leaves_the_window(self):
+        assert self._mpxi(self._run("cnr_sector_mean", None, self._synth(3))) > 2.8
+
+    def test_upper_bound_binds_one_objective(self):
+        r = self._run("cnr_sector_mean", "mpxi_windowed_active_mean:1.5:2.5", self._synth(3))
+        assert 2.25 <= self._mpxi(r) <= 2.55
+        assert "qLogNEI acquisition function with 2 outcome bound(s)" in r.stderr
+        assert "P(inside)" in r.stderr
+
+    def test_lower_bound_control_leaves_the_window(self):
+        assert self._mpxi(self._run("cnr_sector_mean", None, self._synth(-3))) < 1.25
+
+    def test_lower_bound_binds_one_objective(self):
+        r = self._run("cnr_sector_mean", "mpxi_windowed_active_mean:1.5:2.5", self._synth(-3))
+        assert 1.45 <= self._mpxi(r) <= 1.75
+
+    def test_two_objective_control_leaves_the_window(self):
+        r = self._run("cnr_sector_mean,fwhm_weighted_mean", None, self._synth(3))
+        assert self._mpxi(r) > 2.8
+
+    def test_upper_bound_binds_two_objectives(self):
+        r = self._run("cnr_sector_mean,fwhm_weighted_mean",
+                      "mpxi_windowed_active_mean:1.5:2.5", self._synth(3))
+        assert 2.25 <= self._mpxi(r) <= 2.55
+        assert "qLogNEHVI acquisition function with 2 outcome bound(s)" in r.stderr
+
+    def test_design_missing_only_cnr_is_partial_not_failed(self):
+        """With CNR as the only objective, a design whose CNR step crashed must
+        be left out of the CNR GP, not trained on the penalty value, and its
+        measured MPXI must still reach the constraint GP."""
+        r = self._run("cnr_sector_mean", "mpxi_windowed_active_mean:1.5:2.5",
+                      self._synth(3, partial=True))
+        assert r.returncode == 0, r.stderr[-3000:]
+        assert "39 complete, 3 failed (no metric at all), 1 partially measured" in r.stderr
+        assert "GP on 40 measured designs" in r.stderr
+
+    def test_missing_constraint_column_refused(self):
+        code = self._synth(3).replace("mpxi_windowed_active_mean=1 + 2.5 * v,", "")
+        r = self._run("cnr_sector_mean", "mpxi_windowed_active_mean:1.5:2.5", code)
+        assert r.returncode != 0
+        assert "named in MOBO_CONSTRAINTS" in (r.stdout + r.stderr)
+
+
+# =============================================================================
+# CNR-against-iterations study: run_iter_count_pair.py and its collect gate
+# =============================================================================
+_PHANTOM = os.path.join(_REPO_ROOT, "data", "sai_10mm", "hot_rods_phantom_10.0_mm_x_10.0_mm.pt")
+
+
+@pytest.mark.skipif(not os.path.exists(_PHANTOM), reason="needs the 10 mm hot-rod phantom")
+class TestIterCountPairRunner:
+    """run_iter_count_pair.py caches the PPDFs and keeps every iterate. It must
+    change no number: iterate k equals the final image of a plain k-iteration
+    compute_cnr.py run with the same seed, bit for bit."""
+
+    def test_cached_iterates_equal_plain_runs(self, tmp_path):
+        rng = np.random.default_rng(1)
+        work = tmp_path / "design"
+        work.mkdir()
+        for i in range(2):
+            a = (rng.random((60, 40000), dtype=np.float32) ** 8) * 1e-3
+            with h5py.File(work / f"position_000_ppdfs_t8_0{i}.hdf5", "w") as f:
+                f.create_dataset("ppdfs", data=a)
+        opt = os.path.join(_REPO_ROOT, "optimization")
+        common = ["--work_dir", str(work), "--phantom_path", _PHANTOM, "--seed", "3",
+                  "--T_sec", "10"]
+        r = subprocess.run([sys.executable, os.path.join(opt, "run_iter_count_pair.py"), *common,
+                            "--out_subdir", "cached", "--iterations", "12"],
+                           capture_output=True, text=True, timeout=600)
+        assert r.returncode == 0, r.stderr[-3000:]
+        r = subprocess.run([sys.executable, os.path.join(opt, "compute_cnr.py"), *common,
+                            "--out_subdir", "plain", "--iterations", "7",
+                            "--out_csv", str(tmp_path / "plain.csv"), "--config_name", "x"],
+                           capture_output=True, text=True, timeout=600)
+        assert r.returncode == 0, r.stderr[-3000:]
+
+        cached, plain = work / "cached", work / "plain"
+        assert np.array_equal(np.load(cached / "projections_T8.npy"),
+                              np.load(plain / "projections_T8.npy"))
+        est = np.load(cached / "recon_mlem_T8.npz")["estimates"]
+        assert len(est) == 12
+        assert np.array_equal(est[6], np.load(plain / "recon_mlem_T8.npz")["final"])
+        dense = pd.read_csv(cached / "dense_cnr.csv", float_precision="round_trip")
+        assert dense.iteration.tolist() == list(range(1, 13))
+        ref = np.nanmean(np.load(plain / "cnr_results.npz")["sector_cnrs"])
+        assert dense.cnr_sector_mean.iloc[6] == ref
+
+
+class TestCollectIterCountPairGate:
+    """collect_iter_count_pair.py is the only thing between the CCR runs and a
+    number sent to Dr. Yao. It must fail on any missing run or any T_sec 10 run
+    that does not re-create its stored repeat, and the analysis must refuse a
+    tree without PASS."""
+
+    DESIGNS = ["tmi_reference_000", "nd2fine_960"]
+    LEVELS = [10.0, 2.5, 5.0, 20.0, 40.0]
+
+    @staticmethod
+    def _tag(t, s):
+        return f"iterpair_N400_T{t:g}_seed{s}".replace(".", "p")
+
+    def _tree(self, root, levels):
+        """Every expected run, with stored repeats that its iteration 150 matches."""
+        rng = np.random.default_rng(0)
+        for d_i, d in enumerate(self.DESIGNS):
+            for t in levels:
+                for s in range(5):
+                    run = root / d / self._tag(t, s)
+                    run.mkdir(parents=True)
+                    proj = rng.integers(0, 50, (2, 5)).astype(np.float32)
+                    est = rng.random((400, 4, 4)).astype(np.float32)
+                    np.save(run / "projections_T8.npy", proj)
+                    np.savez(run / "recon_mlem_T8.npz", estimates=est, final=est[-1],
+                             diffs=np.full(400, 1e-3))
+                    it = np.arange(1, 401)
+                    level = 3.5 + 1.1 * d_i + 0.002 * np.minimum(it, 150) + 0.05 * rng.random()
+                    sec = level[:, None] + 0.01 * rng.random((400, 6))
+                    dense = pd.DataFrame({"iteration": it, "cnr_sector_mean": sec.mean(axis=1),
+                                          "cnr_pooled": level,
+                                          **{f"sector{k}": sec[:, k] for k in range(6)}})
+                    dense.to_csv(run / "dense_cnr.csv", index=False)
+                    np.savez(run / "cnr_results.npz", sector_cnrs=sec[-1], overall_cnr=level[-1])
+                    if t == 10.0:
+                        ref = root / d / f"cnr_repeat_seed{s}"
+                        ref.mkdir()
+                        np.save(ref / "projections_T8.npy", proj)
+                        np.savez(ref / "cnr_results.npz", sector_cnrs=sec[149])
+                        np.savez(ref / "recon_mlem_T8.npz", final=est[149])
+
+    def _collect(self, root):
+        opt = os.path.join(_REPO_ROOT, "optimization")
+        return subprocess.run([sys.executable, "-B", os.path.join(opt, "collect_iter_count_pair.py"),
+                               "--results_dir", str(root)],
+                              capture_output=True, text=True, timeout=300)
+
+    def _analyze(self, root):
+        opt = os.path.join(_REPO_ROOT, "optimization")
+        return subprocess.run([sys.executable, os.path.join(opt, "analyze_iter_count_pair.py"),
+                               "--data", str(root / "iter_count_pair"), "--out", str(root / "plots")],
+                              capture_output=True, text=True, timeout=300)
+
+    def test_complete_tree_passes_and_analyzes(self, tmp_path):
+        self._tree(tmp_path, self.LEVELS)
+        r = self._collect(tmp_path)
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert r.stdout.strip().endswith("PASS")
+        r = self._analyze(tmp_path)
+        assert r.returncode == 0, r.stderr[-3000:]
+        for f in ("cnr_vs_iterations.png", "gain_vs_iterations.png", "cnr_vs_count_level.png",
+                  "best_iteration_vs_count_level.png"):
+            assert (tmp_path / "plots" / f).exists()
+        # The synthetic MOBO design sits 1.1 above the benchmark at every
+        # iteration, with seed noise of a few hundredths, so the numbers the
+        # email would quote must say so, with the sign the right way round.
+        g = pd.read_csv(tmp_path / "plots" / "gain_vs_iterations.csv").set_index("level")
+        assert abs(g.loc[150, "gain"] - 1.1) < 0.05 and g.loc[150, "t"] > 0
+        assert bool(g.loc[150, "separated"])
+        b = pd.read_csv(tmp_path / "plots" / "gain_at_best_iterations.csv").set_index("T_sec")
+        assert abs(b.loc[10.0, "seedpeak_gain"] - 1.1) < 0.05
+
+    def test_stored_repeat_missing_fails(self, tmp_path):
+        self._tree(tmp_path, [10.0])
+        os.remove(tmp_path / "nd2fine_960" / "cnr_repeat_seed1" / "projections_T8.npy")
+        r = self._collect(tmp_path)
+        assert r.returncode == 1
+        assert "NO GATE nd2fine_960 seed 1" in r.stdout
+
+    def test_incomplete_dense_file_fails(self, tmp_path):
+        self._tree(tmp_path, [10.0])
+        f = tmp_path / "tmi_reference_000" / self._tag(10.0, 3) / "dense_cnr.csv"
+        pd.read_csv(f).iloc[:-1].to_csv(f, index=False)
+        r = self._collect(tmp_path)
+        assert r.returncode == 1
+        assert "INCOMPLETE tmi_reference_000 iterpair_N400_T10_seed3" in r.stdout
+
+    def test_run_cut_short_fails(self, tmp_path):
+        """Fewer iterations than asked without reaching the tolerance means the
+        run was cut off, not converged."""
+        self._tree(tmp_path, [10.0])
+        run = tmp_path / "nd2fine_960" / self._tag(10.0, 0)
+        z = dict(np.load(run / "recon_mlem_T8.npz"))
+        np.savez(run / "recon_mlem_T8.npz", estimates=z["estimates"][:300],
+                 final=z["estimates"][299], diffs=z["diffs"][:300])
+        pd.read_csv(run / "dense_cnr.csv").iloc[:300].to_csv(run / "dense_cnr.csv", index=False)
+        r = self._collect(tmp_path)
+        assert r.returncode == 1
+        assert "TRUNCATED: nd2fine_960 iterpair_N400_T10_seed0 ran 300 of 400" in r.stdout
+
+    def test_analysis_refuses_files_the_gate_did_not_pass(self, tmp_path):
+        self._tree(tmp_path, [10.0])
+        assert self._collect(tmp_path).returncode == 0
+        d = tmp_path / "iter_count_pair" / "dense.csv"
+        d.write_text(d.read_text() + "\n")                  # any change to the bytes
+        r = self._analyze(tmp_path)
+        assert r.returncode != 0
+        assert "is not the file validation.txt passed" in r.stderr
+
+    def test_bash_and_python_name_runs_alike(self):
+        """The submit script names runs with ${T/./p}; collect with tag()."""
+        opt = os.path.join(_REPO_ROOT, "optimization")
+        sys.path.insert(0, opt)
+        import collect_iter_count_pair as cicp
+        for t in self.LEVELS:
+            out = subprocess.run(["bash", "-c", f'T={t:g}; echo "iterpair_N400_T${{T/./p}}_seed2"'],
+                                 capture_output=True, text=True).stdout.strip()
+            assert out == cicp.tag(t, 2), (t, out)
+
+    def test_count_arm_may_be_absent(self, tmp_path):
+        self._tree(tmp_path, [10.0])
+        r = self._collect(tmp_path)
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert "count arm: not run" in r.stdout
+
+    def test_missing_run_fails(self, tmp_path):
+        """A timed-out task leaves its directory without the reconstruction."""
+        self._tree(tmp_path, self.LEVELS)
+        os.remove(tmp_path / "nd2fine_960" / self._tag(20.0, 3) / "recon_mlem_T8.npz")
+        r = self._collect(tmp_path)
+        assert r.returncode == 1
+        assert "MISSING nd2fine_960 iterpair_N400_T20_seed3" in r.stdout
+        assert not (tmp_path / "iter_count_pair" / "validation.txt").read_text().strip().endswith("PASS")
+
+    def test_partial_count_arm_fails(self, tmp_path):
+        self._tree(tmp_path, [10.0, 2.5])
+        r = self._collect(tmp_path)
+        assert r.returncode == 1
+        assert "MISSING tmi_reference_000 iterpair_N400_T5_seed0" in r.stdout
+
+    def test_different_projections_fail(self, tmp_path):
+        """A different noise draw, e.g. from another CPU type."""
+        self._tree(tmp_path, [10.0])
+        p = tmp_path / "tmi_reference_000" / self._tag(10.0, 2) / "projections_T8.npy"
+        a = np.load(p)
+        a[0, 0] += 1
+        np.save(p, a)
+        r = self._collect(tmp_path)
+        assert r.returncode == 1
+        assert "DIFFERS tmi_reference_000 seed 2: projections DIFFER" in r.stdout
+
+    def test_cnr_off_by_more_than_tol_fails(self, tmp_path):
+        self._tree(tmp_path, [10.0])
+        ref = tmp_path / "nd2fine_960" / "cnr_repeat_seed4" / "cnr_results.npz"
+        np.savez(ref, sector_cnrs=np.load(ref)["sector_cnrs"] + 1e-4)
+        r = self._collect(tmp_path)
+        assert r.returncode == 1
+        assert "DIFFERS nd2fine_960 seed 4" in r.stdout
+
+    def test_analysis_refuses_without_pass(self, tmp_path):
+        self._tree(tmp_path, [10.0])
+        os.remove(tmp_path / "tmi_reference_000" / self._tag(10.0, 0) / "dense_cnr.csv")
+        self._collect(tmp_path)
+        r = self._analyze(tmp_path)
+        assert r.returncode != 0
+        assert "does not end in PASS" in r.stderr

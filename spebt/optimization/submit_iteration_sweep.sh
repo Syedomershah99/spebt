@@ -59,8 +59,9 @@ NITER="${ITERATIONS[$itr_idx]}"
 echo "[array ${SLURM_ARRAY_TASK_ID}] ${CONFIG} @ ${NITER} iterations"
 
 # Fixed seed so that differences across iteration counts are the iteration
-# count, not a fresh Poisson draw. The same seed is used for every design so the
-# comparison between designs is paired.
+# count, not a fresh Poisson draw. The same seed index is used for every design,
+# but that does not pair the designs: their detector bins differ, so the draws
+# are independent and a comparison between designs is unpaired.
 mkdir -p results/iter_sweep
 "${VENV_PY}" compute_cnr.py \
     --work_dir "${RESULTS_DIR}/${CONFIG}" \

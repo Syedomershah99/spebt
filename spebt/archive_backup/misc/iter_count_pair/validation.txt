@@ -1,0 +1,18 @@
+ok tmi_reference_000 seed 0: projections identical; CNR at 150 3.570901 vs stored 3.570901 (+0.0e+00, largest sector 0.0e+00); image max diff 0.0e+00
+ok tmi_reference_000 seed 1: projections identical; CNR at 150 3.620006 vs stored 3.620006 (+0.0e+00, largest sector 0.0e+00); image max diff 0.0e+00
+ok tmi_reference_000 seed 2: projections identical; CNR at 150 3.526219 vs stored 3.526219 (+0.0e+00, largest sector 0.0e+00); image max diff 0.0e+00
+ok tmi_reference_000 seed 3: projections identical; CNR at 150 3.559179 vs stored 3.559179 (+0.0e+00, largest sector 0.0e+00); image max diff 0.0e+00
+ok tmi_reference_000 seed 4: projections identical; CNR at 150 3.667287 vs stored 3.667287 (+0.0e+00, largest sector 0.0e+00); image max diff 0.0e+00
+ok nd2fine_960 seed 0: projections identical; CNR at 150 4.689505 vs stored 4.689505 (+0.0e+00, largest sector 0.0e+00); image max diff 0.0e+00
+  for reference, mobo_0296 seed 0: 4.689505 (-4.0e-07)
+ok nd2fine_960 seed 1: projections identical; CNR at 150 4.686439 vs stored 4.686439 (+0.0e+00, largest sector 0.0e+00); image max diff 0.0e+00
+  for reference, mobo_0296 seed 1: 4.686439 (+2.0e-07)
+ok nd2fine_960 seed 2: projections identical; CNR at 150 4.781275 vs stored 4.781275 (+0.0e+00, largest sector 0.0e+00); image max diff 0.0e+00
+  for reference, mobo_0296 seed 2: 4.781276 (-6.4e-07)
+ok nd2fine_960 seed 3: projections identical; CNR at 150 4.808995 vs stored 4.808995 (+0.0e+00, largest sector 0.0e+00); image max diff 0.0e+00
+  for reference, mobo_0296 seed 3: 4.808994 (+7.9e-08)
+ok nd2fine_960 seed 4: projections identical; CNR at 150 4.645574 vs stored 4.645574 (+0.0e+00, largest sector 0.0e+00); image max diff 0.0e+00
+  for reference, mobo_0296 seed 4: 4.645574 (+2.0e-07)
+sha256 runs.csv 16f00367cec8c160756e1a4232127a1824bb2dbe65782b47997200daef1277ef
+sha256 dense.csv bf262428ed946c47eb23fbd37c84d3fbb7d0a4ffcdb5a82838097d3244aa6566
+PASS

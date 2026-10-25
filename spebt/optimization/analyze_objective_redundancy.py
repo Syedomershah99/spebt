@@ -40,6 +40,11 @@ import pandas as pd
 
 import mobo_agent as ma
 
+if len(ma.OBJ_COLUMNS) != len(ma._ALL_OBJ_COLUMNS):
+    # The subsets below are cut from the full set; a MOBO_OBJECTIVES subset
+    # would silently relabel "all five" and empty "no CNR".
+    raise SystemExit("Run this with MOBO_OBJECTIVES unset: it compares subsets of all five objectives.")
+
 # Subsets worth testing. CNR is the outcome we care about; MPXI is the objective
 # least aligned with it, so it is the natural second axis to test.
 # Short tags keep the section-3 table readable -- the full labels all start with

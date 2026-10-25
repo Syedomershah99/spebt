@@ -89,6 +89,9 @@ else
     # than leaving it to whatever the default was on the day.
     export MOBO_OBJECTIVES="fwhm_weighted_mean,asci_pct_fwhm0p45,ppds_ring1,mpxi_windowed_active_mean,cnr_sector_mean"
 fi
+# The head-to-head arms have no outcome constraint; never inherit one from the
+# submitting shell (sbatch exports its environment).
+unset MOBO_CONSTRAINTS
 
 mkdir -p "$MOBO_RESULTS_DIR/slurm_logs/out" "$MOBO_RESULTS_DIR/slurm_logs/err"
 
@@ -96,6 +99,7 @@ echo "arm         : $ARM"
 echo "replicate   : $REP"
 echo "results dir : $MOBO_RESULTS_DIR"
 echo "objectives  : $MOBO_OBJECTIVES"
+echo "constraints : ${MOBO_CONSTRAINTS:-none}"
 
 # 80 optimized iterations on top of the 21 shared LHS seeds. The seeds live in
 # the results CSV as training data but are NOT manifest rows, so --max_iters

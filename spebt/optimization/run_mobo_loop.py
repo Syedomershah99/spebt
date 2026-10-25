@@ -4,7 +4,7 @@ Sequential MOBO Controller for SAI SC-SPECT.
 
 Multi-objective BO loop: propose one config, evaluate on HPC, collect metrics, repeat.
 CNR is produced in-loop by compute_cnr.py step [4/4] of run_sai_pipeline.sh.
-Uses mobo_agent (ModelListGP + qLogNEHVI).
+Uses mobo_agent (ModelListGP + qLogNEHVI, or qLogNEI for one objective).
 
 The objective set lives in mobo_agent.OBJ_COLUMNS / OBJ_DIRECTIONS and is
 deliberately NOT restated here. This docstring used to enumerate it and drifted
@@ -315,8 +315,10 @@ def main():
     console.print(Panel.fit(
         "[bold green]SAI SC-SPECT MOBO Controller[/bold green]\n"
         f"Design: ({', '.join(mobo_agent.PARAM_NAMES)})\n"
-        f"{len(OBJ_NAMES)} objectives: {', '.join(OBJ_NAMES)}\n"
-        "ModelListGP + qLogNEHVI | Sequential q=1",
+        f"{len(OBJ_NAMES)} objective{'s' if len(OBJ_NAMES) > 1 else ''}: {', '.join(OBJ_NAMES)}\n"
+        + "".join(f"Constraint: {lo if lo is not None else '-inf'} <= {c} <= "
+                  f"{hi if hi is not None else 'inf'}\n" for c, lo, hi in mobo_agent.CONSTRAINTS)
+        + f"ModelListGP + {mobo_agent.ACQ_NAME} | Sequential q=1",
         subtitle=f"Max iterations: {TOTAL_ITERATIONS}"
     ))
 
@@ -446,9 +448,9 @@ def main():
 
             if outcome != "completed":
                 console.print(
-                    f"[bold red]Iteration {idx} produced no usable metrics "
+                    f"[bold red]Iteration {idx} produced no objective value "
                     f"({outcome}).[/bold red] The pipeline job exited cleanly but "
-                    f"the archive gained nothing. This is a LOST iteration, not a "
+                    f"the archive gained no objective value. This is a LOST iteration, not a "
                     f"measurement. Check {LOG_DIR}/out for this config before "
                     f"trusting the campaign's budget."
                 )
