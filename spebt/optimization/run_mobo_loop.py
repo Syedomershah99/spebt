@@ -298,7 +298,8 @@ def assert_initial_data():
             axis=1)
         n_train = int(ok.sum())
 
-    console.print(f"[green]Loaded {n} designs with all {len(OBJ_COLUMNS)} objectives; "
+    console.print(f"[green]Loaded {n} designs with "
+                  f"{'the objective' if len(OBJ_COLUMNS) == 1 else f'all {len(OBJ_COLUMNS)} objectives'}; "
                   f"{n_train} will train "
                   f"({n - n_train} excluded for ring clearance).[/green]")
     return n_train

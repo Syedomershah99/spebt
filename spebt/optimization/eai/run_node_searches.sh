@@ -13,12 +13,20 @@
 # The job ends when every search has ended, so no node sits idle on the bill.
 #
 # Settings come from the environment (sbatch --export=ALL,...):
-#   SEARCHES        space-separated search directories (required)
+#   SEARCH_ROOT     directory holding this node's searches (required); scratch
+#                   is visible only from Grace nodes, so the job itself creates
+#                   the searches there on its first run, from SETUP
+#   SETUP           make_searches.py arguments for that first run, e.g.
+#                   "--warm 3 --fresh 3 --first_seed 10"; ignored once
+#                   SEARCH_ROOT exists, so a resubmitted job resumes its searches
 #   MAX_ITERS       optimizer iterations per search (default 100)
 #   MOBO_OBJECTIVES, MOBO_CONSTRAINTS, MOBO_RING2_MAX  as in mobo_agent.py
 #                   (defaults: CNR alone, MPXI 1.5-2.5, ring 2 up to 960)
 #
-# Production: sbatch --qos=long --time=6-00:00:00 --export=ALL,SEARCHES="..." run_node_searches.sh
+# Production (one job per node, each with its own SEARCH_ROOT):
+#   sbatch --qos=long --time=6-00:00:00 \
+#     --export=ALL,SEARCH_ROOT=/ddn/scratch/suny/oshah/node1,SETUP="--warm 3 --fresh 3 --first_seed 10" \
+#     run_node_searches.sh
 #
 #SBATCH --job-name=eai_searches
 #SBATCH --account=su_ryao1_develop
@@ -30,14 +38,15 @@
 #SBATCH --output=/projects/su/ryao1/develop/oshah/logs/searches_%j.out
 
 set -uo pipefail
-P=/projects/su/ryao1/develop/oshah
+P=${P:-/projects/su/ryao1/develop/oshah}
+JOB=${SLURM_JOB_ID:-local}
 CODE=${CODE:-$P/spebt}
-SEARCHES=${SEARCHES:?set SEARCHES to the search directories}
+SEARCH_ROOT=${SEARCH_ROOT:?set SEARCH_ROOT to the search directory for this node}
 MAX_ITERS=${MAX_ITERS:-100}
 KEEP_TOP=${KEEP_TOP:-5}
 PRUNE_EVERY=${PRUNE_EVERY:-1200}
 MIRROR=${MIRROR:-$P/mirror}
-export SPEBT_VENV=$HOME/venvs/spebt-arm64 MOBO_CODE_DIR=$CODE CODE_DIR=$CODE
+export SPEBT_VENV=${SPEBT_VENV:-$HOME/venvs/spebt-arm64} MOBO_CODE_DIR=$CODE CODE_DIR=$CODE
 export PHANTOM_PATH=$CODE/data/sai_10mm/hot_rods_phantom_10.0_mm_x_10.0_mm.pt
 export MOBO_EXECUTOR=local CNR_CACHE_PPDFS=1
 export MOBO_OBJECTIVES=${MOBO_OBJECTIVES:-cnr_sector_mean}
@@ -47,9 +56,16 @@ export CUDA_VISIBLE_DEVICES="" HDF5_USE_FILE_LOCKING=FALSE MPLBACKEND=Agg
 export PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 source "$SPEBT_VENV/bin/activate"
 
-echo "searches job $SLURM_JOB_ID on $(hostname) at $(date), code $(cat $CODE/COMMIT)"
+if [ ! -d "$SEARCH_ROOT" ]; then
+  echo "creating searches in $SEARCH_ROOT: make_searches.py ${SETUP:?set SETUP for the first run}"
+  (cd "$CODE/optimization" && python eai/make_searches.py --root "$SEARCH_ROOT" $SETUP) || exit 1
+fi
+SEARCHES=$(find "$SEARCH_ROOT" -mindepth 1 -maxdepth 1 -type d | sort | tr '\n' ' ')
+echo "searches job $JOB on $(hostname) at $(date), code $(cat $CODE/COMMIT)"
+echo "searches: $SEARCHES"
 echo "objectives $MOBO_OBJECTIVES | constraints $MOBO_CONSTRAINTS | ring 2 <= $MOBO_RING2_MAX | $MAX_ITERS iterations"
-PROV=$P/logs/searches_${SLURM_JOB_ID}_provenance.txt
+mkdir -p "$P/logs"
+PROV=$P/logs/searches_${JOB}_provenance.txt
 { cat "$CODE/COMMIT"; hostname; lscpu | grep -E "Model name|^CPU\(s\)"; env | grep -E "^MOBO_|^CNR_|^SPEBT"; pip freeze; } > "$PROV"
 
 evaluate_pending() {   # the fresh start's designs, through the same pipeline
@@ -99,4 +115,4 @@ wait "${PIDS[@]}"
 kill $HK 2>/dev/null
 housekeeping
 echo "all searches ended at $(date)"
-sacct -j $SLURM_JOB_ID -X -n --format=JobID,Partition,QOS,AllocTRES%60,Elapsed
+[ "$JOB" != local ] && sacct -j $JOB -X -n --format=JobID,Partition,QOS,AllocTRES%60,Elapsed
