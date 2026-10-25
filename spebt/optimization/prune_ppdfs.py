@@ -60,6 +60,7 @@ import argparse
 import os
 import shutil
 import sys
+import time
 
 import pandas as pd
 
@@ -67,9 +68,13 @@ import pandas as pd
 # kept only because compute_mpxi_variants and analyze_asci_window re-read them,
 # and they are a tenth the size.
 PRUNE_GLOBS = ("position_",)
+# Deleted as well with --masks: about 1.1 GB per design, which over a campaign
+# of thousands of designs outgrows a 5 TB scratch quota on its own.
+MASK_GLOBS = ("beams_masks_", "beams_properties_", "asci_histogram_")
 
 RESULTS_NAME = "results_summary_mobo.csv"
 OUTCOME = "cnr_sector_mean"
+MPXI = "mpxi_windowed_active_mean"
 
 
 def dir_size(path):
@@ -83,12 +88,12 @@ def dir_size(path):
     return total
 
 
-def prunable_bytes(work_dir):
+def prunable_bytes(work_dir, globs=PRUNE_GLOBS):
     """Bytes in files this tool would delete."""
     total = 0
     try:
         for f in os.listdir(work_dir):
-            if f.startswith(PRUNE_GLOBS):
+            if f.startswith(globs):
                 try:
                     total += os.path.getsize(os.path.join(work_dir, f))
                 except OSError:
@@ -96,6 +101,18 @@ def prunable_bytes(work_dir):
     except OSError:
         pass
     return total
+
+
+def newest_mtime(work_dir):
+    """Most recent modification time of any file in the work directory."""
+    t = 0.0
+    for root, _, files in os.walk(work_dir):
+        for f in files:
+            try:
+                t = max(t, os.path.getmtime(os.path.join(root, f)))
+            except OSError:
+                pass
+    return t
 
 
 def main():
@@ -109,7 +126,16 @@ def main():
                     help="Actually delete. Without this it only reports.")
     ap.add_argument("--mpxi_window", default=None, metavar="LO:HI",
                     help="Also keep the top --keep_top designs with "
-                         "mpxi_windowed_active_mean in [LO, HI]")
+                         "mpxi_windowed_active_mean in [LO, HI], and the top "
+                         "--keep_top such designs chosen by the optimizer")
+    ap.add_argument("--masks", action="store_true",
+                    default=os.environ.get("MOBO_EXECUTOR") == "local",
+                    help="Also delete the beam masks, properties and ASCI histograms "
+                         "of pruned designs. On by default in a node campaign "
+                         "(MOBO_EXECUTOR=local, run_node_searches.sh)")
+    ap.add_argument("--min_age_hours", type=float, default=2.0,
+                    help="Leave alone any design directory with a file modified "
+                         "this recently: a pipeline may be running in it")
     args = ap.parse_args()
 
     res_path = os.path.join(args.results_dir, RESULTS_NAME)
@@ -125,37 +151,48 @@ def main():
         print(f"ERROR: {res_path} has no {OUTCOME} column")
         sys.exit(1)
 
-    scored = df.dropna(subset=[OUTCOME])
-    keep = set(scored.nlargest(args.keep_top, OUTCOME)["config"].astype(str))
-    if args.mpxi_window:
-        lo, hi = (float(v) for v in args.mpxi_window.split(":"))
-        mp = scored["mpxi_windowed_active_mean"]
-        inside = scored[(mp >= lo) & (mp <= hi)]
-        keep |= set(inside.nlargest(args.keep_top, OUTCOME)["config"].astype(str))
-    print(f"Keeping PPDFs for {len(keep)} designs: the top {args.keep_top} by {OUTCOME}"
-          + (f", and the top {args.keep_top} with MPXI in [{args.mpxi_window}]" if args.mpxi_window else "")
-          + ".\n")
-
     work_dirs = [d for d in sorted(os.listdir(args.results_dir))
                  if os.path.isdir(os.path.join(args.results_dir, d))
                  and (d.startswith("mobo_") or d.startswith("lhs6d_")
                       or d.startswith("ring2_"))]
 
+    # Rank each design once, and only designs whose files are here: a warm
+    # start's copied rows (measured elsewhere) and repeated rows would otherwise
+    # take keep slots and protect nothing.
+    scored = df.dropna(subset=[OUTCOME]).drop_duplicates("config")
+    scored = scored[scored["config"].astype(str).isin(work_dirs)]
+    keep = set(scored.nlargest(args.keep_top, OUTCOME)["config"].astype(str))
+    if args.mpxi_window:
+        lo, hi = (float(v) for v in args.mpxi_window.split(":"))
+        inside = scored[(scored[MPXI] >= lo) & (scored[MPXI] <= hi)]
+        keep |= set(inside.nlargest(args.keep_top, OUTCOME)["config"].astype(str))
+        # The re-measurement candidates are the best in-window designs the
+        # optimizer chose, which starting designs could otherwise crowd out.
+        chosen = inside[inside["config"].astype(str).str.startswith("mobo_")]
+        keep |= set(chosen.nlargest(args.keep_top, OUTCOME)["config"].astype(str))
+    print(f"Keeping PPDFs for {len(keep)} designs: the top {args.keep_top} by {OUTCOME}"
+          + (f", and the top {args.keep_top} with MPXI in [{args.mpxi_window}], overall and "
+             f"among the optimizer's" if args.mpxi_window else "")
+          + (". Masks of pruned designs are deleted too" if args.masks else "") + ".\n")
+
     # Only designs whose CNR is recorded are finished with their PPDFs. A design
     # with no row is still running, and one with a row but no CNR may be in its
-    # CNR step, which reads the PPDFs after the metrics row is written. Both
-    # happen when a prune runs on a node that is also running searches.
+    # CNR step, which reads the PPDFs after the metrics row is written. A design
+    # re-run after a restart has a CNR from its first run while its pipeline
+    # rewrites its files, so recent activity also protects a directory.
     recorded = set(df.dropna(subset=[OUTCOME])["config"].astype(str))
+    cutoff = time.time() - 3600 * args.min_age_hours
+    globs = PRUNE_GLOBS + (MASK_GLOBS if args.masks else ())
     freed = kept_bytes = 0
     n_pruned = n_running = 0
     for d in work_dirs:
         wd = os.path.join(args.results_dir, d)
-        size = prunable_bytes(wd)
-        if d not in recorded:
+        size = prunable_bytes(wd, globs)
+        if d not in recorded or newest_mtime(wd) > cutoff:
             n_running += size > 0
             continue
         if d in keep:
-            kept_bytes += size
+            kept_bytes += prunable_bytes(wd)
             continue
         if size == 0:
             continue
@@ -163,15 +200,17 @@ def main():
         freed += size
         if args.delete:
             for f in os.listdir(wd):
-                if f.startswith(PRUNE_GLOBS):
+                if f.startswith(globs):
                     try:
                         os.remove(os.path.join(wd, f))
                     except OSError as e:
                         print(f"  [warn] {f}: {e}")
 
     verb = "Deleted" if args.delete else "Would delete"
-    print(f"{verb} PPDFs from {n_pruned} of {len(work_dirs)} design directories"
-          + (f" ({n_running} without a CNR yet, left alone)" if n_running else ""))
+    print(f"{verb} {'PPDFs and masks' if args.masks else 'PPDFs'} from {n_pruned} of "
+          f"{len(work_dirs)} design directories"
+          + (f" ({n_running} running, recently active or without a CNR yet, left alone)"
+             if n_running else ""))
     print(f"  reclaimed: {freed / 1e12:.2f} TB ({freed / 1e9:.0f} GB)")
     print(f"  retained for the top designs: {kept_bytes / 1e9:.0f} GB")
     print(f"\nMetrics are untouched. {res_path} still holds every measurement.")

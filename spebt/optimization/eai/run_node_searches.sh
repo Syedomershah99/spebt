@@ -69,17 +69,36 @@ PROV=$P/logs/searches_${JOB}_provenance.txt
 { cat "$CODE/COMMIT"; hostname; lscpu | grep -E "Model name|^CPU\(s\)"; env | grep -E "^MOBO_|^CNR_|^SPEBT"; pip freeze; } > "$PROV"
 
 evaluate_pending() {   # the fresh start's designs, through the same pipeline
-  local S=$1 name diam nap nd1 nd2 d2 d3
+  local S=$1 name diam nap nd1 nd2 d2 d3 state
   [ -f "$S/lhs_pending.csv" ] || return 0
   mkdir -p "$S/slurm_logs/out" "$S/slurm_logs/err"
-  while IFS=, read -r name diam nap nd1 nd2 d2 d3; do
+  while IFS=, read -r name diam nap nd1 nd2 d2 d3 || [ -n "$name" ]; do
     [ "$name" = config ] && continue
-    grep -q "^$name," "$S/results_summary_mobo.csv" 2>/dev/null && continue
-    CONFIG_NAME=$name WORK_DIR=$S/$name APERTURE_DIAM=$diam N_APERTURES=$nap \
-    N_DET_RING1=$nd1 N_DET_RING2=$nd2 D2_INNER=$d2 D3_INNER=$d3 A_MM=0.2 B_MM=0.2 \
-    RESULTS_CSV=$S/results_summary_mobo.csv \
-      bash "$CODE/optimization/run_sai_pipeline.sh" \
-      > "$S/slurm_logs/out/${name}_local.out" 2> "$S/slurm_logs/err/${name}_local.err"
+    # The design's state in the results CSV. Read it with pandas: config is not
+    # the first column (eai-v1 tested "^name," and so re-ran every design).
+    state=$(python - "$S/results_summary_mobo.csv" "$name" <<'EOF'
+import os, sys
+import pandas as pd
+p, n = sys.argv[1], sys.argv[2]
+d = pd.read_csv(p) if os.path.exists(p) else pd.DataFrame(columns=["config"])
+r = d[d["config"].astype(str) == n]
+print("none" if r.empty else
+      "done" if "cnr_sector_mean" in r and r["cnr_sector_mean"].notna().any() else "no_cnr")
+EOF
+)
+    case "$state" in
+      done) continue ;;
+      no_cnr)   # metrics row but no CNR (stopped in step 4): only the CNR step
+        python "$CODE/optimization/compute_cnr.py" --work_dir "$S/$name" --phantom_path "$PHANTOM_PATH" \
+          --out_csv "$S/results_summary_mobo.csv" --config_name "$name" --iterations 150 \
+          --seed_from_config --cache_ppdfs >> "$S/slurm_logs/out/${name}_local.out" 2>&1 ;;
+      *)
+        CONFIG_NAME=$name WORK_DIR=$S/$name APERTURE_DIAM=$diam N_APERTURES=$nap \
+        N_DET_RING1=$nd1 N_DET_RING2=$nd2 D2_INNER=$d2 D3_INNER=$d3 A_MM=0.2 B_MM=0.2 \
+        RESULTS_CSV=$S/results_summary_mobo.csv \
+          bash "$CODE/optimization/run_sai_pipeline.sh" \
+          > "$S/slurm_logs/out/${name}_local.out" 2> "$S/slurm_logs/err/${name}_local.err" ;;
+    esac
   done < "$S/lhs_pending.csv"
 }
 
@@ -87,22 +106,32 @@ slot() {
   local S=$1
   echo "[$(date +%H:%M)] $(basename $S): starting"
   evaluate_pending "$S"
+  echo "=== job $JOB on $(hostname), $(date)" >> "$S/controller.log"
   MOBO_RESULTS_DIR=$S OMP_NUM_THREADS=4 python "$CODE/optimization/run_mobo_loop.py" \
-    --max_iters "$MAX_ITERS" > "$S/controller.log" 2>&1
+    --max_iters "$MAX_ITERS" >> "$S/controller.log" 2>&1
   echo "[$(date +%H:%M)] $(basename $S): controller exited $?"
 }
 
 housekeeping() {
+  local S n h
   for S in $SEARCHES; do
-    python "$CODE/optimization/prune_ppdfs.py" --results_dir "$S" --keep_top "$KEEP_TOP" \
-      --mpxi_window 1.5:2.5 --delete > "$S/prune.log" 2>&1
-    mkdir -p "$MIRROR/$(basename $S)"
-    rsync -a --include='*/' --include='*.csv' --include='*.log' --include='*.out' \
-      --exclude='*' "$S/" "$MIRROR/$(basename $S)/" 2>/dev/null
+    { echo "=== $(date)"; python "$CODE/optimization/prune_ppdfs.py" --results_dir "$S" \
+        --keep_top "$KEEP_TOP" --mpxi_window 1.5:2.5 --masks --delete; } >> "$S/prune.log" 2>&1
+    h="$MIRROR/$(basename "$S")"
+    mkdir -p "$h/history"
+    rsync -a --include='*/' --include='*.csv' --include='*.log' --include='*.out' --include='*.err' \
+      --exclude='*' "$S/" "$h/" 2>> "$MIRROR/rsync_errors_$JOB.log"
+    # Timestamped copies whenever they change, so a damaged file can be traced.
+    for f in results_summary_mobo.csv mobo_manifest.csv; do
+      [ -f "$S/$f" ] || continue
+      last=$(ls -t "$h/history/${f%.csv}_"*.csv 2>/dev/null | head -1)
+      { [ -n "$last" ] && cmp -s "$S/$f" "$last"; } || cp "$S/$f" "$h/history/${f%.csv}_$(date +%m%d_%H%M).csv"
+    done
     n=0
     [ -f "$S/results_summary_mobo.csv" ] && n=$(($(wc -l < "$S/results_summary_mobo.csv") - 1))
-    echo "[$(date +%H:%M)] $(basename $S): $n rows"
+    echo "[$(date +%H:%M)] $(basename "$S"): $n rows"
   done
+  echo "[$(date +%H:%M)] scratch: $(lfs quota -h -u "$USER" /ddn/scratch 2>/dev/null | awk 'NR==3 {print $2 " of " $4}')"
 }
 
 PIDS=()
@@ -116,4 +145,6 @@ wait "${PIDS[@]}"
 kill $HK 2>/dev/null
 housekeeping
 echo "all searches ended at $(date)"
-[ "$JOB" != local ] && sacct -j $JOB -X -n --format=JobID,Partition,QOS,AllocTRES%60,Elapsed
+if [ "$JOB" != local ]; then
+  sacct -j "$JOB" -X -n --format=JobID,Partition,QOS,AllocTRES%60,Elapsed
+fi

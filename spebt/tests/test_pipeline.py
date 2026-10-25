@@ -18,6 +18,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 
 import h5py
 import numpy as np
@@ -2675,7 +2676,7 @@ class TestPruneMpxiWindow:
             tmp_path / "results_summary_mobo.csv", index=False)
         r = subprocess.run([sys.executable, os.path.join(_opt_dir(), "prune_ppdfs.py"),
                             "--results_dir", str(tmp_path), "--keep_top", "1",
-                            "--mpxi_window", "1.5:2.5", "--delete"],
+                            "--mpxi_window", "1.5:2.5", "--delete", "--min_age_hours", "0"],
                            capture_output=True, text=True, timeout=120)
         assert r.returncode == 0, r.stderr
         left = {n for n, _, _ in rows if (tmp_path / n / "position_000_ppdfs_t8_00.hdf5").exists()}
@@ -2683,7 +2684,7 @@ class TestPruneMpxiWindow:
 
     def test_design_without_a_row_is_never_pruned(self, tmp_path):
         """Its pipeline is still running: the PPDFs are in use."""
-        for name in ("mobo_0000_done", "mobo_0001_running", "mobo_0003_in_cnr_step"):
+        for name in ("mobo_0000_done", "mobo_0001_running", "mobo_0003_in_cnr_step", "mobo_0002_other"):
             (tmp_path / name).mkdir()
             (tmp_path / name / "position_000_ppdfs_t8_00.hdf5").write_bytes(b"x" * 10)
         pd.DataFrame([("mobo_0000_done", 2.0, 2.0), ("mobo_0002_other", 5.0, 2.0),
@@ -2691,9 +2692,141 @@ class TestPruneMpxiWindow:
                      columns=["config", "cnr_sector_mean", "mpxi_windowed_active_mean"]).to_csv(
             tmp_path / "results_summary_mobo.csv", index=False)
         r = subprocess.run([sys.executable, os.path.join(_opt_dir(), "prune_ppdfs.py"),
-                            "--results_dir", str(tmp_path), "--keep_top", "1", "--delete"],
+                            "--results_dir", str(tmp_path), "--keep_top", "1", "--delete",
+                            "--min_age_hours", "0"],
                            capture_output=True, text=True, timeout=120)
         assert r.returncode == 0, r.stderr
         assert (tmp_path / "mobo_0001_running" / "position_000_ppdfs_t8_00.hdf5").exists()
         assert (tmp_path / "mobo_0003_in_cnr_step" / "position_000_ppdfs_t8_00.hdf5").exists()
         assert not (tmp_path / "mobo_0000_done" / "position_000_ppdfs_t8_00.hdf5").exists()
+
+    def _prune(self, path, *extra, env=None):
+        return subprocess.run([sys.executable, os.path.join(_opt_dir(), "prune_ppdfs.py"),
+                               "--results_dir", str(path), *extra],
+                              capture_output=True, text=True, timeout=120,
+                              env=_clean_env(**(env or {})))
+
+    @staticmethod
+    def _design(path, name, age_h=3.0):
+        d = path / name
+        d.mkdir()
+        for f in ("position_000_ppdfs_t8_00.hdf5", "beams_masks_configuration_000.hdf5"):
+            (d / f).write_bytes(b"x" * 10)
+            t = time.time() - 3600 * age_h
+            os.utime(d / f, (t, t))
+
+    def test_recently_active_design_is_left_alone(self, tmp_path):
+        """A design re-run after a restart has a CNR from its first run while its
+        pipeline rewrites its files: recent activity must protect it."""
+        import time as _t
+        self._design(tmp_path, "mobo_0000_old", age_h=3)
+        self._design(tmp_path, "mobo_0001_rerun", age_h=0.1)
+        self._design(tmp_path, "mobo_0002_best", age_h=3)
+        pd.DataFrame([("mobo_0000_old", 1.0, 2.0), ("mobo_0001_rerun", 1.0, 2.0),
+                      ("mobo_0002_best", 5.0, 2.0)],
+                     columns=["config", "cnr_sector_mean", "mpxi_windowed_active_mean"]).to_csv(
+            tmp_path / "results_summary_mobo.csv", index=False)
+        r = self._prune(tmp_path, "--keep_top", "1", "--delete")
+        assert r.returncode == 0, r.stderr
+        left = {d.name for d in tmp_path.iterdir() if (d / "position_000_ppdfs_t8_00.hdf5").exists()}
+        assert left == {"mobo_0001_rerun", "mobo_0002_best"}
+
+    def test_copied_and_repeated_rows_take_no_keep_slots(self, tmp_path):
+        """A warm start's rows measured elsewhere have no directory here, and a
+        repeated row is the same design: neither may crowd out a local design."""
+        self._design(tmp_path, "mobo_0000_local")
+        self._design(tmp_path, "mobo_0001_local")
+        rows = [("lhs6d_000", 9.0, 2.0), ("lhs6d_001", 8.0, 2.0),          # copied, no directory
+                ("mobo_0000_local", 4.0, 2.0), ("mobo_0000_local", 4.0, 2.0),
+                ("mobo_0001_local", 3.0, 2.0)]
+        pd.DataFrame(rows, columns=["config", "cnr_sector_mean", "mpxi_windowed_active_mean"]).to_csv(
+            tmp_path / "results_summary_mobo.csv", index=False)
+        r = self._prune(tmp_path, "--keep_top", "2", "--delete", "--min_age_hours", "0")
+        assert r.returncode == 0, r.stderr
+        for n in ("mobo_0000_local", "mobo_0001_local"):
+            assert (tmp_path / n / "position_000_ppdfs_t8_00.hdf5").exists(), n
+
+    def test_best_in_window_optimizer_designs_are_kept(self, tmp_path):
+        """The re-measurement candidates must survive even when starting designs
+        fill the in-window ranks."""
+        for n in ("lhs6d_e10_000", "lhs6d_e10_001", "mobo_0000_x", "mobo_0001_y"):
+            self._design(tmp_path, n)
+        rows = [("lhs6d_e10_000", 5.0, 2.0), ("lhs6d_e10_001", 4.9, 2.0),
+                ("mobo_0000_x", 4.0, 2.0), ("mobo_0001_y", 3.0, 3.0)]
+        pd.DataFrame(rows, columns=["config", "cnr_sector_mean", "mpxi_windowed_active_mean"]).to_csv(
+            tmp_path / "results_summary_mobo.csv", index=False)
+        r = self._prune(tmp_path, "--keep_top", "1", "--mpxi_window", "1.5:2.5", "--delete",
+                        "--min_age_hours", "0")
+        assert r.returncode == 0, r.stderr
+        assert (tmp_path / "mobo_0000_x" / "position_000_ppdfs_t8_00.hdf5").exists()
+        assert not (tmp_path / "mobo_0001_y" / "position_000_ppdfs_t8_00.hdf5").exists()
+
+    def test_masks_go_only_when_asked_or_in_a_node_campaign(self, tmp_path):
+        for n in ("mobo_0000_keep", "mobo_0001_drop"):
+            self._design(tmp_path, n)
+        pd.DataFrame([("mobo_0000_keep", 5.0, 2.0), ("mobo_0001_drop", 1.0, 2.0)],
+                     columns=["config", "cnr_sector_mean", "mpxi_windowed_active_mean"]).to_csv(
+            tmp_path / "results_summary_mobo.csv", index=False)
+        mask = tmp_path / "mobo_0001_drop" / "beams_masks_configuration_000.hdf5"
+        self._prune(tmp_path, "--keep_top", "1", "--delete", "--min_age_hours", "0")
+        assert mask.exists()
+        r = self._prune(tmp_path, "--keep_top", "1", "--delete", "--min_age_hours", "0",
+                        env={"MOBO_EXECUTOR": "local"})
+        assert r.returncode == 0, r.stderr
+        assert not mask.exists()
+        assert (tmp_path / "mobo_0000_keep" / "beams_masks_configuration_000.hdf5").exists()
+
+
+class TestCleanRepeatedRows:
+    """mobo_agent.clean_repeated_rows: one row per design. The eai-v1 launcher
+    re-ran starting designs at every restart, appending duplicates and, when a
+    prune hit a re-run, blanking the original CNR and adding a fake failure."""
+
+    @staticmethod
+    def _rows():
+        sec = {f"cnr_sector{i}": 3.0 + 0.1 * i for i in range(6)}
+        good = dict(config="lhs6d_e10_000", fwhm_weighted_mean=0.5, cnr_sector_mean=3.25, **sec)
+        other = dict(config="lhs6d_e10_001", fwhm_weighted_mean=0.6, cnr_sector_mean=2.0,
+                     **{k: 2.0 for k in sec})
+        return good, other, sec
+
+    def test_clean_archive_is_unchanged(self):
+        import mobo_agent as ma
+        good, other, _ = self._rows()
+        df = pd.DataFrame([good, other])
+        pd.testing.assert_frame_equal(ma.clean_repeated_rows(df), df)
+
+    def test_duplicates_collapse_to_the_first_row(self):
+        import mobo_agent as ma
+        good, other, _ = self._rows()
+        out = ma.clean_repeated_rows(pd.DataFrame([good, other, good, good]))
+        assert out.config.tolist() == ["lhs6d_e10_000", "lhs6d_e10_001"]
+
+    def test_blanked_cnr_is_restored_and_fake_failure_dropped(self):
+        import mobo_agent as ma
+        good, other, sec = self._rows()
+        blanked = dict(good, cnr_sector_mean=float("nan"))
+        failed = {k: float("nan") for k in good}
+        failed["config"] = "lhs6d_e10_000"
+        out = ma.clean_repeated_rows(pd.DataFrame([blanked, other, failed]))
+        assert out.config.tolist() == ["lhs6d_e10_000", "lhs6d_e10_001"]
+        assert abs(out.cnr_sector_mean.iloc[0] - np.mean(list(sec.values()))) < 1e-12
+
+    def test_duplicates_do_not_change_the_proposal(self):
+        """Appended duplicates of the starting designs must leave the next
+        design exactly as it is without them."""
+        code = TestOutcomeConstraints.SYNTH.replace("__SLOPE__", "3").replace("__PARTIAL__", "False")
+        # Real archives name every design; the cleaning keys on that name.
+        code = code.replace("    rows.append(dict(zip(ma.PARAM_NAMES, x), **m))",
+                            "    rows.append(dict(zip(ma.PARAM_NAMES, x), config=f'd{len(rows):03d}', **m))")
+        assert "config=f'd" in code
+        dup = code.replace("    pd.DataFrame(rows).to_csv(p, index=False)",
+                           "    pd.DataFrame(rows + rows[:4]).to_csv(p, index=False)")
+        assert dup != code
+        outs = []
+        for c in (code, dup):
+            r = TestOutcomeConstraints()._run("cnr_sector_mean", None,
+                                              c.replace('print("MPXI"', 'print("CAND", c); print("MPXI"'))
+            assert r.returncode == 0, r.stderr[-3000:]
+            outs.append(r.stdout.split("CAND")[1].split("MPXI")[0].strip())
+        assert outs[0] == outs[1]

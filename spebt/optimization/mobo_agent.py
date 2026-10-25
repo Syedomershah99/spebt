@@ -403,6 +403,37 @@ CONSTRAINTS = _select_constraints()
 ACQ_NAME = "qLogNEI" if len(OBJ_COLUMNS) == 1 else "qLogNEHVI"
 
 
+def clean_repeated_rows(df):
+    """One row per design, for archives where a design was evaluated twice.
+
+    The Empire AI launcher (eai-v1) re-ran a fresh search's starting designs at
+    every restart: each re-run appended a duplicate row, and a re-run whose
+    PPDFs were pruned mid-run blanked the CNR of the original row and added an
+    all-NaN "failed" row. Duplicates make the GP fit near-zero noise, and the
+    fake failure trains a penalty at a measured design. So: restore
+    cnr_sector_mean where it is missing but all six sector values survive (it is
+    their mean), then keep each design's most complete row, the first on ties.
+    A no-op on an archive without repeats.
+    """
+    if "config" not in df.columns:
+        return df
+    sec = [f"cnr_sector{i}" for i in range(6)]
+    if "cnr_sector_mean" in df.columns and set(sec) <= set(df.columns):
+        blank = df["cnr_sector_mean"].isna() & df[sec].notna().all(axis=1)
+        if blank.any():
+            df = df.copy()
+            df.loc[blank, "cnr_sector_mean"] = df.loc[blank, sec].mean(axis=1)
+            logger.warning(f"Restored cnr_sector_mean from its sectors on {int(blank.sum())} row(s)")
+    names = df["config"].astype(str)
+    if names.duplicated().any():
+        filled = df.notna().sum(axis=1)
+        order = sorted(range(len(df)), key=lambda i: (names.iloc[i], -filled.iloc[i], i))
+        keep = sorted(pd.Index(order)[~names.iloc[order].duplicated().to_numpy()])
+        logger.warning(f"Dropped {len(df) - len(keep)} repeated row(s) of the same design(s)")
+        df = df.iloc[keep].reset_index(drop=True)
+    return df
+
+
 def require_objective_columns(df, results_csv: str):
     """Fail with an actionable message when the archive predates an objective change.
 
@@ -441,6 +472,7 @@ def get_next_candidate(results_csv: str):
 
     df = pd.read_csv(results_csv)
     require_objective_columns(df, results_csv)
+    df = clean_repeated_rows(df)
     missing_c = [c for c, _, _ in CONSTRAINTS if c not in df.columns]
     if missing_c:
         raise SystemExit(f"\n{results_csv} has no column(s) {missing_c} named in MOBO_CONSTRAINTS\n")
