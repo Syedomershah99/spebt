@@ -75,7 +75,7 @@ echo "  scint_radial_mm  = ${SCINT_RADIAL_MM} mm (fixed)"
 echo "  ring_thickness   = ${RING_THICKNESS_MM} mm (fixed)"
 echo "  a_mm=${A_MM}  b_mm=${B_MM}"
 echo "  work_dir = ${WORK_DIR}"
-echo "  CPUs = ${SLURM_CPUS_PER_TASK}"
+echo "  CPUs = ${SLURM_CPUS_PER_TASK:-unset (not a SLURM job step)}"
 echo "=================================================="
 
 # -------------------------------------------------------
@@ -319,6 +319,10 @@ python "${CODE_DIR}/optimization/compute_metrics.py" \
 # work_dir. Different configs still get independent draws, so the GP sees the
 # same honest across-design noise it always did; only re-running one config
 # is now deterministic. Rows written earlier keep their unseeded values.
+#
+# CNR_CACHE_PPDFS=1 keeps the 16 PPDF matrices in memory instead of re-reading
+# them every ML-EM iteration: identical numbers, a few minutes faster, about
+# 9 GB more memory during this step. Off by default.
 # -------------------------------------------------------
 echo "[4/4] Computing in-loop CNR (${CNR_ITERATIONS} ML-EM iterations)..."
 python "${CODE_DIR}/optimization/compute_cnr.py" \
@@ -327,7 +331,7 @@ python "${CODE_DIR}/optimization/compute_cnr.py" \
   --out_csv "${RESULTS_CSV}" \
   --config_name "${CONFIG_NAME}" \
   --iterations "${CNR_ITERATIONS}" \
-  --seed_from_config
+  --seed_from_config ${CNR_CACHE_PPDFS:+--cache_ppdfs}
 
 echo "=================================================="
 echo "PIPELINE COMPLETE | $(date)"

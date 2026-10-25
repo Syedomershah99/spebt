@@ -40,38 +40,6 @@ import compute_cnr  # noqa: E402  (imports ../recon/run_recon_comparison as rrc)
 rrc = compute_cnr.rrc
 
 
-class CachedH5:
-    """Stands in for h5py inside run_recon_comparison: File(name)[key] reads the
-    dataset from disk once and returns the same array on every later call.
-    forward_project and run_mlem only read it (view, matmul, sum), so one copy
-    can serve every iteration."""
-
-    def __init__(self):
-        self.arrays = {}
-
-    def File(self, name, mode="r"):
-        if mode != "r":
-            raise ValueError("the PPDF cache is read-only")
-        return _CachedFile(self.arrays, name)
-
-
-class _CachedFile:
-    def __init__(self, arrays, name):
-        self.arrays, self.name = arrays, name
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        return False
-
-    def __getitem__(self, key):
-        if (self.name, key) not in self.arrays:
-            with h5py.File(self.name, "r") as f:
-                self.arrays[(self.name, key)] = f[key][:]
-        return self.arrays[(self.name, key)]
-
-
 def score_iterates(recon_path, phantom_path):
     """CNR of every saved iterate, each scored exactly as a final image is.
     With SAVE_EVERY = 1, saved iterate k is the image after iteration k + 1."""
@@ -100,7 +68,7 @@ def main():
     ap.add_argument("--T_sec", type=float, required=True)
     a = ap.parse_args()
 
-    rrc.h5py = CachedH5()
+    rrc.h5py = compute_cnr.CachedH5()
     rrc.SAVE_EVERY = 1
     _, sector_mean, _ = compute_cnr.compute_cnr_for_work_dir(
         a.work_dir, a.phantom_path, iterations=a.iterations, T_sec=a.T_sec,

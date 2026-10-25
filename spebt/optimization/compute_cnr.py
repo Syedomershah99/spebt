@@ -32,6 +32,7 @@ import hashlib
 import os
 import sys
 import time
+import h5py
 import numpy as np
 import pandas as pd
 import torch
@@ -40,6 +41,38 @@ import torch
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.normpath(os.path.join(_HERE, "..", "recon")))
 import run_recon_comparison as rrc  # noqa: E402
+
+
+class CachedH5:
+    """Stands in for h5py inside run_recon_comparison: File(name)[key] reads the
+    dataset from disk once and returns the same array on every later call.
+    forward_project and run_mlem only read it (view, matmul, sum), so one copy
+    can serve every iteration."""
+
+    def __init__(self):
+        self.arrays = {}
+
+    def File(self, name, mode="r"):
+        if mode != "r":
+            raise ValueError("the PPDF cache is read-only")
+        return _CachedFile(self.arrays, name)
+
+
+class _CachedFile:
+    def __init__(self, arrays, name):
+        self.arrays, self.name = arrays, name
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def __getitem__(self, key):
+        if (self.name, key) not in self.arrays:
+            with h5py.File(self.name, "r") as f:
+                self.arrays[(self.name, key)] = f[key][:]
+        return self.arrays[(self.name, key)]
 
 
 def seed_from_config_name(config_name: str) -> int:
@@ -190,6 +223,10 @@ def main():
     parser.add_argument("--seed", type=int, default=None,
                         help="Seed the Poisson noise in forward projection. "
                              "Takes precedence over --seed_from_config.")
+    parser.add_argument("--cache_ppdfs", action="store_true",
+                        help="Read each PPDF file once and keep it in memory for "
+                             "every ML-EM iteration (identical results, faster; "
+                             "about 9 GB more memory)")
     parser.add_argument("--seed_from_config", action="store_true",
                         help="Derive the noise seed from --config_name so the run "
                              "is reproducible while different designs still get "
@@ -207,12 +244,17 @@ def main():
         print(f"[{args.config_name}] noise seed {seed} (derived from config name)")
 
     t0 = time.time()
-    cnr, sector_mean, sectors = compute_cnr_for_work_dir(
-        args.work_dir, args.phantom_path,
-        iterations=args.iterations,
-        T_sec=args.T_sec, e_hot=args.e_hot, e_bg=args.e_bg,
-        out_subdir=args.out_subdir, seed=seed,
-    )
+    if args.cache_ppdfs:
+        rrc.h5py = CachedH5()
+    try:
+        cnr, sector_mean, sectors = compute_cnr_for_work_dir(
+            args.work_dir, args.phantom_path,
+            iterations=args.iterations,
+            T_sec=args.T_sec, e_hot=args.e_hot, e_bg=args.e_bg,
+            out_subdir=args.out_subdir, seed=seed,
+        )
+    finally:
+        rrc.h5py = h5py
     elapsed = time.time() - t0
 
     if np.isnan(cnr):

@@ -2521,3 +2521,139 @@ class TestCollectIterCountPairGate:
         r = self._analyze(tmp_path)
         assert r.returncode != 0
         assert "does not end in PASS" in r.stderr
+
+
+# =============================================================================
+# Empire AI additions: ring-2 cap, PPDF cache flag, local executor
+# =============================================================================
+def _opt_dir():
+    return os.path.join(_REPO_ROOT, "optimization")
+
+
+def _clean_env(**overrides):
+    env = dict(os.environ)
+    for k in ("MOBO_OBJECTIVES", "MOBO_CONSTRAINTS", "MOBO_RING2_MAX", "MOBO_EXECUTOR",
+              "MOBO_CODE_DIR", "MOBO_RESULTS_DIR"):
+        env.pop(k, None)
+    env.update(overrides)
+    return env
+
+
+class TestRing2Cap:
+    """MOBO_RING2_MAX lowers the n_det_ring2 ceiling (960 = the hardware's ring
+    3 count, the cap the MIC design was found under); unset keeps 1362."""
+
+    def _run(self, val, code="print(ma.BOUNDS_MAX[3])"):
+        env = _clean_env(**({} if val is None else {"MOBO_RING2_MAX": val}))
+        return subprocess.run(
+            [sys.executable, "-c", f"import sys; sys.path.insert(0, {_opt_dir()!r});\n"
+                                   f"import mobo_agent as ma\n{code}"],
+            capture_output=True, text=True, env=env, timeout=120)
+
+    def test_unset_keeps_1362(self):
+        r = self._run(None)
+        assert r.returncode == 0, r.stderr
+        assert r.stdout.strip() == "1362.0"
+
+    def test_960_caps_ring_2(self):
+        r = self._run("960")
+        assert r.returncode == 0, r.stderr
+        assert r.stdout.strip() == "960.0"
+
+    @pytest.mark.parametrize("bad", ["961", "abc", "2000", "100"])
+    def test_bad_values_refused(self, bad):
+        r = self._run(bad)
+        assert r.returncode != 0
+        assert "MOBO_RING2_MAX" in (r.stdout + r.stderr)
+
+
+@pytest.mark.skipif(not os.path.exists(_PHANTOM), reason="needs the 10 mm hot-rod phantom")
+class TestCnrCacheFlag:
+    """compute_cnr.py --cache_ppdfs keeps the PPDFs in memory; it must change no
+    number, so the in-loop CNR is the same with or without it."""
+
+    def test_cached_and_plain_runs_are_identical(self, tmp_path):
+        rng = np.random.default_rng(2)
+        work = tmp_path / "design"
+        work.mkdir()
+        for i in range(2):
+            a = (rng.random((60, 40000), dtype=np.float32) ** 8) * 1e-3
+            with h5py.File(work / f"position_000_ppdfs_t8_0{i}.hdf5", "w") as f:
+                f.create_dataset("ppdfs", data=a)
+        base = [sys.executable, os.path.join(_opt_dir(), "compute_cnr.py"), "--work_dir", str(work),
+                "--phantom_path", _PHANTOM, "--config_name", "x", "--seed", "5",
+                "--iterations", "6"]
+        for sub, extra in (("plain", []), ("cached", ["--cache_ppdfs"])):
+            r = subprocess.run(base + ["--out_subdir", sub, "--out_csv", str(tmp_path / f"{sub}.csv")]
+                               + extra, capture_output=True, text=True, timeout=600)
+            assert r.returncode == 0, r.stderr[-3000:]
+        assert np.array_equal(np.load(work / "plain" / "projections_T8.npy"),
+                              np.load(work / "cached" / "projections_T8.npy"))
+        assert np.array_equal(np.load(work / "plain" / "recon_mlem_T8.npz")["final"],
+                              np.load(work / "cached" / "recon_mlem_T8.npz")["final"])
+        a = pd.read_csv(tmp_path / "plain.csv", float_precision="round_trip")
+        b = pd.read_csv(tmp_path / "cached.csv", float_precision="round_trip")
+        assert a.cnr_sector_mean.iloc[0] == b.cnr_sector_mean.iloc[0]
+
+
+class TestLocalExecutor:
+    """MOBO_EXECUTOR=local runs each design's pipeline as a child process of the
+    controller (one Empire AI node job hosting several searches). Driven here
+    with a stand-in pipeline script so the controller itself is what's tested."""
+
+    HEADER = "config,aperture_diam_mm,n_apertures,n_det_ring1,n_det_ring2,d2_inner_mm,d3_inner_mm,cnr_sector_mean"
+
+    def _setup(self, tmp_path, pipeline):
+        import mobo_agent as ma
+        code = tmp_path / "code"
+        (code / "optimization").mkdir(parents=True)
+        (code / "optimization" / "run_sai_pipeline.sh").write_text(pipeline)
+        res = tmp_path / "res"
+        res.mkdir()
+        rng = np.random.default_rng(3)
+        rows = []
+        while len(rows) < 8:
+            x = [rng.uniform(lo, hi) for lo, hi in zip(ma.BOUNDS_MIN, ma.BOUNDS_MAX)]
+            x[1], x[2], x[3] = round(x[1]), 2 * round(x[2] / 2), 2 * round(x[3] / 2)
+            if ma.is_feasible_full(*x):
+                rows.append(f"lhs_{len(rows):02d}," + ",".join(str(v) for v in x) + f",{3 + x[0]:.4f}")
+        (res / "results_summary_mobo.csv").write_text(self.HEADER + "\n" + "\n".join(rows) + "\n")
+        return code, res
+
+    def _controller(self, code, res, max_iters):
+        env = _clean_env(MOBO_EXECUTOR="local", MOBO_CODE_DIR=str(code), MOBO_RESULTS_DIR=str(res),
+                         MOBO_OBJECTIVES="cnr_sector_mean")
+        return subprocess.run([sys.executable, os.path.join(_opt_dir(), "run_mobo_loop.py"),
+                               "--max_iters", str(max_iters)],
+                              cwd=_opt_dir(), env=env, capture_output=True, text=True, timeout=900)
+
+    def test_designs_run_as_child_processes(self, tmp_path):
+        pipeline = """#!/bin/bash
+env | grep -E '^(WORK_DIR|CODE_DIR|RESULTS_CSV|CONFIG_NAME|A_MM|B_MM|N_APERTURES)=' > "$WORK_DIR/env.txt"
+echo "$CONFIG_NAME,$APERTURE_DIAM,$N_APERTURES,$N_DET_RING1,$N_DET_RING2,$D2_INNER,$D3_INNER,3.9" >> "$RESULTS_CSV"
+"""
+        code, res = self._setup(tmp_path, pipeline)
+        r = self._controller(code, res, 2)
+        assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-3000:]
+        man = pd.read_csv(res / "mobo_manifest.csv")
+        assert len(man) == 2
+        assert man.status.tolist() == ["completed", "completed"]
+        assert man.job_id.astype(str).tolist() == ["local", "local"]
+        for wd in man.work_dir:
+            env = dict(l.split("=", 1) for l in open(os.path.join(wd, "env.txt")).read().split())
+            assert env["CODE_DIR"] == str(code) and env["A_MM"] == "0.2"
+            assert env["RESULTS_CSV"] == str(res / "results_summary_mobo.csv")
+            assert env["WORK_DIR"] == wd
+        assert len(pd.read_csv(res / "results_summary_mobo.csv")) == 10
+        assert "local executor" in r.stdout
+
+    def test_three_lost_designs_stop_the_search(self, tmp_path):
+        """A pipeline that writes nothing (a broken environment) must not keep
+        a billed node busy: the search stops after three lost designs."""
+        code, res = self._setup(tmp_path, "#!/bin/bash\nexit 1\n")
+        r = self._controller(code, res, 10)
+        assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-3000:]
+        man = pd.read_csv(res / "mobo_manifest.csv")
+        assert len(man) == 3
+        assert set(man.status) == {"no_row"}
+        assert "stopping this search" in r.stdout

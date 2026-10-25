@@ -52,6 +52,17 @@ _LOCK_FD = None
 RESULTS_CSV = os.path.join(RESULTS_DIR, "results_summary_mobo.csv")
 SLURM_SCRIPT = os.path.join(CODE_DIR, "optimization", "run_sai_pipeline.sh")
 LOG_DIR = os.path.join(RESULTS_DIR, "slurm_logs")
+# How each design is evaluated. "sbatch" (the default) submits run_sai_pipeline.sh
+# as its own SLURM job and polls squeue. "local" runs it as a child process of
+# this controller, for a job that hosts several searches on one node (Empire AI
+# Grace): no queue wait per design, no CCR-specific #SBATCH options, and no
+# need for a job to be allowed to submit jobs.
+EXECUTOR = os.environ.get("MOBO_EXECUTOR", "sbatch").strip() or "sbatch"
+if EXECUTOR not in ("sbatch", "local"):
+    raise SystemExit(f"\nMOBO_EXECUTOR must be 'sbatch' or 'local', got '{EXECUTOR}'\n")
+# In local mode a broken environment would otherwise burn node time on design
+# after design; stop after this many consecutive iterations without an objective.
+MAX_CONSECUTIVE_LOST = 3
 
 # Imported, not restated. This was a hand-synced copy; a duplicated definition
 # that drifted from mobo_agent's is what produced 46 wasted iterations in Jul
@@ -224,6 +235,20 @@ def patch_manifest_status(idx, job_id, status):
             f.writelines(lines)
 
 
+def run_pipeline_local(config_name, env_map):
+    """Run run_sai_pipeline.sh as a child process (MOBO_EXECUTOR=local) and wait.
+
+    The child gets this process's environment plus the design's variables, the
+    same set the sbatch path passes with --export. Its output goes where the
+    sbatch path's would, under LOG_DIR. Returns the exit code.
+    """
+    env = dict(os.environ, **env_map)
+    out = os.path.join(LOG_DIR, "out", f"{config_name}_local.out")
+    err = os.path.join(LOG_DIR, "err", f"{config_name}_local.err")
+    with open(out, "w") as fo, open(err, "w") as fe:
+        return subprocess.run(["bash", SLURM_SCRIPT], env=env, stdout=fo, stderr=fe).returncode
+
+
 def is_job_running(job_id: str) -> bool:
     """Return True if the given SLURM job id is still in the queue.
 
@@ -318,7 +343,9 @@ def main():
         f"{len(OBJ_NAMES)} objective{'s' if len(OBJ_NAMES) > 1 else ''}: {', '.join(OBJ_NAMES)}\n"
         + "".join(f"Constraint: {lo if lo is not None else '-inf'} <= {c} <= "
                   f"{hi if hi is not None else 'inf'}\n" for c, lo, hi in mobo_agent.CONSTRAINTS)
-        + f"ModelListGP + {mobo_agent.ACQ_NAME} | Sequential q=1",
+        + (f"n_det_ring2 capped at {mobo_agent.BOUNDS_MAX[3]:.0f} (MOBO_RING2_MAX)\n"
+           if os.environ.get("MOBO_RING2_MAX") else "")
+        + f"ModelListGP + {mobo_agent.ACQ_NAME} | Sequential q=1 | {EXECUTOR} executor",
         subtitle=f"Max iterations: {TOTAL_ITERATIONS}"
     ))
 
@@ -347,6 +374,7 @@ def main():
     ) as progress:
 
         task = progress.add_task("[green]MOBO Loop", total=n_to_run)
+        n_lost = 0
 
         for _ in range(n_to_run):
             if not check_disk_space():
@@ -377,55 +405,68 @@ def main():
             append_manifest_row(idx, config_name, diam, n_ap, n_det1, n_det2,
                                 d2_inner, d3_inner, work_dir, "", "pending")
 
-            # 4. Submit SLURM job
-            env_vars = (
-                f"ALL,"
-                f"WORK_DIR={work_dir},"
-                f"APERTURE_DIAM={diam},"
-                f"N_APERTURES={n_ap},"
-                f"N_DET_RING1={n_det1},"
-                f"N_DET_RING2={n_det2},"
-                f"D2_INNER={d2_inner},"
-                f"D3_INNER={d3_inner},"
-                f"A_MM=0.2,B_MM=0.2,"
-                f"CODE_DIR={CODE_DIR},"
-                f"RESULTS_CSV={RESULTS_CSV},"
-                f"CONFIG_NAME={config_name}"
-            )
+            # 4. Evaluate the design: as a child process, or as its own SLURM job
+            if EXECUTOR == "local":
+                patch_manifest_status(idx, "local", "running")
+                t0 = time.time()
+                rc = run_pipeline_local(config_name, {
+                    "WORK_DIR": work_dir, "APERTURE_DIAM": str(diam),
+                    "N_APERTURES": str(n_ap), "N_DET_RING1": str(n_det1),
+                    "N_DET_RING2": str(n_det2), "D2_INNER": str(d2_inner),
+                    "D3_INNER": str(d3_inner), "A_MM": "0.2", "B_MM": "0.2",
+                    "CODE_DIR": CODE_DIR, "RESULTS_CSV": RESULTS_CSV,
+                    "CONFIG_NAME": config_name})
+                console.log(f"Pipeline exited {rc} after {int((time.time() - t0) / 60)} min.")
+                job_id = "local"
+            else:
+                env_vars = (
+                    f"ALL,"
+                    f"WORK_DIR={work_dir},"
+                    f"APERTURE_DIAM={diam},"
+                    f"N_APERTURES={n_ap},"
+                    f"N_DET_RING1={n_det1},"
+                    f"N_DET_RING2={n_det2},"
+                    f"D2_INNER={d2_inner},"
+                    f"D3_INNER={d3_inner},"
+                    f"A_MM=0.2,B_MM=0.2,"
+                    f"CODE_DIR={CODE_DIR},"
+                    f"RESULTS_CSV={RESULTS_CSV},"
+                    f"CONFIG_NAME={config_name}"
+                )
 
-            sbatch_cmd = [
-                "sbatch",
-                "--parsable",
-                f"--output={LOG_DIR}/out/{config_name}_%j.out",
-                f"--error={LOG_DIR}/err/{config_name}_%j.err",
-                "--export", env_vars,
-                SLURM_SCRIPT,
-            ]
+                sbatch_cmd = [
+                    "sbatch",
+                    "--parsable",
+                    f"--output={LOG_DIR}/out/{config_name}_%j.out",
+                    f"--error={LOG_DIR}/err/{config_name}_%j.err",
+                    "--export", env_vars,
+                    SLURM_SCRIPT,
+                ]
 
-            try:
-                job_id = subprocess.check_output(sbatch_cmd, text=True).strip().split(";")[0]
-                console.log(f"[bold green]Submitted job:[/bold green] {job_id}")
-            except Exception as e:
-                console.print(f"[bold red]SLURM Submission Failed:[/bold red] {e}")
-                patch_manifest_status(idx, "", "failed")
-                break
+                try:
+                    job_id = subprocess.check_output(sbatch_cmd, text=True).strip().split(";")[0]
+                    console.log(f"[bold green]Submitted job:[/bold green] {job_id}")
+                except Exception as e:
+                    console.print(f"[bold red]SLURM Submission Failed:[/bold red] {e}")
+                    patch_manifest_status(idx, "", "failed")
+                    break
 
-            patch_manifest_status(idx, job_id, "running")
+                patch_manifest_status(idx, job_id, "running")
 
-            # 5. Wait for job to finish
-            console.log(f"Waiting for job {job_id}...")
-            wait_start = time.time()
-            last_print = 0
+                # 5. Wait for job to finish
+                console.log(f"Waiting for job {job_id}...")
+                wait_start = time.time()
+                last_print = 0
 
-            while is_job_running(job_id):
-                time.sleep(60)
-                elapsed_min = int((time.time() - wait_start) / 60)
-                if elapsed_min >= last_print + 10:
-                    console.log(f"[yellow]Job {job_id} still running... ({elapsed_min} min)[/yellow]")
-                    last_print = elapsed_min
+                while is_job_running(job_id):
+                    time.sleep(60)
+                    elapsed_min = int((time.time() - wait_start) / 60)
+                    if elapsed_min >= last_print + 10:
+                        console.log(f"[yellow]Job {job_id} still running... ({elapsed_min} min)[/yellow]")
+                        last_print = elapsed_min
 
-            elapsed_total = int((time.time() - wait_start) / 60)
-            console.log(f"Job {job_id} finished in {elapsed_total} min.")
+                elapsed_total = int((time.time() - wait_start) / 60)
+                console.log(f"Job {job_id} finished in {elapsed_total} min.")
 
             # "The SLURM job exited" is not "the evaluation succeeded". Marking
             # it completed on exit status alone is what hid a broken geometry
@@ -455,6 +496,11 @@ def main():
                     f"trusting the campaign's budget."
                 )
             patch_manifest_status(idx, job_id, outcome)
+            n_lost = n_lost + 1 if outcome != "completed" else 0
+            if EXECUTOR == "local" and n_lost >= MAX_CONSECUTIVE_LOST:
+                console.print(f"[bold red]{n_lost} iterations in a row produced no objective "
+                              f"value; stopping this search.[/bold red]")
+                break
 
             # 6. Print status
             print_status(idx, config_name)

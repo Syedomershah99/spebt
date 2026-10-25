@@ -107,6 +107,20 @@ BOUNDS_MIN = [0.2, 60.0, 120.0, 180.0, 292.0, 385.0]
 BOUNDS_MAX = [1.0, 270.0, 660.0, 1362.0, 540.0, 618.0]
 DIM = len(PARAM_NAMES)
 
+# MOBO_RING2_MAX lowers the n_det_ring2 ceiling, e.g. to 960 to stay within the
+# hardware's ring counts (480/720/960/1200), as the main CCR search did (the MIC
+# design sits on that cap). Unset keeps the packing-derived 1362 above.
+_ring2_max = os.environ.get("MOBO_RING2_MAX", "").strip()
+if _ring2_max:
+    try:
+        _v = float(_ring2_max)
+    except ValueError:
+        raise SystemExit(f"\nMOBO_RING2_MAX '{_ring2_max}' is not a number\n")
+    if not (BOUNDS_MIN[3] < _v <= BOUNDS_MAX[3]) or _v % 2:
+        raise SystemExit(f"\nMOBO_RING2_MAX must be an even count above {BOUNDS_MIN[3]:.0f} "
+                         f"and at most {BOUNDS_MAX[3]:.0f}, got {_ring2_max}\n")
+    BOUNDS_MAX[3] = _v
+
 # --- Feasibility constraints ---
 # 1) Aperture overlap: aperture_diam < circumference / n_apertures
 HR_R_CENTER = 67.5 / 2.0 + 2.5 / 2.0  # 35.0 mm
