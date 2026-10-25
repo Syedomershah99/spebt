@@ -99,7 +99,8 @@ housekeeping() {
     mkdir -p "$MIRROR/$(basename $S)"
     rsync -a --include='*/' --include='*.csv' --include='*.log' --include='*.out' \
       --exclude='*' "$S/" "$MIRROR/$(basename $S)/" 2>/dev/null
-    n=$(($(wc -l < "$S/results_summary_mobo.csv" 2>/dev/null || echo 1) - 1))
+    n=0
+    [ -f "$S/results_summary_mobo.csv" ] && n=$(($(wc -l < "$S/results_summary_mobo.csv") - 1))
     echo "[$(date +%H:%M)] $(basename $S): $n rows"
   done
 }
