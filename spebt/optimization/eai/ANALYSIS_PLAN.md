@@ -179,3 +179,11 @@ they are treated like any other design. Step 2 compared 20 Grace seeds with CCR'
 5. CCR's head-to-head arms ran in August with unseeded in-loop CNR (seeding came
 on 2 Sep), and their 2-objective r0 arm ran with ring 2 capped at 960. "CNR alone
 beats several objectives: not tested" is superseded by the nine-pair comparison.
+
+**Jobs and code after the fixes (16:10).** The live tree was moved to commit
+b4e88f0, which changes only the prune and, for controllers started after it,
+the cleaning of repeated rows (the optimizer's proposals on four CCR archives
+are identical to those of the original code). The queued follow-ups were
+cancelled and requeued with the fixed launcher: nodes 1 to 7 are first jobs
+148500, 148502, 148540, 148537, 148544, 148546 and 148548, with follow-ups
+148578, 148579, 148582, 148580, 148583, 148584 and 148581.
