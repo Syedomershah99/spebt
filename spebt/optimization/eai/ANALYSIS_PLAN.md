@@ -83,3 +83,9 @@ launched:
 
 Jobs: nodes 1 to 4 are 148500, 148502, 148535 and 148537, each with an
 afterany follow-up (148501, 148503, 148536, 148538), all standard QoS.
+
+Correction, 15:32: the first node 3 job (148535) received only `fwhm_weighted_mean`
+as its objective list, because sbatch splits `--export` values on commas. It
+was cancelled after one minute, before any design finished, and resubmitted as
+148540 (follow-up 148541) with the full list and new search names
+(`armB2_warm_r0` to `armB2_warm_r2`). Nothing from the first job is used.
