@@ -107,3 +107,75 @@ The budget was raised to 500 to 1,000 SU ("don't compromise on results"). Change
 - The top 3 in-window designs of each of CCR's six complete head-to-head arms
   (2- and 5-objective, r0, r4, r5) are rebuilt on Grace and re-measured with the
   same protocol, so search outcomes are compared on equal terms.
+
+## Addendum 3, 25 Oct 2026 16:00 (after a review, before any re-measurement)
+
+These replace or sharpen the rules above. The production searches had been
+running for about an hour; no re-measurement had been run or looked at.
+
+**Pool and read point.** The headline pool is the optimizer designs of the
+CNR-alone searches (nodes 1, 2, 4 and 7). The multi-objective searches (nodes 3,
+5, 6; `armB2_`) are re-measured the same way but analysed separately, and never
+supply the headline (this corrects addendum 1). Candidates are read at the final
+point, 21 + 100 manifest rows (orphaned or lost designs count toward the 100; the
+number of completed designs is reported). A candidate whose PPDFs are missing is
+rebuilt from its parameters and re-measured; no candidate is dropped.
+
+**Rule 3.** The headline is the CNR-alone candidate with the highest mean CNR at
+150 iterations over the selection seeds 0 to 39. The benchmark and `nd2fine_960`
+are comparators only and are never the headline; `nd2fine_960` is therefore
+reported on all of its seeds.
+
+**Rule 4.** The held-out seeds 40 to 79 are run only after the headline's name is
+committed to git, only for the headline, the benchmark and `nd2fine_960`, and are
+used once. Any later change of pool uses fresh seeds 80 to 119. The primary
+endpoint is CNR at 150 iterations; each design's own best iteration count is
+secondary and carries no claim. Percentage gains are quoted with the interval of
+the difference.
+
+**Rule 5 (replaced).** At the primary endpoint, against `nd2fine_960`, with
+Welch intervals: "higher" if the 95% interval lies above 0; "lower" if it lies
+below 0; "equivalent" if the 90% interval lies inside +/-0.10; otherwise
+"inconclusive", with the interval quoted. With 40 seeds a side and SD about
+0.10, a difference of about 0.06 is resolved at 80% power.
+
+**Reliability.** A CNR-alone search is reliable if its single best candidate
+(highest selection-seed mean at 150 iterations) has a selection-seed mean of at
+least 4.603, which is `nd2fine_960`'s step-2 Grace mean (4.703) minus 0.10,
+one-sided. Report k of N with its Clopper-Pearson 95% interval, and the counts at
+thresholds 0.05 and 0.15 below 4.703 as sensitivity checks.
+
+**CNR alone against several objectives.** Nine pairs share their starting
+designs (warm r0 to r2; fresh seeds 13 to 18). Per pair, the difference between
+the two searches' best candidates (selection-seed mean at 150 iterations);
+report the nine differences, their mean and its 95% t-interval, and claim a
+difference only if the interval excludes 0.
+
+**Paired starts with CCR.** Descriptive only (three pairs, no test, neither
+"matches" nor "beats"): best in-window in-loop CNR read at the furthest point all
+arms reached (78 to 80 optimizer designs), with each arm's in-window count, and
+CCR's values both as run and restricted to ring 2 at most 960.
+
+**Window adherence** is a check that the constraint works: x of y measured
+optimizer designs in the window, read at 80 and at the end. CCR's arms maximized
+MPXI with no upper bound, so their share is context, not a baseline.
+
+**Ring 2 at 960.** Report each search's best candidate's ring-2 count and how
+many sit at exactly 960. If the headline sits at 960 and is "higher", also
+re-measure it at 944 and 980 crystals.
+
+**Data incident.** The eai-v1 launcher re-ran a fresh search's starting designs
+whenever it restarted (its resume test read the wrong column), so node 1's
+`fresh_s10` to `fresh_s12` hold 4 to 5 duplicate starting rows each. Duplicates
+are dropped (the first row is kept), a CNR blanked by a pruned re-run is restored
+from its six sector values, and a fake failure row of a measured design is
+dropped. The optimizer applies the same cleaning (`mobo_agent.clean_repeated_rows`)
+from before those searches' controllers started. The launcher, the prune and the
+follow-up jobs were fixed the same day; the fixes change no metric.
+
+**Corrections to the text above.** Node 1 includes the step 2 rehearsal's 11
+optimizer and 12 starting designs, which were seen before the plan was written;
+they are treated like any other design. Step 2 compared 20 Grace seeds with CCR's
+5. CCR's head-to-head arms ran in August with unseeded in-loop CNR (seeding came
+on 2 Sep), and their 2-objective r0 arm ran with ring 2 capped at 960. "CNR alone
+beats several objectives: not tested" is superseded by the nine-pair comparison.
