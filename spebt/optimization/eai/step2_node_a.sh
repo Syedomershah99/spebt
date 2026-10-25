@@ -77,6 +77,33 @@ done | xargs -P 20 -n 2 bash -c 'run_seed "$0" "$1"'
 # The other four pipelines; never a bare wait, which would also wait on the monitor.
 wait "${PID[@]}"
 kill $MON 2>/dev/null
+
+# PPDF summary statistics for the two references, to compare with the same
+# statistics computed on CCR (the files themselves differ in float rounding).
+python - "$WORK_ROOT" > "$OUT/ppdf_stats.csv" <<'EOF'
+import glob, os, sys
+import h5py, numpy as np
+print("design,file,shape,sum,max,nonzero")
+for d in ("tmi_reference_000", "nd2fine_960"):
+    for f in sorted(glob.glob(os.path.join(sys.argv[1], d, "position_*_ppdfs_t8_*.hdf5"))):
+        with h5py.File(f, "r") as h:
+            a = h["ppdfs"][:]
+        print(f"{d},{os.path.basename(f)},{'x'.join(map(str, a.shape))},{a.sum(dtype=np.float64):.10e},"
+              f"{a.max():.8e},{int(np.count_nonzero(a))}")
+EOF
+
+# Copy the small outputs off scratch, which the login node cannot see.
+for d in "$WORK_ROOT"/*/; do
+  n=$(basename "$d")
+  mkdir -p "$OUT/runs/$n"
+  cp "$d"/*.tensor "$OUT/runs/$n/" 2>/dev/null
+  for r in "$d"iterpair_* "$d"cnr_inloop; do
+    [ -d "$r" ] || continue
+    mkdir -p "$OUT/runs/$n/$(basename "$r")"
+    cp "$r"/dense_cnr.csv "$r"/cnr_results.npz "$r"/projections_T8.npy "$OUT/runs/$n/$(basename "$r")/" 2>/dev/null
+  done
+done
+du -sh "$OUT"
 cat "$OUT/timings.txt"
 echo "step 2 node A done after $(( $(date +%s) - T0 )) s at $(date)"
 sacct -j $SLURM_JOB_ID -X -n --format=JobID,Partition,QOS,AllocTRES%60,Elapsed
