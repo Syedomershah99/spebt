@@ -213,3 +213,31 @@ those three designs are never evaluated late. Nothing under /projects/.../spebt
 is replaced while jobs run; later code goes to new paths. The nine shared starts
 stay identical (the repaired searches have all 21). Per search, the report gives
 the number of starting designs and of lost optimizer designs.
+
+## Addendum 5, 25 Oct 2026 23:30 (after a review of the analysis scripts, before any re-measurement)
+
+Clarifications; no rule changes.
+
+- **Rule 5 labels.** "higher" and "lower" (the 95% interval) are decided first. A
+  result that is "higher" (or "lower") and whose 90% interval also lies inside
+  +/-0.10 is reported as both ("higher, within the +/-0.10 margin").
+- **Rule 5 seeds.** The test compares seeds 40 to 79 of both designs (40 a
+  side). nd2fine_960's mean over all 80 seeds is reported beside it, as a
+  description.
+- **Secondary endpoint.** At each design's own best iteration count (chosen on
+  seeds 0 to 39), the headline minus nd2fine_960 and minus the benchmark, Welch
+  intervals, no claim. Count levels are descriptive: a difference and its
+  interval, no verdict.
+- **Reliability's N** is all 24 CNR-alone searches; a search without an in-window
+  optimizer design among its first 100 counts as not reliable.
+- **The re-measured CCR comparison** is descriptive and states its budgets: CCR's
+  candidates come from 78 to 80 optimizer designs per arm in a box with ring 2 up
+  to 1362 (those above 960 are marked); Empire AI's from 100 per search, ring 2 up
+  to 960.
+- **Order of steps, enforced by the scripts.** Candidates are written only when
+  all 33 searches have reached the final point. A rebuilt design is used only
+  after its own pipeline finished and it reproduced its recorded values (Empire AI
+  designs: MPXI and in-loop CNR to 1e-6; CCR designs: MPXI to 1e-3). The
+  selection runs from committed code, and headline.txt records that commit. The
+  re-measurement refuses seeds from 40 on for anything but the committed headline
+  and the two references.
