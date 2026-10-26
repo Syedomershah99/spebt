@@ -15,6 +15,7 @@ Run with:
 """
 import math
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -2830,3 +2831,486 @@ class TestCleanRepeatedRows:
             assert r.returncode == 0, r.stderr[-3000:]
             outs.append(r.stdout.split("CAND")[1].split("MPXI")[0].strip())
         assert outs[0] == outs[1]
+
+
+
+# =============================================================================
+# Empire AI analysis: campaign tables, rebuild, re-measurement, rules 3 to 5
+# =============================================================================
+def _eai_dir():
+    return os.path.join(_opt_dir(), "eai")
+
+
+def _eai_module(name):
+    """Load an eai/ script as a module (they are scripts, not a package)."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(name, os.path.join(_eai_dir(), f"{name}.py"))
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
+_VEC = dict(aperture_diam_mm=0.2813133658913763, n_apertures=195, n_det_ring1=486,
+            n_det_ring2=694, d2_inner_mm=417.0, d3_inner_mm=449.36)
+
+
+def _ppdf(path):
+    """A small readable stand-in for a PPDF file."""
+    with h5py.File(path, "w") as h:
+        h["ppdfs"] = np.ones((2, 3), dtype=np.float32)
+
+
+class TestAnalyzeCampaign:
+    """analyze_campaign.py: arms from search names, designs placed by manifest
+    index, wall time from each design's log, a small mirror end to end, and no
+    final candidates before every search has ended."""
+
+    def test_arm_of(self):
+        ac = _eai_module("analyze_campaign")
+        assert ac.arm_of("warm_r0") == ("A", "paired")
+        assert ac.arm_of("fresh_s13") == ("A", "fresh")
+        assert ac.arm_of("armB2_warm_r2") == ("B", "paired")
+        assert ac.arm_of("armB2_fresh_s18") == ("B", "fresh")
+        assert ac.arm_of("armB_warm_r0") is None and ac.arm_of("step2a") is None
+        assert len(ac.EXPECTED) == 33 and sum(ac.arm_of(s)[0] == "A" for s in ac.EXPECTED) == 24
+
+    def test_minutes_reads_am_pm_and_the_time_zone(self, tmp_path):
+        ac = _eai_module("analyze_campaign")
+        log = tmp_path / "x_local.out"
+        log.write_text("SAI Pipeline | Sun Oct 25 11:58:00 PM EDT 2026\nstep\n"
+                       "PIPELINE COMPLETE | Mon Oct 26 12:20:30 AM EDT 2026\n")
+        assert abs(ac.minutes(str(log)) - 22.5) < 1e-9
+        log.write_text("SAI Pipeline | Sun Nov  1 01:50:00 AM EDT 2026\n"     # clocks go back at 02:00
+                       "PIPELINE COMPLETE (infeasible) | Sun Nov  1 01:10:00 AM EST 2026\n")
+        assert abs(ac.minutes(str(log)) - 20) < 1e-9
+        log.write_text("SAI Pipeline | Sun Oct 25 08:31:54 AM EDT 2026\n")   # killed: no end stamp
+        assert np.isnan(ac.minutes(str(log)))
+
+    @staticmethod
+    def _write(d, starts, bo):
+        """A mirrored search: starting rows, then optimizer designs in manifest
+        order as (cnr, mpxi), None for a design that produced no row."""
+        d.mkdir(parents=True)
+        rows = [dict(config=n, cnr_sector_mean=c, mpxi_windowed_active_mean=m, **_VEC) for n, c, m in starts]
+        man = []
+        for i, v in enumerate(bo):
+            n = f"mobo_{i:04d}_x"
+            man.append(dict(idx=i, config_name=n, work_dir=f"/ddn/scratch/node/{d.name}/{n}",
+                            status="no_row" if v is None else "completed"))
+            if v is not None:
+                rows.append(dict(config=n, cnr_sector_mean=v[0], mpxi_windowed_active_mean=v[1], **_VEC))
+        pd.DataFrame(rows).to_csv(d / "results_summary_mobo.csv", index=False)
+        pd.DataFrame(man).to_csv(d / "mobo_manifest.csv", index=False)
+
+    def _run(self, tmp_path, *extra):
+        return subprocess.run([sys.executable, os.path.join(_eai_dir(), "analyze_campaign.py"),
+                               "--mirror", str(tmp_path / "mirror"), "--out", str(tmp_path / "out"),
+                               "--h2h", os.path.join(_REPO_ROOT, "archive_backup", "h2h"), *extra],
+                              capture_output=True, text=True, timeout=300)
+
+    def test_small_mirror_end_to_end(self, tmp_path):
+        starts = [(f"lhs6d_000_{i:03d}", 3.0 + i / 100, 2.0 if i % 2 == 0 else 3.0) for i in range(21)]
+        self._write(tmp_path / "mirror" / "warm_r0", starts + starts[:1],      # one eai-v1 repeat
+                    [(4.0, 2.0), None, (4.5, 1.8), (4.9, 2.7), (4.2, 1.6)])
+        self._write(tmp_path / "mirror" / "armB2_warm_r0", starts, [(3.9, 2.0), (4.1, 2.2)])
+        r = self._run(tmp_path)
+        assert r.returncode != 0 and "33 searches have not reached the final point" in r.stdout   # 31 missing
+        assert "warm_r0: 5 of 100 optimizer designs" in r.stdout and "fresh_s10: missing" in r.stdout
+        assert not (tmp_path / "out" / "candidates.csv").exists()
+        r = self._run(tmp_path, "--allow_partial")
+        assert r.returncode == 0, r.stderr[-3000:]
+        out = tmp_path / "out"
+        assert not (out / "candidates.csv").exists()
+        s = pd.read_csv(out / "searches.csv").set_index("search")
+        a = s.loc["warm_r0"]
+        assert (a.arm, a.start, a.start_rows, a.repeated_designs) == ("A", "paired", 21, 1)
+        assert (a.optimizer_designs, a.optimizer_with_cnr, a.lost, a.running, a.designs_run_on_eai) == (5, 4, 1, 0, 5)
+        assert abs(a.best_inwindow_end - 4.5) < 1e-12               # 4.9 lies outside the window
+        assert (a.inwindow_end, a.measured_end) == (3, 4)
+        assert s.loc["armB2_warm_r0", "arm"] == "B"
+        c = pd.read_csv(out / "candidates_partial.csv", float_precision="round_trip")
+        assert c.name.tolist()[:2] == ["step2a__tmi_reference_000", "step2a__nd2fine_960"]
+        assert c.loc[1, "n_det_ring2"] == 960 and abs(c.loc[1, "aperture_diam_mm"] - 0.2717795628467184) < 1e-15
+        assert c[c.search == "warm_r0"].config.tolist() == ["mobo_0002_x", "mobo_0004_x", "mobo_0000_x"]
+        assert c[c.search == "armB2_warm_r0"].config.tolist() == ["mobo_0001_x", "mobo_0000_x"]
+        assert c[c.search == "warm_r0"].aperture_diam_mm.iloc[0] == _VEC["aperture_diam_mm"]   # every digit
+        p = pd.read_csv(out / "paired_ccr.csv").iloc[0]
+        assert p.proposals == 2                                      # Arm B has only 2 so far
+        assert abs(p.eai_A - 4.0) < 1e-12 and abs(p.eai_B - 4.1) < 1e-12
+        assert len(pd.read_csv(out / "ccr_candidates.csv")) == 18
+        assert pd.read_csv(out / "pairs.csv").designs.tolist() == [23]
+
+    def test_lost_design_keeps_its_place(self):
+        ac = _eai_module("analyze_campaign")
+        start = pd.DataFrame(dict(cnr_sector_mean=[3.0] * 20, mpxi_windowed_active_mean=[2.0] * 20,
+                                  n_det_ring2=[960] * 20))           # one starting design lost
+        bo = pd.DataFrame(dict(idx=[0, 1, 2], cnr_sector_mean=[4.0, np.nan, 4.5],
+                               mpxi_windowed_active_mean=[2.0, np.nan, 2.0], n_det_ring2=[960] * 3))
+        c = ac.curve(start, bo)
+        assert len(c) == 24 and c[20] == 3.0 and c[21] == 4.0 and c[22] == 4.0 and c[23] == 4.5
+        assert np.isnan(ac.at(c, 0)) and np.isnan(ac.at(c, 25))
+
+    def test_ccr_proposals_keep_their_place(self):
+        """CCR's lost proposals take a place too, as Empire AI's do."""
+        ac = _eai_module("analyze_campaign")
+        df = pd.read_csv(os.path.join(_REPO_ROOT, "archive_backup", "h2h", "results_h2h_2obj_r4.csv"))
+        start, bo = ac.ccr_arm(df)
+        idx = df.config.iloc[21:].str.extract(r"^mobo_(\d+)")[0].astype(int)
+        assert len(start) == 21 and len(bo) == idx.max() + 1 > len(df) - 21
+        lost = sorted(set(range(idx.max() + 1)) - set(idx))
+        assert bo.loc[bo.idx.isin(lost), "cnr_sector_mean"].isna().all()
+
+
+class TestRebuild:
+    """rebuild.py: a design whose work_dir holds its 16 PPDF files is used where
+    it is; any other is built from its exact design vector, must reproduce its
+    recorded values, and counts as built only once its CNR step has run."""
+
+    STUB = r'''#!/bin/bash
+mkdir -p "$WORK_DIR"
+for i in $(seq 0 15); do echo x > "$WORK_DIR/position_00${i}_ppdfs_t8_00.hdf5"; done
+echo "$CONFIG_NAME $APERTURE_DIAM $N_APERTURES $N_DET_RING1 $N_DET_RING2 $D2_INNER $D3_INNER" >> "$WORK_DIR/../built.txt"
+echo "pipeline log" > /dev/null
+printf 'config,mpxi_windowed_active_mean,cnr_sector_mean\n%s,2.0,4.4\n' "$CONFIG_NAME" > "$RESULTS_CSV"
+'''
+
+    def _setup(self, tmp_path, inloop=4.4):
+        code = tmp_path / "code"
+        (code / "optimization").mkdir(parents=True)
+        (code / "optimization" / "run_sai_pipeline.sh").write_text(self.STUB)
+        have = tmp_path / "scr" / "node1" / "warm_r0" / "mobo_0001_x"
+        have.mkdir(parents=True)
+        for i in range(16):
+            (have / f"position_00{i}_ppdfs_t8_00.hdf5").write_text("x")
+        pruned = tmp_path / "scr" / "node1" / "warm_r0" / "mobo_0002_y"
+        pruned.mkdir()
+        pd.DataFrame([dict(name="warm_r0__mobo_0001_x", arm="A", work_dir=str(have), inloop_cnr=4.0, mpxi=2.0, **_VEC),
+                      dict(name="warm_r0__mobo_0002_y", arm="A", work_dir=str(pruned), inloop_cnr=inloop, mpxi=2.0, **_VEC)]
+                     ).to_csv(tmp_path / "candidates.csv", index=False)
+        pd.DataFrame([dict(name="ccr_2obj__mobo_0067_z", arm="ccr_2obj", inloop_cnr=4.7, mpxi=2.0005, **_VEC)]
+                     ).to_csv(tmp_path / "ccr_candidates.csv", index=False)
+        return code, have
+
+    def _run(self, tmp_path, code, *files):
+        return subprocess.run([sys.executable, os.path.join(_eai_dir(), "rebuild.py"), "--root",
+                               str(tmp_path / "rebuild"), "--list", str(tmp_path / "designs.txt"),
+                               "--logs", str(tmp_path / "logs"), "--code", str(code),
+                               *[str(tmp_path / f) for f in files]],
+                              capture_output=True, text=True, timeout=120)
+
+    def test_keeps_complete_builds_missing_and_is_idempotent(self, tmp_path):
+        code, have = self._setup(tmp_path)
+        r = self._run(tmp_path, code, "candidates.csv", "ccr_candidates.csv")
+        assert r.returncode == 0, r.stdout + r.stderr
+        R = tmp_path / "rebuild"
+        assert (tmp_path / "designs.txt").read_text().split() == [
+            str(have), str(R / "warm_r0" / "mobo_0002_y"), str(R / "ccr_2obj" / "mobo_0067_z")]
+        built = (R / "warm_r0" / "built.txt").read_text().split()
+        assert built == ["mobo_0002_y", "0.2813133658913763", "195", "486", "694", "417.0", "449.36"]
+        assert (R / "ccr_2obj" / "built.txt").exists()
+        assert sorted(os.listdir(tmp_path / "logs")) == [
+            "ccr_2obj__mobo_0067_z.csv", "ccr_2obj__mobo_0067_z.log", "warm_r0__mobo_0002_y.csv", "warm_r0__mobo_0002_y.log"]
+        r = self._run(tmp_path, code, "candidates.csv", "ccr_candidates.csv")
+        assert r.returncode == 0 and "0 to build" in r.stdout
+        assert len((R / "warm_r0" / "built.txt").read_text().splitlines()) == 1
+
+    def test_an_unfinished_build_is_wiped_and_redone(self, tmp_path):
+        """16 files without a CNR are a build that stopped in its PPDF step."""
+        code, _ = self._setup(tmp_path)
+        t = tmp_path / "rebuild" / "warm_r0" / "mobo_0002_y"
+        t.mkdir(parents=True)
+        for i in range(16):
+            (t / f"position_00{i}_ppdfs_t8_00.hdf5").write_text("partial")
+        r = self._run(tmp_path, code, "candidates.csv")
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert (t / "position_000_ppdfs_t8_00.hdf5").read_text() == "x\n"
+        assert (tmp_path / "rebuild" / "warm_r0" / "built.txt").exists()
+
+    def test_a_build_that_does_not_reproduce_fails(self, tmp_path):
+        code, _ = self._setup(tmp_path, inloop=4.5)                # recorded 4.5, rebuilt 4.4
+        r = self._run(tmp_path, code, "candidates.csv")
+        assert r.returncode != 0 and "DOES NOT REPRODUCE" in r.stdout
+        assert not (tmp_path / "designs.txt").exists()
+
+    def test_refuses_a_design_it_cannot_build(self, tmp_path):
+        code, _ = self._setup(tmp_path)
+        pd.DataFrame([dict(name="step2a__nd2fine_960", arm="ref", work_dir=str(tmp_path / "gone"))]
+                     ).to_csv(tmp_path / "refs.csv", index=False)
+        (tmp_path / "designs.txt").write_text("stale\n")
+        r = self._run(tmp_path, code, "refs.csv")
+        assert r.returncode != 0 and "no design vector" in (r.stdout + r.stderr)
+        assert not (tmp_path / "designs.txt").exists()            # no stale list survives
+
+
+class TestRemeasure:
+    """remeasure.sh: links and checks each design's 16 PPDFs, runs every seed,
+    copies each run as it ends, resumes, fails loudly, shares a list across
+    shards, keeps jobs of one RUN apart, and holds seeds 40 on back (rule 4)."""
+
+    STUB = r'''import argparse, os, sys, time
+import numpy as np
+ap = argparse.ArgumentParser()
+for k in ("--work_dir", "--phantom_path", "--out_subdir", "--seed", "--iterations", "--T_sec"):
+    ap.add_argument(k)
+a = ap.parse_args()
+with open(os.environ["CALLS"], "a") as f:
+    f.write(f"{os.path.basename(a.work_dir)} {a.seed} {a.T_sec}\n")
+time.sleep(float(os.environ.get("STUB_SLEEP", "0")))
+assert len([f for f in os.listdir(a.work_dir) if f.startswith("position_")]) == 16
+if a.seed == os.environ.get("FAIL_SEED"):
+    sys.exit(1)
+d = os.path.join(a.work_dir, a.out_subdir)
+os.makedirs(d, exist_ok=True)
+np.savez(os.path.join(d, "cnr_results.npz"), x=np.zeros(1))
+with open(os.path.join(d, "dense_cnr.csv"), "w") as f:
+    f.write("iteration,cnr_sector_mean\n" + "".join(f"{i},{4 + int(a.seed) / 100}\n" for i in range(1, 6)))
+'''
+    DESIGNS = (("warm_r0", "mobo_a"), ("fresh_s10", "mobo_b"))
+
+    def _setup(self, tmp_path, n_files=(16, 16), corrupt=False):
+        code = tmp_path / "code"
+        (code / "optimization").mkdir(parents=True)
+        (code / "optimization" / "run_iter_count_pair.py").write_text(self.STUB)
+        (code / "data" / "sai_10mm").mkdir(parents=True)
+        (code / "data" / "sai_10mm" / "hot_rods_phantom_10.0_mm_x_10.0_mm.pt").write_text("phantom")
+        (code / "COMMIT").write_text("test\n")
+        dirs = []
+        for (search, design), k in zip(self.DESIGNS, n_files):
+            d = tmp_path / "scratch" / "node1" / search / design
+            d.mkdir(parents=True)
+            for i in range(k):
+                _ppdf(d / f"position_00{i}_ppdfs_t8_00.hdf5")
+            dirs.append(str(d))
+        if corrupt:
+            (tmp_path / "scratch" / "node1" / "fresh_s10" / "mobo_b" / "position_003_ppdfs_t8_00.hdf5").write_text("x")
+        (tmp_path / "designs.txt").write_text("\n".join(dirs + dirs[:1]))   # a repeat, no final newline
+        return code
+
+    def _env(self, tmp_path, code, **env):
+        e = dict(os.environ, CODE=str(code), SCR=str(tmp_path / "scr"), OUT=str(tmp_path / "out"),
+                 RUN="r1", DESIGNS=str(tmp_path / "designs.txt"), SEED_FIRST="0", SEED_LAST="2", PAR="2",
+                 CALLS=str(tmp_path / "calls.txt"),
+                 SPEBT_VENV=os.path.dirname(os.path.dirname(sys.executable)))
+        e.pop("SLURM_JOB_ID", None)
+        e.update(env)
+        return e
+
+    def _run(self, tmp_path, code, **env):
+        return subprocess.run(["bash", os.path.join(_eai_dir(), "remeasure.sh")],
+                              capture_output=True, text=True, env=self._env(tmp_path, code, **env), timeout=300)
+
+    def _calls(self, tmp_path):
+        p = tmp_path / "calls.txt"
+        return sorted(p.read_text().splitlines()) if p.exists() else []
+
+    def test_runs_every_seed_resumes_and_cleans_up(self, tmp_path):
+        code = self._setup(tmp_path)
+        r = self._run(tmp_path, code)
+        assert r.returncode == 0, r.stdout + r.stderr
+        out = tmp_path / "out"
+        got = sorted(p.relative_to(out).as_posix() for p in out.glob("*/remeasure_*/dense_cnr.csv"))
+        assert got == [f"{n}/remeasure_N400_T10_seed{s}/dense_cnr.csv"
+                       for n in ("fresh_s10__mobo_b", "warm_r0__mobo_a") for s in range(3)]
+        assert len(self._calls(tmp_path)) == 6                     # the repeated line ran once
+        assert not (tmp_path / "scr" / "r1" / "job_local").exists()
+        assert (out / "COMMIT").read_text().strip() == "test" and (out / "provenance_local.txt").exists()
+        r = self._run(tmp_path, code)                               # same RUN: everything is there
+        assert r.returncode == 0 and len(self._calls(tmp_path)) == 6
+
+    def test_refuses_before_any_run(self, tmp_path):
+        code = self._setup(tmp_path, n_files=(16, 15))
+        r = self._run(tmp_path, code)
+        assert r.returncode == 1 and "not 16 PPDF files" in r.stdout and "fresh_s10__mobo_b" in r.stdout
+        assert self._calls(tmp_path) == []
+        (tmp_path / "designs.txt").write_text("scratch/node1/warm_r0/mobo_a\n")
+        r = self._run(tmp_path, code)
+        assert r.returncode == 1 and "not an absolute path" in r.stdout
+        (tmp_path / "designs.txt").write_text("")
+        r = self._run(tmp_path, code)
+        assert r.returncode == 1 and "missing or empty" in r.stdout
+        (tmp_path / "designs.txt").write_text(str(tmp_path / "scratch" / "node1" / "warm_r0" / "mobo_a") + "\n")
+        r = self._run(tmp_path, code, SHARD="2/2")
+        assert r.returncode == 1 and "SHARD=2/2" in r.stdout
+
+    def test_refuses_unreadable_ppdfs(self, tmp_path):
+        code = self._setup(tmp_path, corrupt=True)
+        r = self._run(tmp_path, code)
+        assert r.returncode == 1 and "unreadable" in r.stdout and self._calls(tmp_path) == []
+
+    def test_a_failed_run_fails_the_job_and_is_rerun(self, tmp_path):
+        code = self._setup(tmp_path)
+        r = self._run(tmp_path, code, FAIL_SEED="1")
+        assert r.returncode == 1 and "MISSING: warm_r0__mobo_a seed 1" in r.stdout
+        assert (tmp_path / "scr" / "r1" / "job_local" / "warm_r0__mobo_a").exists()   # kept for the rerun
+        r = self._run(tmp_path, code)
+        assert r.returncode == 0, r.stdout
+        assert len(self._calls(tmp_path)) == 8                     # 6, then the two failed runs again
+
+    def test_shards_split_one_list(self, tmp_path):
+        code = self._setup(tmp_path)
+        r = self._run(tmp_path, code, SHARD="1/2")
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert {c.split()[0] for c in self._calls(tmp_path)} == {"fresh_s10__mobo_b"}
+
+    def test_jobs_of_one_run_on_the_same_designs_do_not_interfere(self, tmp_path):
+        """The held-out step: T_sec 10 and a count level at once, one RUN."""
+        code = self._setup(tmp_path)
+        sh = os.path.join(_eai_dir(), "remeasure.sh")
+        ps = [subprocess.Popen(["bash", sh], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                               env=self._env(tmp_path, code, SLURM_JOB_ID=j, T_SEC=t, STUB_SLEEP="0.5"))
+              for j, t in (("101", "10"), ("102", "2.5"))]
+        outs = [p.communicate(timeout=300)[0] for p in ps]
+        assert [p.returncode for p in ps] == [0, 0], outs
+        assert len(list((tmp_path / "out").glob("*/remeasure_N400_T*_seed*/dense_cnr.csv"))) == 12
+
+    def test_held_out_seeds_only_for_the_headline_and_references(self, tmp_path):
+        code = self._setup(tmp_path)
+        r = self._run(tmp_path, code, SEED_FIRST="40", SEED_LAST="41")
+        assert r.returncode == 1 and "no headline.txt" in r.stdout
+        (code / "optimization" / "eai").mkdir()
+        (code / "optimization" / "eai" / "headline.txt").write_text("warm_r0__mobo_a\n# rule 3\n")
+        r = self._run(tmp_path, code, SEED_FIRST="40", SEED_LAST="41")
+        assert r.returncode == 1 and "fresh_s10__mobo_b is not the headline" in r.stdout
+        assert self._calls(tmp_path) == []
+        (tmp_path / "designs.txt").write_text(str(tmp_path / "scratch" / "node1" / "warm_r0" / "mobo_a") + "\n")
+        r = self._run(tmp_path, code, SEED_FIRST="40", SEED_LAST="41")
+        assert r.returncode == 0, r.stdout + r.stderr
+
+
+class TestApplyRules:
+    """apply_rules.py: rule 3 on complete selection seeds and only among the
+    CNR-alone candidates, run from committed code; the headline written once;
+    rule 5 only on a committed headline; and the statistics it uses."""
+
+    @staticmethod
+    def _remeasure(root, levels, seeds=range(80), drop=()):
+        """dense_cnr.csv per design and seed: a peaked curve at the design's
+        level plus seed noise (fixed generator)."""
+        rng = np.random.default_rng(0)
+        it = np.arange(1, 401)
+        for name, (level, peak) in levels.items():
+            for s in seeds:
+                if (name, s) in drop:
+                    continue
+                d = root / name / f"remeasure_N400_T10_seed{s}"
+                d.mkdir(parents=True)
+                y = level - ((it - peak) / 300.0) ** 2 + rng.normal(0, 0.08)
+                pd.DataFrame(dict(iteration=it, cnr_sector_mean=y)).to_csv(d / "dense_cnr.csv", index=False)
+
+    # The best design overall is CCR's, then arm B's, then nd2fine_960: rule 3
+    # must still pick the best CNR-alone candidate, fresh_s11__mobo_1.
+    LEVELS = {"step2a__tmi_reference_000": (3.6, 370), "step2a__nd2fine_960": (4.72, 190),
+              "fresh_s10__mobo_1": (4.65, 150), "fresh_s10__mobo_2": (4.60, 150),
+              "fresh_s11__mobo_1": (4.69, 160), "fresh_s11__mobo_2": (4.55, 150),
+              "armB2_fresh_s11__mobo_1": (4.75, 150), "armB2_fresh_s10__mobo_1": (4.50, 150),
+              "ccr_2obj__mobo_0067_z": (4.95, 150)}
+
+    def _setup(self, tmp_path, drop=()):
+        self._remeasure(tmp_path / "rm", self.LEVELS, drop=drop)
+        rows = [dict(name=n, arm=("ref" if n.startswith("step2a") else "B" if n.startswith("armB2")
+                                  else "ccr_2obj" if n.startswith("ccr") else "A"),
+                     search=n.split("__")[0], n_det_ring2=960 if n == "fresh_s11__mobo_1" else 800)
+                for n in self.LEVELS]
+        c = pd.DataFrame(rows)
+        c[c.arm != "ccr_2obj"].to_csv(tmp_path / "candidates.csv", index=False)
+        c[c.arm == "ccr_2obj"].drop(columns=["search"]).to_csv(tmp_path / "ccr_candidates.csv", index=False)
+        pd.DataFrame(dict(search=["fresh_s10", "fresh_s11", "fresh_s12", "armB2_fresh_s10", "armB2_fresh_s11"],
+                          arm=["A", "A", "A", "B", "B"])).to_csv(tmp_path / "searches.csv", index=False)
+        (tmp_path / "designs.txt").write_text("".join(f"/scr/{n.split('__')[0]}/{n.split('__')[1]}\n" for n in self.LEVELS))
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        for f in ("apply_rules.py", "analyze_campaign.py"):
+            shutil.copy(os.path.join(_eai_dir(), f), repo / f)
+        self.git(tmp_path, "init", "-q")
+        self.git(tmp_path, "add", ".")
+        self.git(tmp_path, "commit", "-q", "-m", "code")
+
+    @staticmethod
+    def git(tmp_path, *c):
+        return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *c],
+                              cwd=tmp_path / "repo", capture_output=True, text=True)
+
+    def _run(self, tmp_path, stage, *extra):
+        sel = ["--candidates", str(tmp_path / "candidates.csv"), "--ccr_candidates", str(tmp_path / "ccr_candidates.csv"),
+               "--searches", str(tmp_path / "searches.csv"), "--designs", str(tmp_path / "designs.txt")]
+        return subprocess.run([sys.executable, str(tmp_path / "repo" / "apply_rules.py"), stage,
+                               "--remeasure", str(tmp_path / "rm"), "--out", str(tmp_path / "rules"),
+                               "--headline_file", str(tmp_path / "repo" / "headline.txt"),
+                               *(sel if stage == "selection" else []), *extra],
+                              capture_output=True, text=True, timeout=300)
+
+    def test_selection_then_heldout_on_a_committed_headline(self, tmp_path):
+        self._setup(tmp_path)
+        r = self._run(tmp_path, "selection")
+        assert r.returncode == 0, r.stdout + r.stderr
+        head = (tmp_path / "repo" / "headline.txt").read_text().splitlines()
+        assert head[0] == "fresh_s11__mobo_1" and "chosen by code" in head[1]
+        assert "ring 2 at the 960 cap: 1 of 2" in r.stdout
+        assert "without a candidate count as not reliable: ['fresh_s12']" in r.stdout and "of 3, 95%" in r.stdout
+        assert "Budgets differ" in r.stdout
+        held = (tmp_path / "rules" / "heldout_designs.txt").read_text().split()
+        assert sorted(held) == ["/scr/fresh_s11/mobo_1", "/scr/step2a/nd2fine_960", "/scr/step2a/tmi_reference_000"]
+        p = pd.read_csv(tmp_path / "rules" / "pairs_remeasured.csv").set_index("start")
+        assert abs(p.loc["fresh_s11", "diff"] + 0.06) < 0.06 and abs(p.loc["fresh_s10", "diff"] - 0.15) < 0.06
+        r = self._run(tmp_path, "selection")
+        assert r.returncode != 0 and "chosen once" in r.stdout + r.stderr
+        r = self._run(tmp_path, "heldout")
+        assert r.returncode != 0 and "not committed" in r.stdout + r.stderr
+        self.git(tmp_path, "add", "headline.txt")
+        self.git(tmp_path, "commit", "-q", "-m", "headline")
+        r = self._run(tmp_path, "heldout")
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert "Rule 5" in r.stdout and "nd2fine_960 on all 80 seeds: 4." in r.stdout
+        assert r.stdout.count("Secondary, no claim") == 2
+
+    def test_selection_refuses_uncommitted_code_and_missing_seeds(self, tmp_path):
+        self._setup(tmp_path, drop={("fresh_s10__mobo_2", 7)})
+        r = self._run(tmp_path, "selection")
+        assert r.returncode != 0 and "missing fresh_s10__mobo_2: 1 seeds" in r.stdout
+        assert not (tmp_path / "repo" / "headline.txt").exists()
+        with open(tmp_path / "repo" / "apply_rules.py", "a") as f:
+            f.write("\n# an edit\n")
+        r = self._run(tmp_path, "selection")
+        assert r.returncode != 0 and "committed code" in r.stdout + r.stderr
+
+    def test_rule5_verdicts(self):
+        ar = _eai_module("apply_rules")
+        y = np.random.default_rng(1).normal(4.70, 0.10, 40)
+        e = np.random.default_rng(2).normal(0, 0.10, 40)
+        assert ar.rule5(y + 0.20 + e, y)["verdict"] == "higher"
+        assert ar.rule5(y - 0.20 + e, y)["verdict"] == "lower"
+        assert ar.rule5(y + e * 0.1, y)["verdict"] == "equivalent"
+        assert ar.rule5(y + 0.05 + e * 4, y)["verdict"] == "inconclusive"
+        r = ar.rule5(y + 0.055 + e * 0.1, y)                        # above zero, inside the margin
+        assert r["verdict"] == "higher" and r["within_margin"]
+
+    def test_welch_interval_matches_scipy(self):
+        from scipy import stats
+        ar = _eai_module("apply_rules")
+        x, y = np.random.default_rng(3).normal(4.8, 0.1, 40), np.random.default_rng(4).normal(4.7, 0.15, 35)
+        d, lo, hi, p = ar.welch(x, y, 0.95)
+        t = stats.ttest_ind(x, y, equal_var=False)
+        ci = t.confidence_interval(0.95)
+        assert abs(lo - ci.low) < 1e-10 and abs(hi - ci.high) < 1e-10 and abs(p - t.pvalue) < 1e-12
+
+    def test_clopper_pearson(self):
+        ar = _eai_module("apply_rules")
+        assert ar.clopper_pearson(0, 10)[0] == 0.0 and abs(ar.clopper_pearson(0, 10)[1] - (1 - 0.025 ** 0.1)) < 1e-9
+        assert abs(ar.clopper_pearson(10, 10)[0] - 0.025 ** 0.1) < 1e-9
+        lo, hi = ar.clopper_pearson(5, 10)
+        assert abs(lo - 0.187086) < 1e-5 and abs(hi - 0.812914) < 1e-5
+
+    def test_load_refuses_conflicting_copies_and_short_curves(self, tmp_path):
+        ar = _eai_module("apply_rules")
+        for root, v in (("a", 4.0), ("b", 4.1)):
+            d = tmp_path / root / "x__y" / "remeasure_N400_T10_seed0"
+            d.mkdir(parents=True)
+            pd.DataFrame(dict(iteration=range(1, 401), cnr_sector_mean=[v] * 400)).to_csv(d / "dense_cnr.csv", index=False)
+        with pytest.raises(SystemExit, match="differs"):
+            ar.load([str(tmp_path / "a"), str(tmp_path / "b")])
+        assert len(ar.load([str(tmp_path / "a"), str(tmp_path / "a")])) == 1
+        d = tmp_path / "c" / "x__y" / "remeasure_N400_T10_seed1"
+        d.mkdir(parents=True)
+        pd.DataFrame(dict(iteration=range(1, 301), cnr_sector_mean=[4.0] * 300)).to_csv(d / "dense_cnr.csv", index=False)
+        with pytest.raises(SystemExit, match="without 400 iterations"):
+            ar.load([str(tmp_path / "c")])
