@@ -133,9 +133,11 @@ def main():
                     help="Also delete the beam masks, properties and ASCI histograms "
                          "of pruned designs. On by default in a node campaign "
                          "(MOBO_EXECUTOR=local, run_node_searches.sh)")
-    ap.add_argument("--min_age_hours", type=float, default=2.0,
+    ap.add_argument("--min_age_hours", type=float, default=0.5,
                     help="Leave alone any design directory with a file modified "
-                         "this recently: a pipeline may be running in it")
+                         "this recently: a pipeline may be running in it (half an "
+                         "hour since 26 Oct 2026: no launcher re-runs a measured design "
+                         "any more, and 2 h of finished designs filled 1.4 TB of scratch)")
     args = ap.parse_args()
 
     res_path = os.path.join(args.results_dir, RESULTS_NAME)
