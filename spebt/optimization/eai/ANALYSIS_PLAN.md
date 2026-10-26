@@ -187,3 +187,29 @@ are identical to those of the original code). The queued follow-ups were
 cancelled and requeued with the fixed launcher: nodes 1 to 7 are first jobs
 148500, 148502, 148540, 148537, 148544, 148546 and 148548, with follow-ups
 148578, 148579, 148582, 148580, 148583, 148584 and 148581.
+
+## Addendum 4, 25 Oct 2026 21:45 (data incident, before any re-measurement)
+
+**The 16:10 code move stopped the pipelines that were running.** Moving the
+live tree to b4e88f0 replaced every file under /projects, an NFS mount, so each
+pipeline then running on a compute node lost its open script ("Stale file
+handle") at its next read, and stopped. 26 designs were lost:
+
+- 5 optimizer designs (`warm_r0` mobo_0009, `warm_r1` mobo_0007, `warm_r2`
+  mobo_0009, `armB2_warm_r0` mobo_0001, `armB2_warm_r1` mobo_0001). They are
+  recorded as lost (no_row) and count toward their search's 100.
+- 21 starting designs, one in each fresh search except `fresh_s14`,
+  `fresh_s26`, `fresh_s28` and `armB2_fresh_s13`, `s15`, `s17`. At 21:25, 18
+  of them were requeued by appending each design's own line to its search's
+  lhs_pending.csv, which the running launcher was still reading
+  (eai/fix_lost_starts.sh); they run with their own parameters and noise seed,
+  before the optimizer starts. `fresh_s10`, `fresh_s11` and `fresh_s12` had
+  started their optimizer by then (21:10 to 21:17) and keep 20 starting
+  designs (`lhs6d_e1x_006` lost); fresh_s12's late append was removed.
+
+The follow-ups were requeued again (148891 to 148897) with a launcher that
+leaves a search's starting designs alone once its optimizer has started, so
+those three designs are never evaluated late. Nothing under /projects/.../spebt
+is replaced while jobs run; later code goes to new paths. The nine shared starts
+stay identical (the repaired searches have all 21). Per search, the report gives
+the number of starting designs and of lost optimizer designs.
