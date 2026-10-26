@@ -4,7 +4,8 @@
 # Each search is a directory holding its own results_summary_mobo.csv (warm
 # start: the 21 evaluated starting designs) or an lhs_pending.csv (fresh start:
 # 21 designs still to evaluate). For each search, in its own slot:
-#   1. evaluate every lhs_pending.csv design that has no results row yet
+#   1. until its optimizer has started, evaluate every lhs_pending.csv design
+#      that has no CNR yet
 #   2. run its controller, run_mobo_loop.py, with MOBO_EXECUTOR=local, so each
 #      proposed design runs on this node as a child process
 # Every PRUNE_EVERY seconds the PPDFs of designs no longer worth re-measuring
@@ -105,7 +106,8 @@ EOF
 slot() {
   local S=$1
   echo "[$(date +%H:%M)] $(basename $S): starting"
-  evaluate_pending "$S"
+  # The starting set is fixed once the optimizer has started (it has a manifest).
+  [ -s "$S/mobo_manifest.csv" ] || evaluate_pending "$S"
   echo "=== job $JOB on $(hostname), $(date)" >> "$S/controller.log"
   MOBO_RESULTS_DIR=$S OMP_NUM_THREADS=4 python "$CODE/optimization/run_mobo_loop.py" \
     --max_iters "$MAX_ITERS" >> "$S/controller.log" 2>&1
