@@ -241,3 +241,17 @@ Clarifications; no rule changes.
   selection runs from committed code, and headline.txt records that commit. The
   re-measurement refuses seeds from 40 on for anything but the committed headline
   and the two references.
+
+## Addendum 6, 27 Oct 2026 16:25 (campaign ended, before any campaign re-measurement)
+
+All 33 searches reached the final point, 21 + 100 manifest rows (no Slurm job left;
+first jobs 148500-148548 ended 27 Oct 03:34 to 15:29, follow-ups 148891-148897 by
+15:49). Node 4's first job 148537 hit its 48 h limit while `fresh_s21` mobo_0099, its
+search's 100th optimizer design, was running; the follow-up 148893 found 100 rows and
+stopped, so that design never finished and its manifest row still reads "running".
+By addendum 3 it is an orphaned design: it counts toward the 100 and is reported, and
+it is not re-run. analyze_campaign.py's completeness check cannot tell an orphaned row
+from a running one, so the candidates were written with `--allow_partial` at the same
+final read point (manifest rows idx < 100 in every search) and copied unchanged as
+candidates.csv; the check is otherwise unchanged. `fresh_s23` mobo_0098 is orphaned the
+same way, earlier in its search, and was already counted as lost.
