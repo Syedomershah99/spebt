@@ -33,13 +33,18 @@ EQS = {
     "eq_spearman.png": (r"$\rho = \dfrac{\mathrm{cov}(r,\,s)}{\sigma_r\,\sigma_s}$", INK, 16),
     # Dr. Yao's own equation from his R7-rY edit of slide 7 (23 Oct), laid out as he
     # typed it: x and f(x) bold vectors, x in the design space under argmax, f(x)
-    # added to the front. STIX (Times-compatible) for the script X and the
-    # double-struck E. \mathrm keeps that E upright, as his is (bare \mathbb{E} is
-    # STIX's slanted form), and HV is upright as in his 22 Oct rule.
-    "eq_xnext_ry.png": (r"$\mathbfit{x}_{\mathrm{next}} = \underset{\mathbfit{x}\in\mathcal{X}}{\mathrm{argmax}}\;"
+    # added to the front. STIX (Times-compatible) for the chi and the double-struck
+    # E. \mathrm keeps that E upright, as his is (bare \mathbb{E} is STIX's slanted
+    # form), and HV is upright as in his 22 Oct rule. The design space is the Greek
+    # chi, read "chi" (26 Oct: "you can insert Greek symbols"), not his script X.
+    "eq_xnext_ry.png": (r"$\mathbfit{x}_{\mathrm{next}} = \underset{\mathbfit{x}\in\chi}{\mathrm{argmax}}\;"
                         r"\mathrm{\mathbb{E}}[\mathrm{HV}(P\cup\{\mathbfit{f}(\mathbfit{x})\}) - \mathrm{HV}(P)]$", INK, 15, "stix"),
-    "eq_xnext_ry_green.png": (r"$\mathbfit{x}_{\mathrm{next}} = \underset{\mathbfit{x}\in\mathcal{X}}{\mathrm{argmax}}\;"
+    "eq_xnext_ry_green.png": (r"$\mathbfit{x}_{\mathrm{next}} = \underset{\mathbfit{x}\in\chi}{\mathrm{argmax}}\;"
                               r"\mathrm{\mathbb{E}}[\mathrm{HV}(P\cup\{\mathbfit{f}(\mathbfit{x})\}) - \mathrm{HV}(P)]$", GREEN, 15, "stix"),
+    # Slide 6 (26 Oct: "put a computation there, or a formula" for PPDS), as
+    # compute_metrics._ppds_components computes it: each detector's PPDF over the
+    # summed area of its strips, summed over detectors, averaged over the FOV.
+    "eq_ppds.png": (r"$\mathrm{PPDS} = \dfrac{1}{N}\,\sum_{j}\,\sum_{i}\,\dfrac{p_{ij}}{A_{i}}$", INK, 14, "stix"),
     # Backup slide 21 (QA, 24 Oct), at its 14 pt body size and in the same style:
     # vectors and matrices (x, k(x), K, y) bold italic, the kernel k(x, x') and the
     # scalars italic, the identity I, the transpose T and the operators upright.

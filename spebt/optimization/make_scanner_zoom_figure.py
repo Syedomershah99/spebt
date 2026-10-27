@@ -25,7 +25,7 @@ Usage:
   python make_scanner_zoom_figure.py [--out PATH] [--layers]
 
 --layers leaves PATH alone and writes the slide-8 click-build layers beside it:
-<stem>_l1_scanner.png (the drawing, ring labels, Ø key, scale bar) and <stem>_l2_zooms.png
+<stem>_l1_scanner.png (the drawing, ring numerals, Ø key, scale bar) and <stem>_l2_zooms.png
 (zoom windows and connectors, both insets, captions, searched/fixed key). Each is RGBA,
 transparent where it draws nothing. The full figure is rendered and checked in the same
 run, and the layers are written only if, laid over white in that order, they equal it to
@@ -76,7 +76,9 @@ S = 1.72                                   # main view scale, px per mm
 CX, CY = 1112, 597                         # scanner centre
 CORAL_DEG = {1: 24.0, 2: 0.0}              # direction of the ring II and ring III diameters
 CALL_Y = [118, 293, 468, 643]              # where each leader leaves ring IV
-CALL_X_NUM, CALL_X_TXT, CALL_X_LEAD = 26, 110, 505
+# Numerals only, no diameters or crystal counts (Dr. Yao, 26 Oct: "the numbers are not
+# needed at this time"); each leader starts just right of its numeral.
+CALL_X_NUM, CALL_X_LEAD = 26, 112
 KEY_X, KEY_Y = 30, 830
 R_IN = 390                                 # inset radius, px
 A_CEN, B_CEN = (590.0, 1502.0), (1478.0, 1502.0)
@@ -303,8 +305,7 @@ def build(out_path, layers=False):
         r = D_INNER[k] / 2
         dim(ax, P(ang_pt(r, deg + 180)), P(ang_pt(r, deg)), CORAL, lw=1.6, z=5, L=17, Wd=6)
 
-    # ring callouts: numeral, inner diameter, crystal count; leaders radial inside the rings
-    colours = [(GREY, UBB), (CORAL, UBB), (CORAL, GREY), (GREY, GREY)]
+    # ring callouts: the numeral only; leaders radial inside the rings
     r_exit = D_INNER[3] / 2 + H_R + 2.5
     for k, y_exit in enumerate(CALL_Y):
         deg = 180 - math.degrees(math.asin((CY - y_exit) / (S * r_exit)))
@@ -313,9 +314,7 @@ def build(out_path, layers=False):
                            color=LEAD, lw=0.8, zorder=7))
         ax.add_patch(Circle(p_ring, 6.0, fc=INK, ec="none", zorder=8))
         y = p_exit[1]
-        F.text(ax, CALL_X_NUM, y - 4, NUMERALS[k], fontweight="bold", color=INK, va="bottom")
-        F.text(ax, CALL_X_TXT, y - 4, f"Ø{D_INNER[k]:.0f} mm", color=colours[k][0], va="bottom")
-        F.text(ax, CALL_X_TXT, y + 4, f"{N_CRYST[k]} crystals", color=colours[k][1], va="top")
+        F.text(ax, CALL_X_NUM, y, NUMERALS[k], fontweight="bold", color=INK, va="center")
 
     # field of view, over the two diameters so it shows where they cross; the leader
     # runs from its edge, so the label reads as the FOV's and not the collimator's
@@ -333,6 +332,7 @@ def build(out_path, layers=False):
     ax.add_patch(Rectangle((KEY_X, KEY_Y + 57), 26, 26, fc=GREY, ec="none"))
     F.text(ax, KEY_X + 78, KEY_Y + 70, "fixed", color=INK, va="center")
     F.layer("scanner")
+    # Kept with the ring values gone: the FOV, the collimator caption and inset (b) still use Ø.
     F.text(ax, KEY_X, KEY_Y + 140, "Ø: ring inner diameter", color=INK, va="center")
     yb = KEY_Y + 225; bar = 100 * S
     seg(ax, (KEY_X, yb), (KEY_X + bar, yb), INK, lw=2.0)
