@@ -1,0 +1,44 @@
+4760 runs of 119 designs in 2 folder(s)
+Selection seeds 0-39, CNR at 150 iterations, T_sec 10.
+
+Best CNR-alone candidates (rule 3 picks the first):
+                                                              name   mean     se  best_iter  mean_at_best  n_det_ring2
+fresh_s28__mobo_0068_ap0.2785_nap191_nd1_414_nd2_960_d2_402_d3_512 4.9477 0.0182        173        4.9712          960
+fresh_s28__mobo_0082_ap0.2757_nap188_nd1_420_nd2_960_d2_387_d3_518 4.9259 0.0179        173        4.9481          960
+fresh_s23__mobo_0080_ap0.3009_nap130_nd1_442_nd2_960_d2_394_d3_582 4.9020 0.0162        158        4.9053          960
+fresh_s18__mobo_0072_ap0.2809_nap189_nd1_350_nd2_960_d2_416_d3_530 4.8983 0.0165        170        4.9160          960
+fresh_s13__mobo_0071_ap0.3065_nap130_nd1_372_nd2_948_d2_375_d3_618 4.8863 0.0205        156        4.8881          948
+step2a__tmi_reference_000: 3.5728 +/- 0.0610 (SD), best at 369 iterations (4.0941)
+step2a__nd2fine_960: 4.6808 +/- 0.0985 (SD), best at 189 iterations (4.7363)
+
+Reliability over 24 CNR-alone searches (each search's best candidate):
+  mean >= 4.603 (4.703 - 0.10) [the rule]: 23 of 24, 95% interval 79% to 100%
+  mean >= 4.653 (4.703 - 0.05): 23 of 24, 95% interval 79% to 100%
+  mean >= 4.553 (4.703 - 0.15): 23 of 24, 95% interval 79% to 100%
+  ring 2 at the 960 cap: 10 of 24 best candidates; headline 960 (at the cap: if rule 5 says higher, also re-measure 944 and 980)
+
+Shared starts (9), CNR alone minus several objectives, best candidates:
+    start  cnr_alone  several_objectives    diff
+fresh_s13     4.8863              4.7768  0.1095
+fresh_s14     4.8646              4.7097  0.1550
+fresh_s15     4.8316              4.7764  0.0552
+fresh_s16     4.8253              4.5580  0.2673
+fresh_s17     4.8304              4.8006  0.0298
+fresh_s18     4.8983              4.7354  0.1629
+  warm_r0     4.7674              4.5882  0.1792
+  warm_r1     4.7798              4.9064 -0.1267
+  warm_r2     4.7716              4.7049  0.0667
+  mean +0.0999, 95% t-interval +0.0136 to +0.1861: a difference
+
+CCR arms, best re-measured candidate (same re-measurement; descriptive). Budgets differ: CCR's candidates come from 78 to 80 optimizer designs per arm, in a box with ring 2 up to 1362, Empire AI's from 100 per search with ring 2 up to 960:
+        arm                                                                 name   mean     se  n_det_ring2  ring2_above_960
+   ccr_2obj    ccr_2obj__mobo_0064_ap0.2887_nap191_nd1_472_nd2_568_d2_390_d3_422 4.6341 0.0120          568            False
+ccr_2obj_r4 ccr_2obj_r4__mobo_0028_ap0.2875_nap145_nd1_592_nd2_788_d2_399_d3_488 4.7099 0.0167          788            False
+ccr_2obj_r5 ccr_2obj_r5__mobo_0043_ap0.2863_nap197_nd1_352_nd2_382_d2_351_d3_486 4.7237 0.0150          382            False
+   ccr_5obj    ccr_5obj__mobo_0064_ap0.2685_nap200_nd1_504_nd2_960_d2_393_d3_472 4.8157 0.0180          960            False
+ccr_5obj_r4 ccr_5obj_r4__mobo_0032_ap0.2909_nap196_nd1_460_nd2_870_d2_344_d3_472 4.8829 0.0178          870            False
+ccr_5obj_r5 ccr_5obj_r5__mobo_0077_ap0.2698_nap196_nd1_428_nd2_908_d2_359_d3_566 4.9403 0.0207          908            False
+  CNR-alone searches' best candidates: median 4.8175, range 4.5505 to 4.9477
+
+Headline: fresh_s28__mobo_0068_ap0.2785_nap191_nd1_414_nd2_960_d2_402_d3_512 (written to /Users/Omer/Desktop/RA/omer/spebt/optimization/eai/headline.txt; commit it before the held-out runs)
+Held-out list: /private/tmp/claude-501/-Users-Omer-Desktop-RA/340c45ed-be1a-4a41-80eb-d059165c72d8/scratchpad/campaign2/rules/heldout_designs.txt

@@ -1,0 +1,2 @@
+fresh_s28__mobo_0068_ap0.2785_nap191_nd1_414_nd2_960_d2_402_d3_512
+# rule 3: arm A, mean CNR 4.947713 at 150 iterations over seeds 0-39, own best 173 iterations; chosen by code aa539cb52a6c4809cc00f24cd4f9640b6288eda4
