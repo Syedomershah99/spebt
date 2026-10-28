@@ -1,0 +1,3 @@
+name,arm,search,config,aperture_diam_mm,n_apertures,n_det_ring1,n_det_ring2,d2_inner_mm,d3_inner_mm,work_dir,start,inloop_cnr,mpxi,ring2_at_cap
+ring2check__mobo_0068_nd2_944,check,ring2check,mobo_0068_nd2_944,0.2785178672810654,191,414,944,401.5339637511977,512.3222874275268,,,,,
+ring2check__mobo_0068_nd2_980,check,ring2check,mobo_0068_nd2_980,0.2785178672810654,191,414,980,401.5339637511977,512.3222874275268,,,,,

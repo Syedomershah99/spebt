@@ -1,0 +1,12 @@
+Ring 2 check (ANALYSIS_PLAN "Ring 2 at 960"): the headline rebuilt at 944 and 980 ring-II crystals, ring II
+diameter and all else unchanged; seeds 0-39, T_sec 10, CNR at 150 iterations. Descriptive, no claim.
+
+headline (960)  held-out 40-79: 4.9600 +/- 0.1114 SD; selection 0-39: 4.9477 +/- 0.1150
+nd2fine_960 (MIC design) held-out 40-79: 4.7024
+
+ring II 944: 4.8054 +/- 0.0989 SD (own best 179 it, 4.8414)
+   minus the headline at 960 (its held-out seeds): -0.1546, 95% interval -0.2015 to -0.1077, p = 5.5e-09
+   minus nd2fine_960 (MIC design, held-out seeds): +0.1030 (+2.2%), 95% interval +0.0611 to +0.1449
+ring II 980: 4.7996 +/- 0.1096 SD (own best 180 it, 4.8371)
+   minus the headline at 960 (its held-out seeds): -0.1603, 95% interval -0.2095 to -0.1111, p = 7.3e-09
+   minus nd2fine_960 (MIC design, held-out seeds): +0.0972 (+2.1%), 95% interval +0.0527 to +0.1417
