@@ -1,0 +1,18 @@
+5120 runs of 119 designs in 3 folder(s)
+Held-out seeds 40-79, T_sec 10; headline fresh_s28__mobo_0068_ap0.2785_nap191_nd1_414_nd2_960_d2_402_d3_512
+
+     design                                                               name  mean_150  sd_150  own_best_iter  mean_own_best  sd_own_best
+   headline fresh_s28__mobo_0068_ap0.2785_nap191_nd1_414_nd2_960_d2_402_d3_512    4.9600  0.1114            173         4.9831       0.1148
+  benchmark                                          step2a__tmi_reference_000    3.5693  0.0616            369         4.0949       0.0916
+nd2fine_960                                                step2a__nd2fine_960    4.7024  0.0892            189         4.7592       0.0947
+
+Rule 5, headline minus nd2fine_960 at 150 iterations: +0.2576 (+5.5%), 95% interval +0.2126 to +0.3025 (+4.5% to +6.4%), 90% interval +0.2200 to +0.2951: HIGHER
+Headline minus the benchmark: +1.3906 (+39.0%), 95% interval +1.3504 to +1.4309 (+37.8% to +40.1%), p = 1.8e-59
+Secondary, no claim: each at its own best count (173 and 189), headline minus nd2fine_960 +0.2239, 95% interval +0.1770 to +0.2708
+Secondary, no claim: each at its own best count (173 and 369), headline minus benchmark +0.8883, 95% interval +0.8420 to +0.9345
+The headline has ring 2 at the 960 cap: re-measure it at 944 and 980 crystals too.
+nd2fine_960 on all 80 seeds: 4.6916 +/- 0.0940 (SD)
+T_sec 2.5 (seeds 40-59, descriptive): headline 3.0717, benchmark 2.8264, nd2fine_960 2.9190; headline minus nd2fine_960 +0.1527 (+0.0739 to +0.2316)
+T_sec 5 (seeds 40-59, descriptive): headline 3.9973, benchmark 3.2817, nd2fine_960 3.8435; headline minus nd2fine_960 +0.1537 (+0.0748 to +0.2327)
+T_sec 20 (seeds 40-59, descriptive): headline 5.7115, benchmark 3.7317, nd2fine_960 5.3293; headline minus nd2fine_960 +0.3823 (+0.3180 to +0.4465)
+T_sec 40 (seeds 40-59, descriptive): headline 6.2626, benchmark 3.8305, nd2fine_960 5.8299; headline minus nd2fine_960 +0.4327 (+0.3815 to +0.4838)
