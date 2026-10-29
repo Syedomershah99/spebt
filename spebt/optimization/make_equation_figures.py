@@ -41,10 +41,18 @@ EQS = {
                         r"\mathrm{\mathbb{E}}[\mathrm{HV}(P\cup\{\mathbfit{f}(\mathbfit{x})\}) - \mathrm{HV}(P)]$", INK, 15, "stix"),
     "eq_xnext_ry_green.png": (r"$\mathbfit{x}_{\mathrm{next}} = \underset{\mathbfit{x}\in\chi}{\mathrm{argmax}}\;"
                               r"\mathrm{\mathbb{E}}[\mathrm{HV}(P\cup\{\mathbfit{f}(\mathbfit{x})\}) - \mathrm{HV}(P)]$", GREEN, 15, "stix"),
-    # Slide 6 (26 Oct: "put a computation there, or a formula" for PPDS), as
-    # compute_metrics._ppds_components computes it: each detector's PPDF over the
-    # summed area of its strips, summed over detectors, averaged over the FOV.
-    "eq_ppds.png": (r"$\mathrm{PPDS} = \dfrac{1}{N}\,\sum_{j}\,\sum_{i}\,\dfrac{p_{ij}}{A_{i}}$", INK, 14, "stix"),
+    # Slide 6 (26 Oct: "put a computation there, or a formula" for PPDS). Since his
+    # R9-rY (28 Oct) the formula is his, PPDS at pixel j: each detector's PPDF over
+    # the summed area of its strips, summed over the detectors; the searches' objective
+    # averages it over the FOV (compute_metrics._ppds_components). PPDS upright, as
+    # HV and cov are; 18 pt, the size of his equation.
+    "eq_ppds.png": (r"$\mathrm{PPDS}_{j} = \sum_{i}\,\dfrac{p_{ij}}{A_{i}}$", INK, 18, "stix"),
+    # Slide 9 (his R9-rY comment, 28 Oct: "Can you express the weighting
+    # mathematically?"): compute_fwhm_and_asci's fwhm_weighted_mean, every strip b's
+    # FWHM weighted by its sensitivity s_b, the mean of its PPDF over the strip. Green
+    # as the column it sits in; Sigma, not \sum, keeps b beside it.
+    "eq_fwhm_w_green.png": (r"$\mathrm{FWHM}_{\mathrm{w}} = \dfrac{\Sigma_{b}\, s_{b}\, \mathrm{FWHM}_{b}}"
+                            r"{\Sigma_{b}\, s_{b}}$", GREEN, 14, "stix"),
     # Backup slide 21 (QA, 24 Oct), at its 14 pt body size and in the same style:
     # vectors and matrices (x, k(x), K, y) bold italic, the kernel k(x, x') and the
     # scalars italic, the identity I, the transpose T and the operators upright.

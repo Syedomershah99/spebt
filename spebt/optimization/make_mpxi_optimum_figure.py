@@ -214,10 +214,10 @@ def main():
                      transform=ax.transAxes, fontsize=FS_TEXT, color=INK_MUTED,
                      ha="center", va="bottom")
 
-    # Dr. Yao, 22 Oct rehearsal: "strips under 0.45 mm" rewritten so others can
-    # follow it. The average is over the detectors that see a strip (the notes say so).
-    ax.set_xlabel("MPXI: strips per detector, counting only those under 0.45 mm wide",
-                  fontsize=FS_LABEL, color=INK)
+    # Dr. Yao, R9-rY (28 Oct): the axis title is "MPXI" alone; the strip filter is
+    # in the slide's source line. The average is over the detectors that see a strip
+    # (the notes say so).
+    ax.set_xlabel("MPXI", fontsize=FS_LABEL, color=INK)
     ax.set_ylabel("CNR", fontsize=FS_LABEL, color=INK)
     # Critique 3 (23 Oct): what the data establish, not a causal rule.
     ax.set_title("Mean CNR peaks at intermediate multiplexing",

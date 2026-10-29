@@ -271,9 +271,9 @@ def main():
                                ms=7.5, zorder=4)
     layer["asci"] += ax_a.plot(x[moved], asci[moved], "o", color=C_ASCI, ms=7.5,
                                mfc="white", mec=C_ASCI, mew=2.0, zorder=4)
-    # 22 Oct rehearsal: "strips under 0.45 mm" said in words, as on slide 10.
-    layer["asci"].append(ax_a.set_ylabel("ASCI (%), only strips\nunder 0.45 mm wide",
-                                         fontsize=FS_LABEL, color=C_ASCI))
+    # "ASCI (%)" alone, as Dr. Yao had slide 10's axis titled "MPXI" (R9-rY, 28 Oct);
+    # the FWHM filter is in the slide's source line.
+    layer["asci"].append(ax_a.set_ylabel("ASCI (%)", fontsize=FS_LABEL, color=C_ASCI))
     layer["asci"].append(ax_a.set_title(
         "Move ring II outward and ASCI keeps rising",
         fontsize=FS_TITLE, color=INK, pad=8, loc="left"))
