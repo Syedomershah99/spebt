@@ -30,6 +30,8 @@ expensive.
     ppds_window.csv            PPDS vs FWHM window
     mpxi_variants*.csv         MPXI definition variants
     mobo_manifest.csv          iteration manifest
+    fwhm_filter.csv            FWHM with the 0.45 mm strip filter, 330 designs with beam
+                               files (optimization/compute_fwhm_filter.py, 28 Oct 2026)
 
 ## Refreshing it
 
