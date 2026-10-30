@@ -371,7 +371,11 @@ def _per_beam_radial_fwhm(mask_row, ppdf_row, beam_id, angle):
     pix_idx = np.flatnonzero(mask_row == beam_id)
     if pix_idx.size < 3:
         return 0.0
-    r = _PX_COL[pix_idx] * math.cos(angle) + _PX_ROW[pix_idx] * math.sin(angle)
+    # x is the first pixel index (pymatana pixels_coordinates), the frame the stored angle
+    # is measured in. Until 30 Oct 2026 x and y were swapped here, which measured strips
+    # near 0 and 90 degrees across instead of along (about 1 mm, not 7): every PPDS in the
+    # archive, ring-I PPDS included, was computed that way.
+    r = _PX_ROW[pix_idx] * math.cos(angle) + _PX_COL[pix_idx] * math.sin(angle)
     w = ppdf_row[pix_idx].astype(np.float64)
     wsum = w.sum()
     if wsum <= 0.0:
