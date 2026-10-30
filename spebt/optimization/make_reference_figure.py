@@ -78,8 +78,9 @@ def main():
                 fontsize=13, fontweight="bold", color=INK, zorder=4)
 
     ax.set_xticks(x)
-    ax.set_xticklabels([f"{r:.3f}" for r in ROD_RADII])
-    ax.set_xlabel("Hot-rod radius (mm)", fontsize=13, color=INK, labelpad=6)
+    # Diameters, as slide 6 introduces the rods (Dr. Yao, R11-rY, 30 Oct 2026).
+    ax.set_xticklabels([f"{2 * r:.2f}" for r in ROD_RADII])
+    ax.set_xlabel("Hot-rod diameter (mm)", fontsize=13, color=INK, labelpad=6)
     # Each bar is ONE rod section, not the sector mean. The sector mean appears
     # only in the title, where it summarises all six.
     ax.set_ylabel("CNR (mean of 5 noise realizations)", fontsize=13, color=INK,
@@ -93,9 +94,9 @@ def main():
     # for ours, as on the slides.
     line1 = (f"MOBO-optimized design: {overall_gain:.1f}% higher CNR than the "
              f"published benchmark")
-    line2 = (f"sector mean {OURS_OVERALL[0]:.2f} ± {OURS_OVERALL[1]:.2f} vs "
+    line2 = (f"sector mean {OURS_OVERALL[0]:.2f} ± {OURS_OVERALL[1]:.2f} against "
              f"{REF_OVERALL[0]:.2f} ± {REF_OVERALL[1]:.2f} (mean ± SD), largest "
-             f"gains at rod radii 0.125 to 0.150 mm")
+             f"gains at rod diameters 0.25 to 0.30 mm")
 
     # Recessive grid and axes; no top/right spines.
     ax.yaxis.grid(True, color=GRID, lw=0.8, zorder=0)

@@ -51,24 +51,25 @@ EQS = {
     "eq_ppds.png": (r"$\mathrm{PPDS}_{j} = \sum_{i\,\in\,\{\mathrm{PPDF}_{i,j}>0\}}\,"
                     r"\dfrac{\Sigma_{k}\,\mathrm{PPDF}_{i,k}}{A_{i}}$", INK, 18, "stix"),
     # Slide 13 (his R10-rY slide 9 box and the 29 Oct meeting: "incorporate the j ...
-    # count all the PPDFs passing the j"): the weighted FWHM map, each strip (i,b) whose
-    # PPDF is nonzero at pixel j weighted by its whole PPDF, sum_k p_ibk, the weights
-    # normalized over those strips (his denominator, read as over the same set). Named
-    # FWHM_w,j to match slide 9's FWHM_w (his box: wFWHM_j).
-    "eq_fwhm_w_j.png": (r"$\mathrm{FWHM}_{\mathrm{w},j} = \dfrac{\Sigma_{(i,b)\,\in\,B_{j}}\;"
-                        r"(\Sigma_{k}\,p_{i,b,k})\;\mathrm{FWHM}_{i,b}}"
-                        r"{\Sigma_{(i,b)\,\in\,B_{j}}\;\Sigma_{k}\,p_{i,b,k}}$", INK, 16, "stix"),
+    # count all the PPDFs passing the j"): the weighted FWHM map, each strip (i,b) covering
+    # pixel j weighted by its whole PPDF, sum_k p_ibk, the weights normalized over those
+    # strips. Named wFWHM_j as he typed it in his R11-rY (30 Oct), the name upright.
+    "eq_wfwhm_j.png": (r"$\mathrm{wFWHM}_{j} = \dfrac{\Sigma_{(i,b)\,\in\,B_{j}}\;"
+                       r"(\Sigma_{k}\,p_{i,b,k})\;\mathrm{FWHM}_{i,b}}"
+                       r"{\Sigma_{(i,b)\,\in\,B_{j}}\;\Sigma_{k}\,p_{i,b,k}}$", INK, 16, "stix"),
     # Slide 14 (QA of R11: the map's formula on the left, as on slides 13 and 15): the
     # 1-degree angle bins of 360 that the strips through pixel j cover, with the FWHM filter.
     "eq_asci_j.png": (r"$\mathrm{ASCI}_{j} = \dfrac{N_{j}}{360}\times 100\%$", INK, 18, "stix"),
     # Slide 15: the sensitivity map, the strategy document's Eq. 7, beside his PPDS_j.
     "eq_sens_j.png": (r"$\mathrm{Sens}_{j} = \sum_{i}\,\mathrm{PPDF}_{i,j}$", INK, 18, "stix"),
-    # Slide 9 (his R9-rY comment, 28 Oct: "Can you express the weighting
-    # mathematically?"): compute_fwhm_and_asci's fwhm_weighted_mean, every strip b's
-    # FWHM weighted by its sensitivity s_b, the mean of its PPDF over the strip. Green
-    # as the column it sits in; Sigma, not \sum, keeps b beside it.
-    "eq_fwhm_w_green.png": (r"$\mathrm{FWHM}_{\mathrm{w}} = \dfrac{\Sigma_{b}\, s_{b}\, \mathrm{FWHM}_{b}}"
-                            r"{\Sigma_{b}\, s_{b}}$", GREEN, 14, "stix"),
+    # Slide 9 since R12 (his reply of 30 Oct: "it would be better to be consistent, so we
+    # will update slide #9 (with the equation from slide #13)"): slide 13's weighting for
+    # one value per design, every strip (i,b) of the design weighted by its whole PPDF
+    # (archive_backup/fwhm_total_weight.csv, fwhm_wtotal). The searches weighted each strip
+    # by its mean PPDF instead (R10-R11's FWHM_w); the two rank designs alike, rho 0.93.
+    # Green as the column it sits in; Sigma, not \sum, keeps the indices beside it.
+    "eq_wfwhm_green.png": (r"$\mathrm{wFWHM} = \dfrac{\Sigma_{(i,b)}\;(\Sigma_{k}\,p_{i,b,k})\;"
+                           r"\mathrm{FWHM}_{i,b}}{\Sigma_{(i,b)}\;\Sigma_{k}\,p_{i,b,k}}$", GREEN, 14, "stix"),
     # Backup slide 21 (QA, 24 Oct), at its 14 pt body size and in the same style:
     # vectors and matrices (x, k(x), K, y) bold italic, the kernel k(x, x') and the
     # scalars italic, the identity I, the transpose T and the operators upright.

@@ -153,7 +153,8 @@ def main():
     ax.set_facecolor("white")
     ax.imshow(canvas, interpolation="nearest")
 
-    labels = {g: f"$\\mathbfit{{r}}$ = {ROD_RADII[g]:.3f} mm\n+{gains[g]:.0f}%" for g in groups}
+    # Diameters, as slide 6 introduces the rods (Dr. Yao, R11-rY, 30 Oct 2026).
+    labels = {g: f"$\\mathbfit{{d}}$ = {2 * ROD_RADII[g]:.2f} mm\n+{gains[g]:.0f}%" for g in groups}
     style = dict(ha="center", va="center", fontsize=13, fontweight="bold",
                  color=INK, linespacing=1.25,
                  bbox=dict(boxstyle="round,pad=0.25", fc="white",
@@ -187,7 +188,7 @@ def main():
     ax.set_ylim(cy + half_h, cy - half_h)
     ax.axis("off")
 
-    fig.text(0.5, 0.975, "CNR gain by rod radius", ha="center", va="top",
+    fig.text(0.5, 0.975, "CNR gain by rod diameter", ha="center", va="top",
              fontsize=16, fontweight="bold", color=INK)
     # Key: a light-to-dark swatch in the same colour scale as the rods.
     key = "darker rods = larger gain"

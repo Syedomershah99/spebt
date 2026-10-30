@@ -1,0 +1,1792 @@
+{
+ "bench": {
+  "layout_file": "scanner_layouts_24a4365260a3f68491dfa8ca55e0ecc2_rot2_ang1p0deg_trans1x1_step0p0x0p0.tensor",
+  "positions": [
+   "position 000",
+   "position 001"
+  ],
+  "position 000": {
+   "crystal_centre_radii_mm": [
+    133,
+    198,
+    263,
+    328
+   ],
+   "crystals_per_ring": [
+    480,
+    720,
+    960,
+    1200
+   ],
+   "edge_v0v1_mm_min_max": [
+    0.8399739452845574,
+    0.8400249779138451
+   ],
+   "edge_v0v3_mm_min_max": [
+    5.999969947708374,
+    6.000029102071857
+   ],
+   "v0v3_abs_cos_to_radial_min": 0.9999800464944704,
+   "crystal_vertex_radius_by_ring": {
+    "133": [
+     130.0006536590178,
+     136.00584825612745
+    ],
+    "198": [
+     195.00042687704865,
+     201.00397115256573
+    ],
+    "263": [
+     260.0003063745559,
+     266.0030203386004
+    ],
+    "328": [
+     325.0002232167584,
+     331.00243715858034
+    ]
+   },
+   "tangential_packing_by_ring": {
+    "133": 0.48249096178778694,
+    "198": 0.48614601408119484,
+    "263": 0.4879940041126487,
+    "328": 0.4891090020260316
+   },
+   "plate_segments": 360,
+   "plate_vertex_radius_min_max": [
+    33.74999827785069,
+    36.25000149539914
+   ],
+   "gap_inner_mm_percentiles_0_25_50_75_100": [
+    0.0,
+    0.0,
+    0.1929,
+    0.3857,
+    0.3857
+   ],
+   "gap_outer_mm_percentiles_0_25_50_75_100": [
+    0.0,
+    0.0,
+    0.2071,
+    0.4143,
+    0.4143
+   ],
+   "mean_of_largest_half_gaps_inner_outer_mm": [
+    0.38571215788326374,
+    0.41428355237886566
+   ],
+   "mean_of_smallest_half_gaps_inner_outer_mm": [
+    0.0,
+    0.0
+   ],
+   "open_fraction_from_origin": 0.3274
+  },
+  "position 001": {
+   "crystal_centre_radii_mm": [
+    133,
+    198,
+    263,
+    328
+   ],
+   "crystals_per_ring": [
+    480,
+    720,
+    960,
+    1200
+   ],
+   "edge_v0v1_mm_min_max": [
+    0.8399739452845574,
+    0.8400249779138451
+   ],
+   "edge_v0v3_mm_min_max": [
+    5.999969947708374,
+    6.000029102071857
+   ],
+   "v0v3_abs_cos_to_radial_min": 0.9999800464944704,
+   "crystal_vertex_radius_by_ring": {
+    "133": [
+     130.0006536590178,
+     136.00584825612745
+    ],
+    "198": [
+     195.00042687704865,
+     201.00397115256573
+    ],
+    "263": [
+     260.0003063745559,
+     266.0030203386004
+    ],
+    "328": [
+     325.0002232167584,
+     331.00243715858034
+    ]
+   },
+   "tangential_packing_by_ring": {
+    "133": 0.48249096178778694,
+    "198": 0.48614601408119484,
+    "263": 0.4879940041126487,
+    "328": 0.4891090020260316
+   },
+   "plate_segments": 360,
+   "plate_vertex_radius_min_max": [
+    33.749997327769826,
+    36.25000455337909
+   ],
+   "gap_inner_mm_percentiles_0_25_50_75_100": [
+    0.0,
+    0.0,
+    0.1929,
+    0.3857,
+    0.3857
+   ],
+   "gap_outer_mm_percentiles_0_25_50_75_100": [
+    0.0,
+    0.0,
+    0.2071,
+    0.4143,
+    0.4143
+   ],
+   "mean_of_largest_half_gaps_inner_outer_mm": [
+    0.38571211404084965,
+    0.4142838073366731
+   ],
+   "mean_of_smallest_half_gaps_inner_outer_mm": [
+    0.0,
+    0.0
+   ],
+   "open_fraction_from_origin": 0.327403
+  },
+  "raycast": [
+   {
+    "layout": 0,
+    "pose": 0,
+    "pixel": [
+     99,
+     99
+    ],
+    "point_mm": [
+     0.175,
+     -0.025
+    ],
+    "raycast_total": 0.282718430274471,
+    "stored_total": 0.26814006502562077,
+    "ratio": 0.948435037522325,
+    "open_fraction": 0.32082299999999997,
+    "n_cry_compared": 652,
+    "per_crystal_corr": 0.8708872735232075,
+    "per_crystal_rel_diff_median": -0.0020033555575893654,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9995824162375475,
+     1.3176851938284024
+    ]
+   },
+   {
+    "layout": 0,
+    "pose": 0,
+    "pixel": [
+     100,
+     100
+    ],
+    "point_mm": [
+     0.225,
+     0.025
+    ],
+    "raycast_total": 0.2817381804879228,
+    "stored_total": 0.2444026276316713,
+    "ratio": 0.8674813871815575,
+    "open_fraction": 0.31895949999999995,
+    "n_cry_compared": 640,
+    "per_crystal_corr": 0.8890477108228602,
+    "per_crystal_rel_diff_median": -0.5239558867764634,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9995934852248567,
+     1.0842675607188237
+    ]
+   },
+   {
+    "layout": 0,
+    "pose": 0,
+    "pixel": [
+     117,
+     92
+    ],
+    "point_mm": [
+     1.075,
+     -0.375
+    ],
+    "raycast_total": 0.26896956970051134,
+    "stored_total": 0.2675231540446277,
+    "ratio": 0.994622381790274,
+    "open_fraction": 0.284957,
+    "n_cry_compared": 636,
+    "per_crystal_corr": 0.8662814252003435,
+    "per_crystal_rel_diff_median": -0.009657014866871039,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.999097863913129,
+     1.0006374886078884
+    ]
+   },
+   {
+    "layout": 0,
+    "pose": 0,
+    "pixel": [
+     160,
+     100
+    ],
+    "point_mm": [
+     3.225,
+     0.025
+    ],
+    "raycast_total": 0.21325178359675773,
+    "stored_total": 0.19918378997641986,
+    "ratio": 0.9340310623289354,
+    "open_fraction": 0.20686499999999997,
+    "n_cry_compared": 508,
+    "per_crystal_corr": 0.8876480495634819,
+    "per_crystal_rel_diff_median": -0.32634013640733645,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9990152633799607,
+     0.8141624522305182
+    ]
+   },
+   {
+    "layout": 0,
+    "pose": 0,
+    "pixel": [
+     100,
+     40
+    ],
+    "point_mm": [
+     0.225,
+     -2.975
+    ],
+    "raycast_total": 0.21979047651150885,
+    "stored_total": 0.21041105541957286,
+    "ratio": 0.9573256255648327,
+    "open_fraction": 0.21594800000000003,
+    "n_cry_compared": 542,
+    "per_crystal_corr": 0.8897998169602231,
+    "per_crystal_rel_diff_median": -0.30833118785625413,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9937428659179087,
+     0.8584717254207629
+    ]
+   },
+   {
+    "layout": 0,
+    "pose": 0,
+    "pixel": [
+     30,
+     170
+    ],
+    "point_mm": [
+     -3.275,
+     3.525
+    ],
+    "raycast_total": 0.1713868728814576,
+    "stored_total": 0.15961424294794085,
+    "ratio": 0.9313096170343252,
+    "open_fraction": 0.14693849999999997,
+    "n_cry_compared": 421,
+    "per_crystal_corr": 0.8830575364517892,
+    "per_crystal_rel_diff_median": -0.306574889846279,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9933780482344202,
+     0.8686847088607454
+    ]
+   },
+   {
+    "layout": 0,
+    "pose": 0,
+    "pixel": [
+     170,
+     170
+    ],
+    "point_mm": [
+     3.725,
+     3.525
+    ],
+    "raycast_total": 0.16175076704161603,
+    "stored_total": 0.15755415310713908,
+    "ratio": 0.9740550600703042,
+    "open_fraction": 0.13488750000000005,
+    "n_cry_compared": 398,
+    "per_crystal_corr": 0.8822183426081587,
+    "per_crystal_rel_diff_median": -0.1978311564649948,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9642117011794564,
+     0.9955754776850751
+    ]
+   },
+   {
+    "layout": 0,
+    "pose": 0,
+    "pixel": [
+     5,
+     100
+    ],
+    "point_mm": [
+     -4.525,
+     0.025
+    ],
+    "raycast_total": 0.18131650076799957,
+    "stored_total": 0.16812698363281592,
+    "ratio": 0.9272569397748301,
+    "open_fraction": 0.15781999999999996,
+    "n_cry_compared": 454,
+    "per_crystal_corr": 0.89451344414447,
+    "per_crystal_rel_diff_median": -0.38116136872465806,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9743955378659964,
+     0.7351369808282805
+    ]
+   },
+   {
+    "layout": 0,
+    "pose": 4,
+    "pixel": [
+     99,
+     99
+    ],
+    "point_mm": [
+     -0.225,
+     -0.025
+    ],
+    "raycast_total": 0.28173818048796484,
+    "stored_total": 0.2444026276316713,
+    "ratio": 0.8674813871814281,
+    "open_fraction": 0.31895949999999995,
+    "n_cry_compared": 640,
+    "per_crystal_corr": 0.8890477108229283,
+    "per_crystal_rel_diff_median": -0.5239558867776305,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9995934852248585,
+     1.0842675607211478
+    ]
+   },
+   {
+    "layout": 0,
+    "pose": 4,
+    "pixel": [
+     100,
+     100
+    ],
+    "point_mm": [
+     -0.175,
+     0.025
+    ],
+    "raycast_total": 0.2827184302744634,
+    "stored_total": 0.26814006502562077,
+    "ratio": 0.9484350375223506,
+    "open_fraction": 0.32082299999999997,
+    "n_cry_compared": 652,
+    "per_crystal_corr": 0.8708872735232901,
+    "per_crystal_rel_diff_median": -0.0020033555575723356,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9995824162375476,
+     1.3176851938154026
+    ]
+   },
+   {
+    "layout": 0,
+    "pose": 4,
+    "pixel": [
+     117,
+     92
+    ],
+    "point_mm": [
+     0.675,
+     -0.375
+    ],
+    "raycast_total": 0.27864233554469603,
+    "stored_total": 0.28290048232089154,
+    "ratio": 1.0152817653063078,
+    "open_fraction": 0.29861800000000005,
+    "n_cry_compared": 649,
+    "per_crystal_corr": 0.850586098636556,
+    "per_crystal_rel_diff_median": -0.0030993887336515104,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9993816747365288,
+     0.991300687279669
+    ]
+   },
+   {
+    "layout": 0,
+    "pose": 4,
+    "pixel": [
+     160,
+     100
+    ],
+    "point_mm": [
+     2.825,
+     0.025
+    ],
+    "raycast_total": 0.22640672880051904,
+    "stored_total": 0.21918113969012687,
+    "ratio": 0.9680858022697795,
+    "open_fraction": 0.22188850000000004,
+    "n_cry_compared": 539,
+    "per_crystal_corr": 0.8792128172749816,
+    "per_crystal_rel_diff_median": -0.04745490163947145,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9888644695258934,
+     0.9642399636395335
+    ]
+   },
+   {
+    "layout": 0,
+    "pose": 4,
+    "pixel": [
+     100,
+     40
+    ],
+    "point_mm": [
+     -0.175,
+     -2.975
+    ],
+    "raycast_total": 0.21976387594346541,
+    "stored_total": 0.21277512240835206,
+    "ratio": 0.968198806536743,
+    "open_fraction": 0.21606749999999997,
+    "n_cry_compared": 538,
+    "per_crystal_corr": 0.8934952378472798,
+    "per_crystal_rel_diff_median": -0.13783220585301348,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9671705786037178,
+     0.8862479270393816
+    ]
+   },
+   {
+    "layout": 0,
+    "pose": 4,
+    "pixel": [
+     30,
+     170
+    ],
+    "point_mm": [
+     -3.675,
+     3.525
+    ],
+    "raycast_total": 0.16380030025788062,
+    "stored_total": 0.1555624577674373,
+    "ratio": 0.9497080134928081,
+    "open_fraction": 0.13626499999999997,
+    "n_cry_compared": 393,
+    "per_crystal_corr": 0.8804724180516676,
+    "per_crystal_rel_diff_median": -0.21324599857033713,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9536858382237043,
+     0.9987983203467916
+    ]
+   },
+   {
+    "layout": 0,
+    "pose": 4,
+    "pixel": [
+     170,
+     170
+    ],
+    "point_mm": [
+     3.325,
+     3.525
+    ],
+    "raycast_total": 0.17058865238302148,
+    "stored_total": 0.15967406444346502,
+    "ratio": 0.9360180892041399,
+    "open_fraction": 0.145644,
+    "n_cry_compared": 426,
+    "per_crystal_corr": 0.8851377786339334,
+    "per_crystal_rel_diff_median": -0.3806854378584633,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9803474106234533,
+     0.894175807141136
+    ]
+   },
+   {
+    "layout": 0,
+    "pose": 4,
+    "pixel": [
+     5,
+     100
+    ],
+    "point_mm": [
+     -4.925,
+     0.025
+    ],
+    "raycast_total": 0.16529141126134667,
+    "stored_total": 0.15734241158897314,
+    "ratio": 0.9519091789965713,
+    "open_fraction": 0.1426345,
+    "n_cry_compared": 397,
+    "per_crystal_corr": 0.854058298692117,
+    "per_crystal_rel_diff_median": -0.22372607397127175,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9861417899995057,
+     0.9557432495633249
+    ]
+   },
+   {
+    "layout": 1,
+    "pose": 0,
+    "pixel": [
+     99,
+     99
+    ],
+    "point_mm": [
+     0.175,
+     -0.025
+    ],
+    "raycast_total": 0.28271411166122984,
+    "stored_total": 0.2687790431941733,
+    "ratio": 0.9507096819993385,
+    "open_fraction": 0.32081950000000004,
+    "n_cry_compared": 653,
+    "per_crystal_corr": 0.8709905648952327,
+    "per_crystal_rel_diff_median": -0.0019638359708329277,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9996045777868635,
+     1.3272674884447784
+    ]
+   },
+   {
+    "layout": 1,
+    "pose": 0,
+    "pixel": [
+     100,
+     100
+    ],
+    "point_mm": [
+     0.225,
+     0.025
+    ],
+    "raycast_total": 0.28176064349747254,
+    "stored_total": 0.24421879535595145,
+    "ratio": 0.8667597870464906,
+    "open_fraction": 0.31896800000000003,
+    "n_cry_compared": 637,
+    "per_crystal_corr": 0.8934918508438303,
+    "per_crystal_rel_diff_median": -0.4846111891889803,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9995744285426597,
+     1.0873003006751318
+    ]
+   },
+   {
+    "layout": 1,
+    "pose": 0,
+    "pixel": [
+     117,
+     92
+    ],
+    "point_mm": [
+     1.075,
+     -0.375
+    ],
+    "raycast_total": 0.2689077793849617,
+    "stored_total": 0.2681680650791061,
+    "ratio": 0.9972491896383682,
+    "open_fraction": 0.284965,
+    "n_cry_compared": 637,
+    "per_crystal_corr": 0.8696072542062014,
+    "per_crystal_rel_diff_median": -0.010435977495818219,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9991678472748678,
+     0.9613372088423302
+    ]
+   },
+   {
+    "layout": 1,
+    "pose": 0,
+    "pixel": [
+     160,
+     100
+    ],
+    "point_mm": [
+     3.225,
+     0.025
+    ],
+    "raycast_total": 0.21476586232749947,
+    "stored_total": 0.2077070988127923,
+    "ratio": 0.9671327489471154,
+    "open_fraction": 0.20686700000000002,
+    "n_cry_compared": 495,
+    "per_crystal_corr": 0.897035868004525,
+    "per_crystal_rel_diff_median": -0.023940304298723333,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9669263804989229,
+     0.7940298506496043
+    ]
+   },
+   {
+    "layout": 1,
+    "pose": 0,
+    "pixel": [
+     100,
+     40
+    ],
+    "point_mm": [
+     0.225,
+     -2.975
+    ],
+    "raycast_total": 0.21996041939875682,
+    "stored_total": 0.21087358002335363,
+    "ratio": 0.9586887522753352,
+    "open_fraction": 0.21594049999999998,
+    "n_cry_compared": 541,
+    "per_crystal_corr": 0.8904195225004921,
+    "per_crystal_rel_diff_median": -0.2693680553644969,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.988282369008425,
+     0.8748671977972995
+    ]
+   },
+   {
+    "layout": 1,
+    "pose": 0,
+    "pixel": [
+     30,
+     170
+    ],
+    "point_mm": [
+     -3.275,
+     3.525
+    ],
+    "raycast_total": 0.17116843417912028,
+    "stored_total": 0.16489927324239953,
+    "ratio": 0.9633743162588007,
+    "open_fraction": 0.14694649999999998,
+    "n_cry_compared": 412,
+    "per_crystal_corr": 0.8826385439749276,
+    "per_crystal_rel_diff_median": -0.11540640953397605,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9464873234589051,
+     0.8116362908930075
+    ]
+   },
+   {
+    "layout": 1,
+    "pose": 0,
+    "pixel": [
+     170,
+     170
+    ],
+    "point_mm": [
+     3.725,
+     3.525
+    ],
+    "raycast_total": 0.16188255290912557,
+    "stored_total": 0.15658136590358285,
+    "ratio": 0.9672528823503383,
+    "open_fraction": 0.13488699999999998,
+    "n_cry_compared": 396,
+    "per_crystal_corr": 0.8803541353078481,
+    "per_crystal_rel_diff_median": -0.1932632724899998,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9484247188248645,
+     0.9043615362429609
+    ]
+   },
+   {
+    "layout": 1,
+    "pose": 0,
+    "pixel": [
+     5,
+     100
+    ],
+    "point_mm": [
+     -4.525,
+     0.025
+    ],
+    "raycast_total": 0.1787845641416754,
+    "stored_total": 0.16654499615909651,
+    "ratio": 0.9315401302045304,
+    "open_fraction": 0.15780799999999995,
+    "n_cry_compared": 454,
+    "per_crystal_corr": 0.8819629276008892,
+    "per_crystal_rel_diff_median": -0.37785254827606957,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9802700667356959,
+     1.0263055652992208
+    ]
+   },
+   {
+    "layout": 1,
+    "pose": 4,
+    "pixel": [
+     99,
+     99
+    ],
+    "point_mm": [
+     -0.225,
+     -0.025
+    ],
+    "raycast_total": 0.2817606434974058,
+    "stored_total": 0.24421879535595148,
+    "ratio": 0.866759787046696,
+    "open_fraction": 0.31896800000000003,
+    "n_cry_compared": 637,
+    "per_crystal_corr": 0.8934918508437566,
+    "per_crystal_rel_diff_median": -0.4846111891968055,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9995744285426614,
+     1.0873003006766848
+    ]
+   },
+   {
+    "layout": 1,
+    "pose": 4,
+    "pixel": [
+     100,
+     100
+    ],
+    "point_mm": [
+     -0.175,
+     0.025
+    ],
+    "raycast_total": 0.28271411166126975,
+    "stored_total": 0.2687790431941733,
+    "ratio": 0.9507096819992042,
+    "open_fraction": 0.32081950000000004,
+    "n_cry_compared": 653,
+    "per_crystal_corr": 0.8709905648951025,
+    "per_crystal_rel_diff_median": -0.0019638359708254506,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9996045777868635,
+     1.3272674884841902
+    ]
+   },
+   {
+    "layout": 1,
+    "pose": 4,
+    "pixel": [
+     117,
+     92
+    ],
+    "point_mm": [
+     0.675,
+     -0.375
+    ],
+    "raycast_total": 0.27869286393087306,
+    "stored_total": 0.28295555478962425,
+    "ratio": 1.0152952996306661,
+    "open_fraction": 0.29862,
+    "n_cry_compared": 655,
+    "per_crystal_corr": 0.8544480264778984,
+    "per_crystal_rel_diff_median": -0.004334323943573957,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9992981316003466,
+     1.077353563997589
+    ]
+   },
+   {
+    "layout": 1,
+    "pose": 4,
+    "pixel": [
+     160,
+     100
+    ],
+    "point_mm": [
+     2.825,
+     0.025
+    ],
+    "raycast_total": 0.2244568599401222,
+    "stored_total": 0.21697067323651953,
+    "ratio": 0.9666475477488202,
+    "open_fraction": 0.22189000000000003,
+    "n_cry_compared": 518,
+    "per_crystal_corr": 0.888906767083459,
+    "per_crystal_rel_diff_median": -0.014899293861837304,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.981565796529606,
+     0.8644661740730116
+    ]
+   },
+   {
+    "layout": 1,
+    "pose": 4,
+    "pixel": [
+     100,
+     40
+    ],
+    "point_mm": [
+     -0.175,
+     -2.975
+    ],
+    "raycast_total": 0.22114409527033155,
+    "stored_total": 0.21192467630614015,
+    "ratio": 0.958310354373598,
+    "open_fraction": 0.21606999999999998,
+    "n_cry_compared": 555,
+    "per_crystal_corr": 0.8925434292439456,
+    "per_crystal_rel_diff_median": -0.3675197931908751,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9909042804882335,
+     0.8187049752081593
+    ]
+   },
+   {
+    "layout": 1,
+    "pose": 4,
+    "pixel": [
+     30,
+     170
+    ],
+    "point_mm": [
+     -3.675,
+     3.525
+    ],
+    "raycast_total": 0.1630038341979574,
+    "stored_total": 0.1612491810427939,
+    "ratio": 0.9892355099265175,
+    "open_fraction": 0.13626349999999998,
+    "n_cry_compared": 404,
+    "per_crystal_corr": 0.8871163045526035,
+    "per_crystal_rel_diff_median": -0.17561832602465854,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9600058768231928,
+     0.9373357323199542
+    ]
+   },
+   {
+    "layout": 1,
+    "pose": 4,
+    "pixel": [
+     170,
+     170
+    ],
+    "point_mm": [
+     3.325,
+     3.525
+    ],
+    "raycast_total": 0.17064657527476115,
+    "stored_total": 0.16235222358928358,
+    "ratio": 0.9513945611148499,
+    "open_fraction": 0.14565150000000004,
+    "n_cry_compared": 427,
+    "per_crystal_corr": 0.8855555598491334,
+    "per_crystal_rel_diff_median": -0.33210588406424923,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9695929148533109,
+     0.8856905303994063
+    ]
+   },
+   {
+    "layout": 1,
+    "pose": 4,
+    "pixel": [
+     5,
+     100
+    ],
+    "point_mm": [
+     -4.925,
+     0.025
+    ],
+    "raycast_total": 0.16818326457356397,
+    "stored_total": 0.1632512238858787,
+    "ratio": 0.9706746048711168,
+    "open_fraction": 0.1426265,
+    "n_cry_compared": 422,
+    "per_crystal_corr": 0.8808810201444635,
+    "per_crystal_rel_diff_median": -0.2464320028732479,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9377298119910384,
+     0.9077759443111905
+    ]
+   }
+  ]
+ },
+ "mobo": {
+  "layout_file": "scanner_layouts_e281897353040102d0ea25cc9e7509d9_rot2_ang1p0deg_trans1x1_step0p0x0p0.tensor",
+  "positions": [
+   "position 000",
+   "position 001"
+  ],
+  "position 000": {
+   "crystal_centre_radii_mm": [
+    133,
+    200,
+    249,
+    328
+   ],
+   "crystals_per_ring": [
+    582,
+    960,
+    960,
+    1200
+   ],
+   "edge_v0v1_mm_min_max": [
+    0.8399739452845574,
+    0.8400249779138451
+   ],
+   "edge_v0v3_mm_min_max": [
+    5.999969947708374,
+    6.000029102071857
+   ],
+   "v0v3_abs_cos_to_radial_min": 0.9999800457646562,
+   "crystal_vertex_radius_by_ring": {
+    "133": [
+     130.00065626920343,
+     136.0058615042686
+    ],
+    "200": [
+     196.5796370854446,
+     202.58314374420462
+    ],
+    "249": [
+     246.09863045505818,
+     252.10146574427498
+    ],
+    "328": [
+     325.0002232167584,
+     331.00243715858034
+    ]
+   },
+   "tangential_packing_by_ring": {
+    "133": 0.5850198896501659,
+    "200": 0.6417128375494876,
+    "249": 0.5154316472284394,
+    "328": 0.4891090020260316
+   },
+   "plate_segments": 422,
+   "plate_vertex_radius_min_max": [
+    33.74999817161389,
+    36.25000186072277
+   ],
+   "gap_inner_mm_percentiles_0_25_50_75_100": [
+    0.0,
+    0.0,
+    0.131,
+    0.2621,
+    0.2621
+   ],
+   "gap_outer_mm_percentiles_0_25_50_75_100": [
+    0.0,
+    0.0,
+    0.1407,
+    0.2815,
+    0.2815
+   ],
+   "mean_of_largest_half_gaps_inner_outer_mm": [
+    0.262072504539756,
+    0.2814852510223485
+   ],
+   "mean_of_smallest_half_gaps_inner_outer_mm": [
+    7.10332266940266e-17,
+    7.629494718988042e-17
+   ],
+   "open_fraction_from_origin": 0.2607655
+  },
+  "position 001": {
+   "crystal_centre_radii_mm": [
+    133,
+    200,
+    249,
+    328
+   ],
+   "crystals_per_ring": [
+    582,
+    960,
+    960,
+    1200
+   ],
+   "edge_v0v1_mm_min_max": [
+    0.8399739452845574,
+    0.8400249779138451
+   ],
+   "edge_v0v3_mm_min_max": [
+    5.999969947708374,
+    6.000029102071857
+   ],
+   "v0v3_abs_cos_to_radial_min": 0.9999800457646562,
+   "crystal_vertex_radius_by_ring": {
+    "133": [
+     130.00065626920343,
+     136.0058615042686
+    ],
+    "200": [
+     196.5796370854446,
+     202.58314374420462
+    ],
+    "249": [
+     246.09863045505818,
+     252.10146574427498
+    ],
+    "328": [
+     325.0002232167584,
+     331.00243715858034
+    ]
+   },
+   "tangential_packing_by_ring": {
+    "133": 0.5850198896501659,
+    "200": 0.6417128375494876,
+    "249": 0.5154316472284394,
+    "328": 0.4891090020260316
+   },
+   "plate_segments": 422,
+   "plate_vertex_radius_min_max": [
+    33.74999552529254,
+    36.25000474567149
+   ],
+   "gap_inner_mm_percentiles_0_25_50_75_100": [
+    0.0,
+    0.0,
+    0.131,
+    0.2621,
+    0.2621
+   ],
+   "gap_outer_mm_percentiles_0_25_50_75_100": [
+    0.0,
+    0.0,
+    0.1407,
+    0.2815,
+    0.2815
+   ],
+   "mean_of_largest_half_gaps_inner_outer_mm": [
+    0.262072447105139,
+    0.281485229371445
+   ],
+   "mean_of_smallest_half_gaps_inner_outer_mm": [
+    0.0,
+    0.0
+   ],
+   "open_fraction_from_origin": 0.260765
+  },
+  "raycast": [
+   {
+    "layout": 0,
+    "pose": 0,
+    "pixel": [
+     99,
+     99
+    ],
+    "point_mm": [
+     0.175,
+     -0.025
+    ],
+    "raycast_total": 0.23724619102843028,
+    "stored_total": 0.22657203216660649,
+    "ratio": 0.9550080917398389,
+    "open_fraction": 0.2530405,
+    "n_cry_compared": 492,
+    "per_crystal_corr": 0.8597924059729521,
+    "per_crystal_rel_diff_median": -0.00034519483117937647,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9996135857393315,
+     0.8034286154815017
+    ]
+   },
+   {
+    "layout": 0,
+    "pose": 0,
+    "pixel": [
+     100,
+     100
+    ],
+    "point_mm": [
+     0.225,
+     0.025
+    ],
+    "raycast_total": 0.235495542023736,
+    "stored_total": 0.22660557998701653,
+    "ratio": 0.9622499773867336,
+    "open_fraction": 0.25087649999999995,
+    "n_cry_compared": 494,
+    "per_crystal_corr": 0.8470469833772961,
+    "per_crystal_rel_diff_median": 0.00038669775788173217,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9995980325908457,
+     0.8410850676890238
+    ]
+   },
+   {
+    "layout": 0,
+    "pose": 0,
+    "pixel": [
+     117,
+     92
+    ],
+    "point_mm": [
+     1.075,
+     -0.375
+    ],
+    "raycast_total": 0.20914779825658078,
+    "stored_total": 0.19420713475733148,
+    "ratio": 0.9285640890136447,
+    "open_fraction": 0.21101349999999996,
+    "n_cry_compared": 502,
+    "per_crystal_corr": 0.8800934628825791,
+    "per_crystal_rel_diff_median": -0.7352385903975796,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9994572183465337,
+     0.7434018863560872
+    ]
+   },
+   {
+    "layout": 0,
+    "pose": 0,
+    "pixel": [
+     160,
+     100
+    ],
+    "point_mm": [
+     3.225,
+     0.025
+    ],
+    "raycast_total": 0.1448645373812391,
+    "stored_total": 0.1315258253246636,
+    "ratio": 0.9079228616077921,
+    "open_fraction": 0.11946800000000002,
+    "n_cry_compared": 373,
+    "per_crystal_corr": 0.8456841252926854,
+    "per_crystal_rel_diff_median": -0.5934037001186772,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9991651653748105,
+     0.9415809320332295
+    ]
+   },
+   {
+    "layout": 0,
+    "pose": 0,
+    "pixel": [
+     100,
+     40
+    ],
+    "point_mm": [
+     0.225,
+     -2.975
+    ],
+    "raycast_total": 0.15264256929438388,
+    "stored_total": 0.15299749898241974,
+    "ratio": 1.0023252339742221,
+    "open_fraction": 0.13011300000000003,
+    "n_cry_compared": 385,
+    "per_crystal_corr": 0.8112723054891436,
+    "per_crystal_rel_diff_median": -0.30674402343759555,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9985857335618717,
+     1.160634353448472
+    ]
+   },
+   {
+    "layout": 0,
+    "pose": 0,
+    "pixel": [
+     30,
+     170
+    ],
+    "point_mm": [
+     -3.275,
+     3.525
+    ],
+    "raycast_total": 0.09740717393602678,
+    "stored_total": 0.09503587840876197,
+    "ratio": 0.9756558430817202,
+    "open_fraction": 0.06962500000000005,
+    "n_cry_compared": 262,
+    "per_crystal_corr": 0.8061988322031682,
+    "per_crystal_rel_diff_median": -0.29769962958673923,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9978689964365088,
+     1.1716361384872025
+    ]
+   },
+   {
+    "layout": 0,
+    "pose": 0,
+    "pixel": [
+     170,
+     170
+    ],
+    "point_mm": [
+     3.725,
+     3.525
+    ],
+    "raycast_total": 0.08913113595924578,
+    "stored_total": 0.0869131010554696,
+    "ratio": 0.9751149261152651,
+    "open_fraction": 0.06472350000000004,
+    "n_cry_compared": 223,
+    "per_crystal_corr": 0.8131220753518801,
+    "per_crystal_rel_diff_median": -0.2723543300619806,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9989081986544254,
+     1.1015050644231452
+    ]
+   },
+   {
+    "layout": 0,
+    "pose": 0,
+    "pixel": [
+     5,
+     100
+    ],
+    "point_mm": [
+     -4.525,
+     0.025
+    ],
+    "raycast_total": 0.10299331672516751,
+    "stored_total": 0.10510025339904937,
+    "ratio": 1.0204570232406838,
+    "open_fraction": 0.07484500000000005,
+    "n_cry_compared": 295,
+    "per_crystal_corr": 0.7790611572091906,
+    "per_crystal_rel_diff_median": 0.06528904355220098,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9983918875791751,
+     1.2372364704941332
+    ]
+   },
+   {
+    "layout": 0,
+    "pose": 4,
+    "pixel": [
+     99,
+     99
+    ],
+    "point_mm": [
+     -0.225,
+     -0.025
+    ],
+    "raycast_total": 0.23580868225517818,
+    "stored_total": 0.22363140915492452,
+    "ratio": 0.9483595218641011,
+    "open_fraction": 0.25087349999999997,
+    "n_cry_compared": 496,
+    "per_crystal_corr": 0.856083268422998,
+    "per_crystal_rel_diff_median": -0.0010762836625029966,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9996113686333438,
+     0.7954189747925424
+    ]
+   },
+   {
+    "layout": 0,
+    "pose": 4,
+    "pixel": [
+     100,
+     100
+    ],
+    "point_mm": [
+     -0.175,
+     0.025
+    ],
+    "raycast_total": 0.23728771257056372,
+    "stored_total": 0.22481672643558726,
+    "ratio": 0.9474436075940178,
+    "open_fraction": 0.25303699999999996,
+    "n_cry_compared": 484,
+    "per_crystal_corr": 0.8437869305031014,
+    "per_crystal_rel_diff_median": 0.0005397875284917103,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9996314677583896,
+     0.831391313221067
+    ]
+   },
+   {
+    "layout": 0,
+    "pose": 4,
+    "pixel": [
+     117,
+     92
+    ],
+    "point_mm": [
+     0.675,
+     -0.375
+    ],
+    "raycast_total": 0.2181956434166671,
+    "stored_total": 0.21600660025268145,
+    "ratio": 0.9899675212130361,
+    "open_fraction": 0.22702900000000004,
+    "n_cry_compared": 495,
+    "per_crystal_corr": 0.8708710776328566,
+    "per_crystal_rel_diff_median": -0.002119972851938622,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9994611044503937,
+     0.8003905635943914
+    ]
+   },
+   {
+    "layout": 0,
+    "pose": 4,
+    "pixel": [
+     160,
+     100
+    ],
+    "point_mm": [
+     2.825,
+     0.025
+    ],
+    "raycast_total": 0.15834849191599695,
+    "stored_total": 0.14397228711879728,
+    "ratio": 0.9092116090071374,
+    "open_fraction": 0.13707999999999998,
+    "n_cry_compared": 412,
+    "per_crystal_corr": 0.817929384580577,
+    "per_crystal_rel_diff_median": -0.46902434264813864,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9991071875618474,
+     1.0015142773067411
+    ]
+   },
+   {
+    "layout": 0,
+    "pose": 4,
+    "pixel": [
+     100,
+     40
+    ],
+    "point_mm": [
+     -0.175,
+     -2.975
+    ],
+    "raycast_total": 0.1533041167853686,
+    "stored_total": 0.14818714123608762,
+    "ratio": 0.9666220604079084,
+    "open_fraction": 0.13026550000000003,
+    "n_cry_compared": 382,
+    "per_crystal_corr": 0.8245327191858157,
+    "per_crystal_rel_diff_median": -0.4008000344822634,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9988029094067369,
+     1.0529164145790109
+    ]
+   },
+   {
+    "layout": 0,
+    "pose": 4,
+    "pixel": [
+     30,
+     170
+    ],
+    "point_mm": [
+     -3.675,
+     3.525
+    ],
+    "raycast_total": 0.09195427308517676,
+    "stored_total": 0.09391379054337674,
+    "ratio": 1.0213096943997904,
+    "open_fraction": 0.06524350000000001,
+    "n_cry_compared": 240,
+    "per_crystal_corr": 0.8419493874925953,
+    "per_crystal_rel_diff_median": -0.006567448178357646,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9973864796334312,
+     1.00645526127336
+    ]
+   },
+   {
+    "layout": 0,
+    "pose": 4,
+    "pixel": [
+     170,
+     170
+    ],
+    "point_mm": [
+     3.325,
+     3.525
+    ],
+    "raycast_total": 0.09639470802248468,
+    "stored_total": 0.09299755875127108,
+    "ratio": 0.9647579276818683,
+    "open_fraction": 0.06905249999999996,
+    "n_cry_compared": 252,
+    "per_crystal_corr": 0.820613083794864,
+    "per_crystal_rel_diff_median": -0.44359110677185665,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.998475759569734,
+     1.3321455026521576
+    ]
+   },
+   {
+    "layout": 0,
+    "pose": 4,
+    "pixel": [
+     5,
+     100
+    ],
+    "point_mm": [
+     -4.925,
+     0.025
+    ],
+    "raycast_total": 0.09409380281079856,
+    "stored_total": 0.09616183799978371,
+    "ratio": 1.0219784420143323,
+    "open_fraction": 0.06777,
+    "n_cry_compared": 241,
+    "per_crystal_corr": 0.8328395722359934,
+    "per_crystal_rel_diff_median": -0.08637146702443077,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9992273954599817,
+     1.2035675444581693
+    ]
+   },
+   {
+    "layout": 1,
+    "pose": 0,
+    "pixel": [
+     99,
+     99
+    ],
+    "point_mm": [
+     0.175,
+     -0.025
+    ],
+    "raycast_total": 0.23744657279982836,
+    "stored_total": 0.22567448915501728,
+    "ratio": 0.9504221791622356,
+    "open_fraction": 0.25304150000000003,
+    "n_cry_compared": 493,
+    "per_crystal_corr": 0.8467128357957633,
+    "per_crystal_rel_diff_median": -0.0005318033420518231,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9996191150164374,
+     0.8649253799717057
+    ]
+   },
+   {
+    "layout": 1,
+    "pose": 0,
+    "pixel": [
+     100,
+     100
+    ],
+    "point_mm": [
+     0.225,
+     0.025
+    ],
+    "raycast_total": 0.23550041020089874,
+    "stored_total": 0.22390278362985544,
+    "ratio": 0.9507532638217077,
+    "open_fraction": 0.25087899999999996,
+    "n_cry_compared": 496,
+    "per_crystal_corr": 0.8541399107969483,
+    "per_crystal_rel_diff_median": -0.0013749191240171768,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9996081628939846,
+     0.810237097327934
+    ]
+   },
+   {
+    "layout": 1,
+    "pose": 0,
+    "pixel": [
+     117,
+     92
+    ],
+    "point_mm": [
+     1.075,
+     -0.375
+    ],
+    "raycast_total": 0.20823985517736326,
+    "stored_total": 0.19592315490809564,
+    "ratio": 0.9408532998701081,
+    "open_fraction": 0.21100799999999997,
+    "n_cry_compared": 494,
+    "per_crystal_corr": 0.8678124243993186,
+    "per_crystal_rel_diff_median": -0.5964747727185595,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9994997741062768,
+     0.8291911859367844
+    ]
+   },
+   {
+    "layout": 1,
+    "pose": 0,
+    "pixel": [
+     160,
+     100
+    ],
+    "point_mm": [
+     3.225,
+     0.025
+    ],
+    "raycast_total": 0.14593769720491218,
+    "stored_total": 0.14474560264946357,
+    "ratio": 0.9918314830350189,
+    "open_fraction": 0.11947149999999995,
+    "n_cry_compared": 358,
+    "per_crystal_corr": 0.8234725297609672,
+    "per_crystal_rel_diff_median": -0.31682416534253,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9985987945602454,
+     1.0772043654178256
+    ]
+   },
+   {
+    "layout": 1,
+    "pose": 0,
+    "pixel": [
+     100,
+     40
+    ],
+    "point_mm": [
+     0.225,
+     -2.975
+    ],
+    "raycast_total": 0.1525990648117646,
+    "stored_total": 0.1523957702082689,
+    "ratio": 0.9986677860460909,
+    "open_fraction": 0.13011150000000005,
+    "n_cry_compared": 380,
+    "per_crystal_corr": 0.8277545436461933,
+    "per_crystal_rel_diff_median": -0.24917844175935042,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.998555086331149,
+     1.0678532612179468
+    ]
+   },
+   {
+    "layout": 1,
+    "pose": 0,
+    "pixel": [
+     30,
+     170
+    ],
+    "point_mm": [
+     -3.275,
+     3.525
+    ],
+    "raycast_total": 0.0966420772412727,
+    "stored_total": 0.09746342444427875,
+    "ratio": 1.0084988570863962,
+    "open_fraction": 0.0696175,
+    "n_cry_compared": 255,
+    "per_crystal_corr": 0.8210182970016945,
+    "per_crystal_rel_diff_median": -0.19533191565997518,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9974316955132024,
+     1.3325506826678288
+    ]
+   },
+   {
+    "layout": 1,
+    "pose": 0,
+    "pixel": [
+     170,
+     170
+    ],
+    "point_mm": [
+     3.725,
+     3.525
+    ],
+    "raycast_total": 0.09053084253765267,
+    "stored_total": 0.08954219956208385,
+    "ratio": 0.9890794899521935,
+    "open_fraction": 0.06471700000000002,
+    "n_cry_compared": 234,
+    "per_crystal_corr": 0.815953972121288,
+    "per_crystal_rel_diff_median": -0.2563021758303255,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9976764796167047,
+     1.211486370852719
+    ]
+   },
+   {
+    "layout": 1,
+    "pose": 0,
+    "pixel": [
+     5,
+     100
+    ],
+    "point_mm": [
+     -4.525,
+     0.025
+    ],
+    "raycast_total": 0.10560836937486139,
+    "stored_total": 0.10849645175578715,
+    "ratio": 1.027347097564535,
+    "open_fraction": 0.07484500000000005,
+    "n_cry_compared": 301,
+    "per_crystal_corr": 0.8075334967478127,
+    "per_crystal_rel_diff_median": -0.027658016646862977,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9984612018927074,
+     1.2399152548509849
+    ]
+   },
+   {
+    "layout": 1,
+    "pose": 4,
+    "pixel": [
+     99,
+     99
+    ],
+    "point_mm": [
+     -0.225,
+     -0.025
+    ],
+    "raycast_total": 0.23604021656520466,
+    "stored_total": 0.2244748538805228,
+    "ratio": 0.9510025755230275,
+    "open_fraction": 0.25087800000000005,
+    "n_cry_compared": 491,
+    "per_crystal_corr": 0.8553214220977458,
+    "per_crystal_rel_diff_median": -0.00015210095570496377,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.999622182763662,
+     0.8032895579624606
+    ]
+   },
+   {
+    "layout": 1,
+    "pose": 4,
+    "pixel": [
+     100,
+     100
+    ],
+    "point_mm": [
+     -0.175,
+     0.025
+    ],
+    "raycast_total": 0.23710685861218445,
+    "stored_total": 0.22601566994809721,
+    "ratio": 0.9532228264968575,
+    "open_fraction": 0.25304950000000004,
+    "n_cry_compared": 487,
+    "per_crystal_corr": 0.8503874746565451,
+    "per_crystal_rel_diff_median": -0.0001044661936471624,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9996175597657616,
+     0.8198243376892524
+    ]
+   },
+   {
+    "layout": 1,
+    "pose": 4,
+    "pixel": [
+     117,
+     92
+    ],
+    "point_mm": [
+     0.675,
+     -0.375
+    ],
+    "raycast_total": 0.21795634124685404,
+    "stored_total": 0.2174089564939811,
+    "ratio": 0.9974885578013397,
+    "open_fraction": 0.22703399999999996,
+    "n_cry_compared": 495,
+    "per_crystal_corr": 0.8818789820211849,
+    "per_crystal_rel_diff_median": -0.005255345227240718,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9994522902645937,
+     0.8396107124132371
+    ]
+   },
+   {
+    "layout": 1,
+    "pose": 4,
+    "pixel": [
+     160,
+     100
+    ],
+    "point_mm": [
+     2.825,
+     0.025
+    ],
+    "raycast_total": 0.15823229273612271,
+    "stored_total": 0.15719180514550388,
+    "ratio": 0.9934243031392207,
+    "open_fraction": 0.13707749999999996,
+    "n_cry_compared": 386,
+    "per_crystal_corr": 0.838175850394935,
+    "per_crystal_rel_diff_median": -0.23647826528009164,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9989262779382708,
+     1.0378288753371556
+    ]
+   },
+   {
+    "layout": 1,
+    "pose": 4,
+    "pixel": [
+     100,
+     40
+    ],
+    "point_mm": [
+     -0.175,
+     -2.975
+    ],
+    "raycast_total": 0.15373645426282678,
+    "stored_total": 0.14834449031232927,
+    "ratio": 0.9649272257750953,
+    "open_fraction": 0.13025799999999998,
+    "n_cry_compared": 386,
+    "per_crystal_corr": 0.8329728616969567,
+    "per_crystal_rel_diff_median": -0.4255803451741399,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9990994972748081,
+     1.0513423718185986
+    ]
+   },
+   {
+    "layout": 1,
+    "pose": 4,
+    "pixel": [
+     30,
+     170
+    ],
+    "point_mm": [
+     -3.675,
+     3.525
+    ],
+    "raycast_total": 0.0896032563476372,
+    "stored_total": 0.09215020509373938,
+    "ratio": 1.0284247342107822,
+    "open_fraction": 0.06523699999999999,
+    "n_cry_compared": 225,
+    "per_crystal_corr": 0.8033984311279625,
+    "per_crystal_rel_diff_median": -0.003052540109214451,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9990002997229228,
+     1.5173374598089238
+    ]
+   },
+   {
+    "layout": 1,
+    "pose": 4,
+    "pixel": [
+     170,
+     170
+    ],
+    "point_mm": [
+     3.325,
+     3.525
+    ],
+    "raycast_total": 0.09540753912336188,
+    "stored_total": 0.08552389996298308,
+    "ratio": 0.8964060990232726,
+    "open_fraction": 0.06905300000000003,
+    "n_cry_compared": 245,
+    "per_crystal_corr": 0.8306623252773535,
+    "per_crystal_rel_diff_median": -0.42324783055874987,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9988528083481979,
+     1.0453429909195755
+    ]
+   },
+   {
+    "layout": 1,
+    "pose": 4,
+    "pixel": [
+     5,
+     100
+    ],
+    "point_mm": [
+     -4.925,
+     0.025
+    ],
+    "raycast_total": 0.09525110074048715,
+    "stored_total": 0.10012741701998386,
+    "ratio": 1.0511943299509188,
+    "open_fraction": 0.06777250000000001,
+    "n_cry_compared": 240,
+    "per_crystal_corr": 0.8152929796336474,
+    "per_crystal_rel_diff_median": -0.004504862811358487,
+    "per_crystal_rel_diff_p05_p95": [
+     -0.9989611137390267,
+     1.2849901933355858
+    ]
+   }
+  ]
+ }
+}

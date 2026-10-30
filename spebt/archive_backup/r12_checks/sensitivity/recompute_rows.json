@@ -1,0 +1,90 @@
+{
+ "bench": [
+  {
+   "crystal": 0,
+   "stored_sum": 8.434977508319719,
+   "recomputed_sum": 8.434977509827931,
+   "max_abs_diff": 5.820334405409744e-11,
+   "stored_max": 0.0010515842586755753
+  },
+  {
+   "crystal": 300,
+   "stored_sum": 8.59275036020641,
+   "recomputed_sum": 8.592750361311012,
+   "max_abs_diff": 5.819788596352071e-11,
+   "stored_max": 0.0010393890552222729
+  },
+  {
+   "crystal": 700,
+   "stored_sum": 3.0044849058366796,
+   "recomputed_sum": 3.004484907164651,
+   "max_abs_diff": 2.908945415276698e-11,
+   "stored_max": 0.000684299215208739
+  },
+  {
+   "crystal": 1500,
+   "stored_sum": 1.6873126600162376,
+   "recomputed_sum": 1.6873126609092521,
+   "max_abs_diff": 2.9076501297832513e-11,
+   "stored_max": 0.000503825955092907
+  },
+  {
+   "crystal": 2500,
+   "stored_sum": 0.09857138193518548,
+   "recomputed_sum": 0.09857138196594138,
+   "max_abs_diff": 9.093773978741289e-13,
+   "stored_max": 2.0017236238345504e-05
+  },
+  {
+   "crystal": 3359,
+   "stored_sum": 0.13894984775065897,
+   "recomputed_sum": 0.13894984778627403,
+   "max_abs_diff": 1.8174786355811337e-12,
+   "stored_max": 4.504886601353064e-05
+  }
+ ],
+ "mobo": [
+  {
+   "crystal": 0,
+   "stored_sum": 5.15002628821091,
+   "recomputed_sum": 5.1500262863582265,
+   "max_abs_diff": 5.816473214528828e-11,
+   "stored_max": 0.001045757788233459
+  },
+  {
+   "crystal": 350,
+   "stored_sum": 5.474039153815312,
+   "recomputed_sum": 5.474039152684291,
+   "max_abs_diff": 5.8189948519415946e-11,
+   "stored_max": 0.0010397355072200298
+  },
+  {
+   "crystal": 900,
+   "stored_sum": 1.7216089475251382,
+   "recomputed_sum": 1.7216089475468312,
+   "max_abs_diff": 2.909875563162495e-11,
+   "stored_max": 0.0006658843485638499
+  },
+  {
+   "crystal": 1800,
+   "stored_sum": 0.4929372155306626,
+   "recomputed_sum": 0.4929372150039103,
+   "max_abs_diff": 2.9068249543517943e-11,
+   "stored_max": 0.0005350454594008625
+  },
+  {
+   "crystal": 2700,
+   "stored_sum": 0.5446458712131995,
+   "recomputed_sum": 0.5446458714217112,
+   "max_abs_diff": 1.4545216159983498e-11,
+   "stored_max": 0.000397687399527058
+  },
+  {
+   "crystal": 3701,
+   "stored_sum": 0.028294890645204678,
+   "recomputed_sum": 0.028294890667781097,
+   "max_abs_diff": 9.091377315957692e-13,
+   "stored_max": 2.000724634854123e-05
+  }
+ ]
+}

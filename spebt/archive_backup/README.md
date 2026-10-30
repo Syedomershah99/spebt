@@ -48,3 +48,14 @@ expensive.
     bash archive_backup/refresh.sh && git add archive_backup && git commit
 
 Do this after any batch of evaluations finishes.
+
+## R12 checks (30 Oct 2026)
+
+    r12_checks/rod_position_cnr/   Dr. Yao's slide 14 question: does the CNR gain come from rods
+                                   away from the centre? The 5 saved reconstructions per design,
+                                   the pipeline's CNR, rods split at the median distance 2.57 mm:
+                                   inner +40% (ASCI 44 vs 64%), outer +23% (step2_results.json)
+    r12_checks/sensitivity/        his slide 15 question on the colour-bar magnitudes: the maps
+                                   summed T8's 8 bed positions (now their mean); 2-D in-plane
+                                   probabilities checked by an independent ray cast; 3-D pinhole
+                                   estimates against the SAI paper (analysis.json, raycast_report.json)

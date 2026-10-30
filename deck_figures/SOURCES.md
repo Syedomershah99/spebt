@@ -24,12 +24,16 @@ manim scenes live in `MIC/deck/visuals/`. Everything below is what R5
 | `eq_spearman.png` | 9 | `make_equation_figures.py`: the correlation coefficient of the ranks, as pandas computes it | |
 | `char_hist_l1_benchmark.png`, `char_hist_l2_mobo.png` | 13 | `make_characterization_figures.py --bench ../archive_backup/design_maps/bench.npz --mobo ../archive_backup/design_maps/mobo.npz` (R11, Dr. Yao's R10-rY and 29 Oct meeting): his weighted FWHM map, each strip passing pixel j weighted by its whole PPDF, and strips per detector with the FWHM filter; the two click layers stack to the full figure | benchmark results/tmi_reference_000, MOBO-optimized results/nd2fine_960 (mobo_0296's parameters, its archive metrics reproduced), maps from compute_design_maps.py on CCR, 30 Oct 2026 |
 | `char_asci_l1_benchmark.png`, `char_asci_l2_mobo.png` | 14 | same command: per-pixel ASCI with the FWHM filter, 1 degree bins | as above |
-| `char_sens_ppds_l1_benchmark.png`, `char_sens_ppds_l2_mobo.png` | 15 | same command: sensitivity, the sum of the PPDFs over detectors, and his PPDS formula counted inside each detector's strips (with PPDF_ij > 0 alone it is flat) | as above |
+| `char_sens_ppds_l1_benchmark.png`, `char_sens_ppds_l2_mobo.png` | 15 | same command: sensitivity, the sum of the PPDFs over detectors, and his PPDS formula counted inside each detector's strips (with PPDF_ij > 0 alone it is flat); since R12 per bed position (the npz maps sum T8's 8, PER_POSITION = 1/8) | as above |
 | `eq_fwhm_w_j.png`, `eq_sens_j.png` | 13, 15 | `make_equation_figures.py`: his weighted FWHM map formula (named FWHM_w,j) and the sensitivity map, the strategy document's Eq. 7 | |
 | `eq_fwhm_w_green.png` | 9 | `make_equation_figures.py`: FWHM_w = sum_b s_b FWHM_b / sum_b s_b as `compute_fwhm_and_asci` computes it, s_b the strip's mean PPDF (R10, his R9-rY comment) | |
 | `eq_gp_mean.png`, `eq_gp_var.png`, `eq_gp_kernel.png`, `eq_ehvi.png` | 21 | `make_equation_figures.py`: the Gaussian process and the expected hypervolume improvement, at the slide's 14 pt | |
 | `eq_xnext.png`, `eq_xnext_green.png` | (not in R8) | `make_equation_figures.py`; R7's slides 7 and 20 | |
-| `hotrod_phantom.png` | 6 | rendered from the phantom tensor | rod radii 0.100 to 0.225 mm |
+| `hotrod_phantom.png` | (R11 and before) | rendered from the phantom tensor | rod radii 0.100 to 0.225 mm |
+| `hotrod_phantom_d.png` | 6 | `make_phantom_figure.py` (R12, Dr. Yao's R11-rY): the pipeline phantom, each sector's nominal diameter beside it (0.20 to 0.45 mm), drawn as stored | `spebt/data/sai_10mm/hot_rods_phantom_10.0_mm_x_10.0_mm.pt` |
+| `recon_panels_l1_benchmark.png`, `recon_panels_l2_mobo.png` | 12 | `make_recon_panels.py --bench BENCH.npz --mobo MOBO.npz` (R12, his "color palette bar" comment): seed 0 of each design, one display window, the vertical bar in layer 1 | `cnr_repeat_seed0/recon_mlem_T8.npz` of `results/tmi_reference_000` and `results/nd2fine_960` on CCR |
+| `eq_wfwhm_j.png`, `eq_wfwhm_green.png` | 13, 9 | `make_equation_figures.py` (R12): his wFWHM_j as he typed it in R11-rY, and the same weighting for the whole design on slide 9 | |
+| `char_layout.json` | 13-15 | written by `make_characterization_figures.py`: figure sizes, column centres and slide 13's divider, read by the builder | |
 
 ## Diagrams and animations (manim)
 
