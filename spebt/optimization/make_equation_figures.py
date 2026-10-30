@@ -42,11 +42,24 @@ EQS = {
     "eq_xnext_ry_green.png": (r"$\mathbfit{x}_{\mathrm{next}} = \underset{\mathbfit{x}\in\chi}{\mathrm{argmax}}\;"
                               r"\mathrm{\mathbb{E}}[\mathrm{HV}(P\cup\{\mathbfit{f}(\mathbfit{x})\}) - \mathrm{HV}(P)]$", GREEN, 15, "stix"),
     # Slide 6 (26 Oct: "put a computation there, or a formula" for PPDS). Since his
-    # R9-rY (28 Oct) the formula is his, PPDS at pixel j: each detector's PPDF over
-    # the summed area of its strips, summed over the detectors; the searches' objective
-    # averages it over the FOV (compute_metrics._ppds_components). PPDS upright, as
-    # HV and cov are; 18 pt, the size of his equation.
-    "eq_ppds.png": (r"$\mathrm{PPDS}_{j} = \sum_{i}\,\dfrac{p_{ij}}{A_{i}}$", INK, 18, "stix"),
+    # R10-rY (29 Oct) the formula is his second one: over the detectors i that see
+    # pixel j, each detector's whole PPDF (summed over pixels k) over the summed area
+    # of its strips. (His R9-rY form and the strategy document's Eq. 6, which the
+    # searches computed, have PPDF_ij in the numerator; compute_design_maps.py draws
+    # both.) PPDS and PPDF upright, as HV and cov are; Sigma_k beside its sum, as in
+    # his; 18 pt, the size of his equation.
+    "eq_ppds.png": (r"$\mathrm{PPDS}_{j} = \sum_{i\,\in\,\{\mathrm{PPDF}_{i,j}>0\}}\,"
+                    r"\dfrac{\Sigma_{k}\,\mathrm{PPDF}_{i,k}}{A_{i}}$", INK, 18, "stix"),
+    # Slide 13 (his R10-rY slide 9 box and the 29 Oct meeting: "incorporate the j ...
+    # count all the PPDFs passing the j"): the weighted FWHM map, each strip (i,b) whose
+    # PPDF is nonzero at pixel j weighted by its whole PPDF, sum_k p_ibk, the weights
+    # normalized over those strips (his denominator, read as over the same set). Named
+    # FWHM_w,j to match slide 9's FWHM_w (his box: wFWHM_j).
+    "eq_fwhm_w_j.png": (r"$\mathrm{FWHM}_{\mathrm{w},j} = \dfrac{\Sigma_{(i,b)\,\in\,B_{j}}\;"
+                        r"(\Sigma_{k}\,p_{i,b,k})\;\mathrm{FWHM}_{i,b}}"
+                        r"{\Sigma_{(i,b)\,\in\,B_{j}}\;\Sigma_{k}\,p_{i,b,k}}$", INK, 16, "stix"),
+    # Slide 15: the sensitivity map, the strategy document's Eq. 7, beside his PPDS_j.
+    "eq_sens_j.png": (r"$\mathrm{Sens}_{j} = \sum_{i}\,\mathrm{PPDF}_{i,j}$", INK, 18, "stix"),
     # Slide 9 (his R9-rY comment, 28 Oct: "Can you express the weighting
     # mathematically?"): compute_fwhm_and_asci's fwhm_weighted_mean, every strip b's
     # FWHM weighted by its sensitivity s_b, the mean of its PPDF over the strip. Green

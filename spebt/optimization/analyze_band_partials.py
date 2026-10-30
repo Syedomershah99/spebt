@@ -67,3 +67,18 @@ s = band[(band[MP] >= 1.8) & (band[MP] < 2.1)]
 bins = pd.cut(s.asci_pct_fwhm0p45, [35, 40, 45, 50, 55, 60, 65], right=False)
 print(f"\nMPXI 1.8 to 2.1: {len(s)} designs, rho(ASCI, CNR) {rho(s, 'asci_pct_fwhm0p45'):+.2f}")
 print(s.groupby(bins, observed=True)[C].agg(["count", "mean"]).round(2).to_string())
+
+tw_path = f"{A}/fwhm_total_weight.csv"
+if os.path.exists(tw_path):
+    # Dr. Yao's weight (R10-rY, 29 Oct): each strip by its whole PPDF, col 7 x col 9
+    t = pd.read_csv(tw_path)
+    arm_t = t.arm.str.replace("results_h2h_", "", regex=False).replace({"results": "main"})
+    t["key"] = [c if not str(c).startswith("mobo") else f"{r}:{c}" for c, r in zip(t.config, arm_t)]
+    ut = u.merge(t[["key", "fwhm_wtotal", "fwhm_wmean_chk"]], on="key")
+    bt = ut[(ut.aperture_diam_mm >= 0.20) & (ut.aperture_diam_mm <= 0.45)]
+    print(f"\nstrip-total weight: {len(ut)} designs, {len(bt)} with small apertures")
+    print(f"  check mean weight vs archive: max |diff| {np.abs(ut.fwhm_wmean_chk - ut.fwhm_weighted_mean).max():.2e}")
+    for m in ("fwhm_weighted_mean", "fwhm_wtotal"):
+        print(f"  {m:20s} all {rho(ut, m):+.2f}  small apertures {rho(bt, m):+.2f}  "
+              f"MPXI held {partial(bt, m):+.2f}  5 bins {within(bt, m):+.2f}")
+    print(f"  rho(total-weighted, mean-weighted) {rho(ut, 'fwhm_wtotal', 'fwhm_weighted_mean'):+.3f}")
