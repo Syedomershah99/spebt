@@ -34,6 +34,10 @@ expensive.
                                col 9), 330 designs (compute_fwhm_total_weight.py, 30 Oct 2026);
                                n64 counts strips with FWHM = 64 mm (width not found), and the
                                *_no64 columns are the plain and mean-weighted FWHM without them
+    ppds_radial_recheck.csv    per-ring PPDS as searched (_bug) and with the strip-length fix
+                               (_fix), the 316 designs whose PPDFs and strip files remain
+                               (recheck_ppds_radial.py, 30 Oct 2026); ppds_recheck/ holds its
+                               design list, CCR job scripts and the analysis output
     design_maps/               benchmark (tmi_reference_000) and MOBO-optimized (nd2fine_960)
                                maps and strips for R11 slides 13-15 (compute_design_maps.py)
     fwhm_filter.csv            FWHM with the 0.45 mm strip filter, 330 designs with beam

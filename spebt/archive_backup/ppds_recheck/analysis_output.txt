@@ -1,0 +1,39 @@
+1020 scored designs, 796 in the band; rho(MPXI, CNR) -0.70, rho(ASCI, MPXI) +0.91
+metric                        raw  MPXI held  5 bins
+-- 796 designs
+fwhm_weighted_mean          +0.49      +0.14   +0.17
+asci_pct_fwhm0p45           -0.56      +0.27   +0.20
+ppds_ring1                  +0.10      -0.34   -0.31
+-- 293 designs
+fwhm_weighted_mean          +0.54      +0.14   +0.20
+fwhm_win_mean               -0.43      -0.07   -0.12
+fwhm_win_wmean              -0.22      +0.33   +0.20
+fwhm_win_nofloor_mean       -0.21      -0.35   -0.33
+
+MPXI 1.8 to 2.1: 203 designs, rho(ASCI, CNR) -0.03
+                   count  mean
+asci_pct_fwhm0p45             
+[35, 40)               1  4.09
+[40, 45)              14  4.31
+[45, 50)              43  4.06
+[50, 55)              88  4.23
+[55, 60)              44  4.16
+[60, 65)              13  4.17
+
+strip-total weight: 320 designs, 293 with small apertures
+  check mean weight vs archive: max |diff| 0.00e+00
+  fwhm_weighted_mean   all +0.23  small apertures +0.54  MPXI held +0.14  5 bins +0.20
+  fwhm_wtotal          all +0.15  small apertures +0.44  MPXI held -0.07  5 bins +0.05
+  rho(total-weighted, mean-weighted) +0.928
+
+strip-length fix: 316 designs with PPDFs, 289 with small apertures
+  as searched vs archive: max relative diff 2.4e-15
+  fixed / as searched: median 0.384; small apertures 0.366 to 0.391; above 0.45 mm 0.391 to 0.980
+  ppds_ring1       all -0.07  small apertures +0.11  MPXI held -0.28  5 bins -0.22
+  ppds_ring1_fix   all -0.08  small apertures +0.11  MPXI held -0.28  5 bins -0.22
+  rho(fixed, as searched) +0.9956, small apertures +0.9999
+  1020 designs, unmeasured large-aperture designs filled:
+    at 0.391, the lowest measured above 0.45 mm: all +0.01 to +0.01, small apertures +0.10 to +0.10, MPXI held -0.34 to -0.33
+    at 0.980, the highest measured: all -0.22 to -0.22, small apertures +0.10 to +0.10, MPXI held -0.34 to -0.33
+    drawn by aperture bin (above 0.8 mm from 0.6-0.8): all -0.08 to -0.04, small apertures +0.10 to +0.10, MPXI held -0.34 to -0.33
+    from the measured design nearest in aperture x count: all -0.13 to -0.13, small apertures +0.10 to +0.10, MPXI held -0.34 to -0.33

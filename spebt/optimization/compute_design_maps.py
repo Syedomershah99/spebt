@@ -185,8 +185,8 @@ def main(work_dir, n1, out):
         maps["ry_all"] += (seen * dens[:, None]).sum(axis=0)
         maps["ry_r1"] += (seen[r1] * dens[r1, None]).sum(axis=0)
         # PPDF_ij > 0 holds almost everywhere (tails through the metal), which makes the
-        # slide 6 form flat; inside the detector's strips (the masks, 1% of a strip's
-        # peak) it is the map the formula describes
+        # slide 6 form flat; inside the detector's strips (the masks: 1% of the detector's
+        # peak along an arc, beams_boundaries_radians) it is the map the formula describes
         inmask = mk > 0
         maps["ry_mask_all"] += (inmask * dens[:, None]).sum(axis=0)
         maps["ry_mask_r1"] += (inmask[r1] * dens[r1, None]).sum(axis=0)

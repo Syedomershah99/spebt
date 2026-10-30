@@ -82,3 +82,51 @@ if os.path.exists(tw_path):
         print(f"  {m:20s} all {rho(ut, m):+.2f}  small apertures {rho(bt, m):+.2f}  "
               f"MPXI held {partial(bt, m):+.2f}  5 bins {within(bt, m):+.2f}")
     print(f"  rho(total-weighted, mean-weighted) {rho(ut, 'fwhm_wtotal', 'fwhm_weighted_mean'):+.3f}")
+
+pr_path = f"{A}/ppds_radial_recheck.csv"
+if os.path.exists(pr_path):
+    # The strip-length fix (30 Oct, recheck_ppds_radial.py): ring-I PPDS recomputed from the
+    # PPDFs and strip files left on CCR, as the searches computed it and with the fix.
+    r = pd.read_csv(pr_path)
+    r = r[r.error.isna()]
+    ur = u.merge(r[["key", "ppds_ring1_bug", "ppds_ring1_fix"]], on="key")
+    br = ur[(ur.aperture_diam_mm >= 0.20) & (ur.aperture_diam_mm <= 0.45)]
+    f = ur.ppds_ring1_fix / ur.ppds_ring1_bug
+    fs, fl = f[br.index].to_numpy(), f.drop(br.index).to_numpy()
+    print(f"\nstrip-length fix: {len(ur)} designs with PPDFs, {len(br)} with small apertures")
+    print(f"  as searched vs archive: max relative diff {np.abs(ur.ppds_ring1_bug / ur.ppds_ring1 - 1).max():.1e}")
+    print(f"  fixed / as searched: median {f.median():.3f}; small apertures {fs.min():.3f} to {fs.max():.3f}; "
+          f"above 0.45 mm {fl.min():.3f} to {fl.max():.3f}")
+    for m in ("ppds_ring1", "ppds_ring1_fix"):
+        print(f"  {m:16s} all {rho(ur, m):+.2f}  small apertures {rho(br, m):+.2f}  "
+              f"MPXI held {partial(br, m):+.2f}  5 bins {within(br, m):+.2f}")
+    print(f"  rho(fixed, as searched) {rho(ur, 'ppds_ring1_fix', 'ppds_ring1'):+.4f}, "
+          f"small apertures {rho(br, 'ppds_ring1_fix', 'ppds_ring1'):+.4f}")
+    # The other 704 designs' PPDFs are purged. At small apertures the factor is nearly
+    # constant, so those designs draw from the measured small-aperture factors. Above 0.45 mm it
+    # grows with how fully the apertures fill the ring (0.97-0.98 at 0.73-0.76 mm x 255-270),
+    # so the 197 unmeasured there are filled four ways. Bands: 2.5-97.5% of 300 draws under
+    # each fill, the spread of the draws, not the uncertainty of the true value.
+    known = u.merge(ur[["key"]].assign(f=f.to_numpy()), on="key", how="left")["f"].to_numpy()
+    ap = u.aperture_diam_mm.to_numpy()
+    small = (ap >= 0.20) & (ap <= 0.45)
+    mm = ur.aperture_diam_mm.to_numpy()
+    p06, p08 = f[(mm > 0.45) & (mm <= 0.6)].to_numpy(), f[mm > 0.6].to_numpy()
+    cov, mcov = ap * u.n_apertures.to_numpy(), mm * ur.n_apertures.to_numpy()
+    nearest = f.to_numpy()[np.abs(cov[:, None] - mcov[None, :]).argmin(axis=1)]
+    rng = np.random.default_rng(0)
+    fills = [(f"at {fl.min():.3f}, the lowest measured above 0.45 mm", lambda: fl.min()),
+             (f"at {f.max():.3f}, the highest measured", lambda: f.max()),
+             ("drawn by aperture bin (above 0.8 mm from 0.6-0.8)",
+              lambda: np.where(ap <= 0.6, rng.choice(p06, len(u)), rng.choice(p08, len(u)))),
+             ("from the measured design nearest in aperture x count", lambda: nearest)]
+    print(f"  {len(u)} designs, unmeasured large-aperture designs filled:")
+    for lab, large in fills:
+        sims = []
+        for _ in range(300):
+            g = np.where(small, rng.choice(fs, len(u)), large())
+            v = u.assign(p=u.ppds_ring1.to_numpy() * np.where(np.isnan(known), g, known))
+            sims.append((rho(v, "p"), rho(v[small], "p"), partial(v[small], "p")))
+        lo, hi = np.percentile(sims, [2.5, 97.5], axis=0)
+        print(f"    {lab}: all {lo[0]:+.2f} to {hi[0]:+.2f}, small apertures {lo[1]:+.2f} to "
+              f"{hi[1]:+.2f}, MPXI held {lo[2]:+.2f} to {hi[2]:+.2f}")

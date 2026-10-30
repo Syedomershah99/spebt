@@ -4,7 +4,8 @@
 Reads the two npz files of compute_design_maps.py and writes, for each slide, the two
 click-build layers the builder places in the 5.82 x 3.55 in box to the right of the
 table (so the figure is shown at scale 1 and these font sizes are the sizes seen):
-the benchmark's column, then the MOBO-optimized column with the shared colour bars.
+the benchmark's column with the shared colour bars (QA of R11: the first map shown needs
+its scale), then the MOBO-optimized column.
 Laid over white in order they give the full figure (write_layers checks it).
 
   char_hist        strip FWHM histogram (strips above the 1% sensitivity floor; the
@@ -124,7 +125,8 @@ def maps_figure(d, rows, out):
         side, ys = 2.35, [FIG_H - 0.25 - 2.35]
     else:
         side = 1.45
-        ys = [FIG_H - 0.22 - side, FIG_H - 0.22 - side - 0.24 - side]
+        # 0.30 in between the rows keeps the upper bar's lowest label clear of the lower title
+        ys = [FIG_H - 0.22 - side, FIG_H - 0.22 - side - 0.30 - side]
     axes = [[fig.add_axes([(cx - side / 2) / FIG_W, y / FIG_H, side / FIG_W, side / FIG_H])
              for y in ys] for cx in CX]
     if len(rows) == 1:
@@ -149,7 +151,7 @@ def maps_figure(d, rows, out):
         if horiz:
             cbars[r].set_xlabel(bar, fontsize=FS_LABEL - 0.5, color=INK, labelpad=2)
 
-    layers = {"benchmark": axes[0], "mobo": axes[1] + cbars}
+    layers = {"benchmark": axes[0] + cbars, "mobo": axes[1]}
     write_layers(fig, axes[0][0], [a for col in axes for a in col] + cbars, layers, out, DPI)
     return means
 
@@ -192,7 +194,7 @@ def fwhm_mpxi_figure(d, out):
         if c == 0:
             h.set_ylabel("% of detectors", fontsize=FS_LABEL - 1, color=INK)
         style(h); h.yaxis.grid(True, color=GRID, lw=0.6); h.set_axisbelow(True)
-    layers = {"benchmark": [maps[0], hists[0]], "mobo": [maps[1], hists[1], cbar]}
+    layers = {"benchmark": [maps[0], hists[0], cbar], "mobo": [maps[1], hists[1]]}
     write_layers(fig, hists[0], maps + hists + [cbar], layers, out, DPI)
     return stats
 
