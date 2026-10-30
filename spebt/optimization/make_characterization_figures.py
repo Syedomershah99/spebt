@@ -165,12 +165,13 @@ def fwhm_mpxi_figure(d, out):
     hw, hh, y_h = 2.1, 1.05, 0.42
     hists = [fig.add_axes([(cx - hw / 2 + 0.2) / FIG_W, y_h / FIG_H, hw / FIG_W, hh / FIG_H]) for cx in CX]
     vals = [d[k]["wfwhm_total"] for k in ("bench", "mobo")]
-    vmax = max(np.nanpercentile(v, 99.5) for v in vals)
-    vmin = min(np.nanpercentile(v, 0.5) for v in vals)
+    # A fixed scale (QA of R11): the maps span only 0.477-0.500 mm, and a scale fitted to
+    # them made a 0.02 mm spread look like the whole colour range.
+    vmin, vmax = 0.40, 0.60
     stats = []
     for c, (key, v) in enumerate(zip(("bench", "mobo"), vals)):
         im = show_map(maps[c], np.nan_to_num(v, nan=vmin), vmin, vmax)
-        maps[c].set_title(f"FWHM$_{{w}}$, mean {np.nanmean(v):.3f} mm", fontsize=FS_NOTE, color=INK, pad=2)
+        maps[c].set_title(rf"FWHM$_{{\mathrm{{w}}}}$, mean {np.nanmean(v):.3f} mm", fontsize=FS_NOTE, color=INK, pad=2)
         kw = d[key]["dets"][:, 4].astype(int)
         act = kw[kw > 0]
         hk = np.bincount(np.clip(kw, 0, 8), minlength=9)[:9] / kw.size * 100

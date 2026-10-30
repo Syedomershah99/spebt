@@ -43,9 +43,14 @@ for d in sorted(glob.glob(f"{args.root}/results*/*/")):
     sm[~np.isfinite(sm)] = 0.0
     npx[~np.isfinite(npx)] = 0.0
     tot = sm * npx
+    # FWHM exactly 64 mm is get_beam_width's sampling-line length: the width was not found
+    ok = fw < 63.9
     out.append(dict(arm=os.path.basename(os.path.dirname(d.rstrip("/"))), config=os.path.basename(d.rstrip("/")),
-                    n_strips=fw.size, fwhm_wmean_chk=fw @ sm / sm.sum() if sm.sum() > 0 else np.nan,
+                    n_strips=fw.size, n64=int((~ok).sum()),
+                    fwhm_wmean_chk=fw @ sm / sm.sum() if sm.sum() > 0 else np.nan,
                     fwhm_wtotal=fw @ tot / tot.sum() if tot.sum() > 0 else np.nan,
+                    fwhm_mean_no64=fw[ok].mean() if ok.any() else np.nan,
+                    fwhm_wmean_no64=fw[ok] @ sm[ok] / sm[ok].sum() if sm[ok].sum() > 0 else np.nan,
                     npix_median=float(np.median(npx))))
 with open(args.out, "w", newline="") as f:
     wr = csv.DictWriter(f, fieldnames=list(out[0])); wr.writeheader(); wr.writerows(out)

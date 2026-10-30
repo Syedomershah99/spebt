@@ -58,6 +58,9 @@ EQS = {
     "eq_fwhm_w_j.png": (r"$\mathrm{FWHM}_{\mathrm{w},j} = \dfrac{\Sigma_{(i,b)\,\in\,B_{j}}\;"
                         r"(\Sigma_{k}\,p_{i,b,k})\;\mathrm{FWHM}_{i,b}}"
                         r"{\Sigma_{(i,b)\,\in\,B_{j}}\;\Sigma_{k}\,p_{i,b,k}}$", INK, 16, "stix"),
+    # Slide 14 (QA of R11: the map's formula on the left, as on slides 13 and 15): the
+    # 1-degree angle bins of 360 that the strips through pixel j cover, with the FWHM filter.
+    "eq_asci_j.png": (r"$\mathrm{ASCI}_{j} = \dfrac{N_{j}}{360}\times 100\%$", INK, 18, "stix"),
     # Slide 15: the sensitivity map, the strategy document's Eq. 7, beside his PPDS_j.
     "eq_sens_j.png": (r"$\mathrm{Sens}_{j} = \sum_{i}\,\mathrm{PPDF}_{i,j}$", INK, 18, "stix"),
     # Slide 9 (his R9-rY comment, 28 Oct: "Can you express the weighting

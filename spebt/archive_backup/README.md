@@ -31,7 +31,9 @@ expensive.
     mpxi_variants*.csv         MPXI definition variants
     mobo_manifest.csv          iteration manifest
     fwhm_total_weight.csv      weighted FWHM with each strip's whole PPDF as weight (col 7 x
-                               col 9), 330 designs (compute_fwhm_total_weight.py, 30 Oct 2026)
+                               col 9), 330 designs (compute_fwhm_total_weight.py, 30 Oct 2026);
+                               n64 counts strips with FWHM = 64 mm (width not found), and the
+                               *_no64 columns are the plain and mean-weighted FWHM without them
     design_maps/               benchmark (tmi_reference_000) and MOBO-optimized (nd2fine_960)
                                maps and strips for R11 slides 13-15 (compute_design_maps.py)
     fwhm_filter.csv            FWHM with the 0.45 mm strip filter, 330 designs with beam
