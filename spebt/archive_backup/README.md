@@ -59,3 +59,10 @@ Do this after any batch of evaluations finishes.
                                    summed T8's 8 bed positions (now their mean); 2-D in-plane
                                    probabilities checked by an independent ray cast; 3-D pinhole
                                    estimates against the SAI paper (analysis.json, raycast_report.json)
+
+## Brain template check (31 Oct 2026)
+
+    brain_check/                   the design-maps code (spebt/pymatana PR #5) on Tridev's brain
+                                   template, run on CCR in /projects/academic/rutaoyao/Omer/
+                                   brain_maps_check: configs, job script, diagnostics
+                                   (check_brain.py, mismatch.py, output) and the figure script

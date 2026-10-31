@@ -1,0 +1,28 @@
+detectors 720, centres inside the 200 mm square: 84
+pixels: FOV circle 31428, beyond the collimator 1592 of 40000
+layout 0: 5540 strips, detectors whose mask ids differ from their property rows: 121
+  FWHM (mm) 5/25/50/75/95%: [ 1.23  2.28  5.08 11.39 24.38]; > 10 mm 30.4%; at 64 mm 62 strips (1.2%) carrying 0.0% of the strips' PPDF
+  strips per detector: mean 7.38; detectors without strips 20; inside-square detectors: mean 5.15, their median FWHM 7.52 mm vs 4.95 mm
+  mask pixels beyond the collimator: 2.44% of all mask pixels
+layout 1: 5516 strips, detectors whose mask ids differ from their property rows: 121
+  FWHM (mm) 5/25/50/75/95%: [ 1.2   2.29  5.09 11.5  23.55]; > 10 mm 30.0%; at 64 mm 52 strips (1.0%) carrying 0.0% of the strips' PPDF
+  strips per detector: mean 7.33; detectors without strips 20; inside-square detectors: mean 5.05, their median FWHM 6.49 mm vs 4.97 mm
+  mask pixels beyond the collimator: 2.44% of all mask pixels
+wfwhm          mean square 22.88 | FOV circle 23.11 (min 19.78, max 26.53) | beyond collimator 19.48; NaN in FOV 0
+asci           mean square 9.105 | FOV circle 10.04 (min 0.5556, max 19.44) | beyond collimator 5.979; NaN in FOV 0
+sensitivity    mean square 0.3562 | FOV circle 0.3751 (min 0.1914, max 0.5507) | beyond collimator 0.5695; NaN in FOV 0
+ppds           mean square 0.826 | FOV circle 0.8936 (min 0.6466, max 0.9837) | beyond collimator 0.4971; NaN in FOV 0
+asci_nofilter  mean square 44.63 | FOV circle 50.45 (min 20.56, max 71.11) | beyond collimator 19.24; NaN in FOV 0
+without 64 mm strips, in the FOV circle: wFWHM 23.11 mm (with 23.11); PPDS 0.9236 (with 0.8936); ASCI 10.04
+QA figure: /projects/academic/rutaoyao/Omer/brain_maps_check/out/brain_qa_detectors.png detectors [19, 239, 125]
+--- err
+brain.yml
+brain_maps.png
+brain_maps_first.png
+brain_maps_first_small.png
+brain_nofilter.yml
+brain_qa_detectors.png
+check_brain.py
+job_extract.sh
+
+[exited with code 0]
