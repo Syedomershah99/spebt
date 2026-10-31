@@ -37,8 +37,10 @@ CMAP = "viridis"
 # the system's sensitivity is their mean (Dr. Yao, 30 Oct 2026: "check the maximum value of
 # the sensitivity color palette"). Both maps are shown per bed position.
 PER_POSITION = 1 / 8
-PPDS_SCALE = {"ry_mask": PER_POSITION, "eq6": 1e2 * PER_POSITION}
-PPDS_UNIT = {"ry_mask": " mm⁻²", "eq6": " ×10⁻² mm⁻²"}
+# Dr. Yao, 31 Oct: "report PPDS_j the unit of per pixel ... scaled by 0.05^2" (A_i in pixels).
+PIXEL_MM = 0.05
+PPDS_SCALE = {"ry_mask": PER_POSITION * PIXEL_MM ** 2, "eq6": 1e2 * PER_POSITION}
+PPDS_UNIT = {"ry_mask": "", "eq6": " ×10⁻² mm⁻²"}   # per pixel: on the colour bar, as sensitivity
 N = 200                     # 0.05 mm pixels; pixel p is (x, y) = (p // 200, p % 200)
 EXTENT = (-5, 5, -5, 5)
 
@@ -150,9 +152,10 @@ def maps_figure(d, rows, out, side, name, gap=0.22, left=0.08):
     fw = cx[1] + side / 2 + 1.05
     fh = top + len(rows) * (title_h + side) + (len(rows) - 1) * row_gap + 0.05
     fig = plt.figure(figsize=(fw, fh))
-    bench, mobo, bars, means = [], [], [], []
+    bench, mobo, bars, means, ys = [], [], [], [], []
     for r, (label, key, unit, scale, bar, fmt) in enumerate(rows):
         y = fh - top - title_h - side - r * (title_h + side + row_gap)
+        ys.append(y)
         vals = [d[k][key] * scale for k in ("bench", "mobo")]
         vmax = max(np.percentile(v, 99.5) for v in vals)
         for c, v in enumerate(vals):
@@ -163,6 +166,8 @@ def maps_figure(d, rows, out, side, name, gap=0.22, left=0.08):
             means.append(float(np.nanmean(v)))
         bars.append(vbar(fig, im, cx[1] + side / 2 + 0.14, y, side, fw, fh, bar))
     LAYOUT[name] = {"w": round(fw, 4), "h": round(fh, 4), "cx": [round(v, 4) for v in cx]}
+    if len(rows) == 2:  # mid-gap between the rows, from the bottom, for his slide 15 divider
+        LAYOUT[name]["divider"] = round((ys[0] + ys[1] + side + title_h) / 2, 4)
     write_layers(fig, bench[0], bench + mobo + bars, {"benchmark": bench + bars, "mobo": mobo}, out, DPI)
     return means
 
@@ -224,7 +229,7 @@ def main():
                     os.path.join(a.outdir, "char_asci.png"), 3.25, "asci")
     print("asci means:", m)
     m = maps_figure(d, [("Sensitivity", "sens_all", "", PER_POSITION, "probability (2-D)", ".3f"),
-                        ("PPDS", f"{a.ppds}_all", PPDS_UNIT[a.ppds], PPDS_SCALE[a.ppds], "mm⁻² (2-D)", ".1f")],
+                        ("PPDS", f"{a.ppds}_all", PPDS_UNIT[a.ppds], PPDS_SCALE[a.ppds], "per pixel (2-D)", ".3f")],
                     os.path.join(a.outdir, "char_sens_ppds.png"), 1.91, "sens_ppds", gap=0.45, left=0.3)
     print("sens, ppds means (per bed position):", m)
     with open(os.path.join(a.outdir, "char_layout.json"), "w") as f:
