@@ -80,7 +80,7 @@ panels = [("wfwhm", "wFWHM", " mm", "wFWHM (mm)", ".1f"),
           ("asci_all", "ASCI, all strips", "%", "ASCI (%)", ".1f"),
           ("asci", "ASCI, strips ≤ 10 mm", "%", "ASCI (%)", ".1f"),
           ("sensitivity", "Sensitivity", "", "probability (2-D)", ".3f"),
-          ("ppds", "PPDS", " mm⁻²", "mm⁻² (2-D)", ".2f")]
+          ("ppds", "PPDS", "", "per pixel (2-D)", ".2f")]   # per pixel, as on MIC slide 15 (1 mm pixels)
 fig, axes = plt.subplots(2, 3, figsize=(13.2, 8.4), layout="constrained")
 draw_geometry(axes[0, 0])
 axes[0, 0].set_title("Brain Template Geometry")

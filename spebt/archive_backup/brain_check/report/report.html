@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Brain Template Design Maps</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap">
+<style>
+/* A two-page-plus report for print: one reading column, figures at full text width. */
+:root {
+  --ink: #17201f; --muted: #55625f; --rule: #d5dedb; --accent: #1d7f79;
+  --accent-soft: #e2f1ef; --note: #8a5a00; --note-soft: #fbf0d9; --bg: #ffffff;
+  --display: "Source Serif 4", Georgia, serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", Menlo, monospace;
+}
+@page { size: Letter; margin: 0.6in 0.65in 0.6in 0.65in; }
+* { box-sizing: border-box; }
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 10.5pt; line-height: 1.5; }
+main { display: grid; gap: 16pt; }
+header { display: grid; gap: 5pt; border-bottom: 1.5pt solid var(--accent); padding-bottom: 9pt; }
+.eyebrow { font-family: var(--mono); font-size: 8.5pt; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); }
+h1 { font-family: var(--display); font-weight: 600; font-size: 25pt; line-height: 1.1; margin: 0; }
+h2 { font-family: var(--display); font-weight: 600; font-size: 15pt; line-height: 1.2; margin: 0 0 5pt; break-after: avoid; }
+h3 { font-size: 10.5pt; font-weight: 600; margin: 0 0 2pt; break-after: avoid; }
+p { margin: 0; }
+.lede { font-size: 11.5pt; }
+.byline { font-size: 9pt; color: var(--muted); }
+section { display: grid; gap: 8pt; }
+code, .url { font-family: var(--mono); font-size: 8.8pt; }
+table { border-collapse: collapse; width: 100%; font-size: 9.5pt; break-inside: avoid; }
+th, td { text-align: left; padding: 4pt 7pt; border-bottom: 0.6pt solid var(--rule); vertical-align: top; }
+th { font-size: 8pt; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); font-weight: 500; }
+td.n { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+figure { margin: 0; display: grid; gap: 4pt; break-inside: avoid; }
+figure img { width: 100%; height: auto; border: 0.6pt solid var(--rule); }
+figure img.fig1 { width: 90%; justify-self: center; }
+figure img.fig2 { width: 74%; justify-self: center; }
+figcaption { font-size: 8.8pt; color: var(--muted); }
+figcaption b { color: var(--ink); }
+.findings { display: grid; gap: 8pt; }
+.finding { padding-left: 9pt; border-left: 2pt solid var(--rule); break-inside: avoid; }
+.finding.key { border-left-color: var(--accent); }
+.chip { font-family: var(--mono); font-size: 7.5pt; padding: 0.5pt 5pt; border-radius: 6pt; white-space: nowrap; }
+.chip.pass { background: var(--accent-soft); color: var(--accent); }
+.chip.note { background: var(--note-soft); color: var(--note); }
+ul { margin: 0; padding-left: 14pt; display: grid; gap: 3pt; }
+pre { margin: 0; background: #f4f6f5; border: 0.6pt solid var(--rule); padding: 6pt 8pt; font-family: var(--mono); font-size: 8.3pt; line-height: 1.45; white-space: pre-wrap; break-inside: avoid; }
+.pagebreak { break-before: page; }
+footer { font-size: 8.5pt; color: var(--muted); border-top: 0.6pt solid var(--rule); padding-top: 6pt; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="eyebrow">SC-SPECT design maps · brain template · 31 October 2026</div>
+    <h1>Brain Template Design Maps</h1>
+    <p class="lede">The weighted FWHM, ASCI, sensitivity and PPDS maps of MIC slides 13 to 15, computed on the brain SC-SPECT template that Tridev built, with the new design-maps code (spebt/pymatana PR #5).</p>
+    <p class="byline">Omer Shah, for Dr. Rutao Yao and Sushil. Two collimator positions (1° apart), 720 crystals, a 200 × 200 grid of 1 mm pixels; all values 2-D (in-plane), per collimator position.</p>
+  </header>
+
+  <section>
+    <h2>Maps Inside the 200 mm FOV</h2>
+    <p>The square PPDF grid reaches 141 mm in its corners, past the collimator at 120 mm, so the maps are shown and averaged inside the 200 mm FOV circle only.</p>
+    <figure>
+      <img class="fig1" src="brain_design_maps.png" alt="Brain template geometry and five maps inside the FOV circle">
+      <figcaption><b>Figure 1.</b> Top left: the template, six panels of three crystal layers behind a collimator ring of 200 apertures of 2 mm. Maps: both collimator positions; wFWHM pools them, sensitivity and PPDS are their mean. Colour scales from 0 (wFWHM from its 0.5th percentile) to the 99.5th percentile.</figcaption>
+    </figure>
+    <table>
+      <thead><tr><th>Map</th><th>Mean</th><th>Range</th><th>Reading</th></tr></thead>
+      <tbody>
+        <tr><td>wFWHM</td><td class="n">23.1 mm</td><td class="n">19.8 to 26.5 mm</td><td>each strip weighted by its whole PPDF, its counts</td></tr>
+        <tr><td>ASCI, all strips</td><td class="n">50.4%</td><td class="n">20.6 to 71.1%</td><td>1° bins; strips above 1% of the peak strip sensitivity</td></tr>
+        <tr><td>ASCI, strips ≤ 10 mm</td><td class="n">10.0%</td><td class="n">0.6 to 19.4%</td><td>a ring near r = 70 mm</td></tr>
+        <tr><td>Sensitivity</td><td class="n">0.375</td><td class="n">0.19 to 0.55</td><td>in-plane detection probability</td></tr>
+        <tr><td>PPDS</td><td class="n">0.89</td><td class="n">0.65 to 0.98</td><td>per pixel, as on slide 15 (here 1 mm pixels)</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Findings</h2>
+    <div class="findings">
+      <div class="finding key">
+        <h3>wFWHM is 23 mm because the wide strips carry the counts</h3>
+        <p>The median strip is 5 mm wide, but each crystal's central strip is a broad fan: 55 mm for the inner-layer crystal of Figure 2, 34 mm for the middle and 25 mm for the outer. Weighting each strip by its whole PPDF counts these fans by their counts. By layer, wFWHM is <b>24.5 mm</b> for the inner layer (39% of the counts), <b>14.5 mm</b> for the middle (25%) and <b>11.5 mm</b> for the outer (36%). Over all strips it is 17.2 mm; the map's pixel mean is higher because a wide strip covers more pixels.</p>
+      </div>
+      <div class="finding">
+        <h3>ASCI depends on the strip-width window</h3>
+        <p>With every strip, ASCI is 50% on average, highest at the centre. With strips up to 10 mm it is 10%, in a ring near r = 70 mm: each strip carries one FWHM, measured at its weighted centre, so the narrow ones are short chords close to the collimator. The window should follow the brain resolution target.</p>
+      </div>
+      <div class="finding">
+        <h3>Sensitivity and PPDS are in-plane values</h3>
+        <p>Sensitivity is 0.375 on average and 0.55 at the centre: the probability that a photon emitted in the plane is detected, per collimator position. PPDS is 0.89 per pixel.</p>
+      </div>
+      <div class="finding">
+        <h3>The grid's corners lie outside the collimator</h3>
+        <p>84 of the 720 crystal centres lie inside the 200 mm square. Pixels beyond the collimator see crystals with no collimation in between, which shows as hatched PPDF in the corners and as 64 mm sliver strips for crystals near a corner.</p>
+      </div>
+      <div class="finding">
+        <h3>64 mm strips are few and carry almost no counts</h3>
+        <p>pymatana records 64 mm when it finds no half maximum along its 64 mm sampling line. 114 of the 11,056 strips (1%) have that value; they carry under 0.1% of the strip PPDF and leave wFWHM unchanged, but they enlarge the strip areas, so PPDS is 0.89 with them and 0.92 without.</p>
+      </div>
+    </div>
+    <figure>
+      <img class="fig2" src="brain_strips_by_layer.png" alt="PPDF and strips of one inner, one middle and one outer layer crystal">
+      <figcaption><b>Figure 2.</b> One crystal per layer near the middle of a panel, first collimator position: its PPDF over 3 decades (top) and its strips with their FWHM in mm (bottom). The triangle marks the crystal.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <figure>
+      <img src="brain_layer_stats.png" alt="Strip FWHM histograms by layer and each layer's share of the strip PPDF">
+      <figcaption><b>Figure 3.</b> Strip FWHM by layer (left, log scale) and each layer's share of all strip PPDF (right), both collimator positions.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>Checks</h2>
+    <table>
+      <thead><tr><th>Check</th><th>Result</th><th></th></tr></thead>
+      <tbody>
+        <tr><td>MIC slides 13 to 15</td><td>the same code reproduces the benchmark and MOBO-optimized maps: ASCI and sensitivity identical, wFWHM within 1e-14, PPDS within 2e-8 (relative)</td><td><span class="chip pass">pass</span></td></tr>
+        <tr><td>Brain maps, independent code</td><td>code written from the definitions, without the PR's code, gives the same four maps; the means agree to six digits inside the FOV and beyond the collimator</td><td><span class="chip pass">pass</span></td></tr>
+        <tr><td>Strip files against the PPDFs</td><td>every strip's pixel count matches its mask; its sensitivity is the mean PPDF of its pixels (within 2e-7); its weighted centre agrees within 2e-5 mm with x on the first pixel index; no mask strip lacks a property row</td><td><span class="chip pass">pass</span></td></tr>
+        <tr><td>Pixel convention</td><td>with x and y swapped, PPDS would be 1.42 instead of 0.89, so the convention matters; the stored strip centres confirm x on the first index</td><td><span class="chip pass">pass</span></td></tr>
+        <tr><td>Strips without pixels</td><td>228 and 235 property rows (the two collimator positions) have no pixels and no angle; the maps skip them; 20 crystals per position have only such rows</td><td><span class="chip note">note</span></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>For the Report</h2>
+    <ul>
+      <li>Show and average the maps inside the 200 mm FOV circle; the grid's corners lie outside the collimator.</li>
+      <li>State the ASCI window with the map: strips up to 10 mm here, and all strips for comparison.</li>
+      <li>Read wFWHM as count-weighted: show it with the per-layer values or the strip-width histogram, since the wide inner-layer fans dominate it.</li>
+      <li>Strips wider than 64 mm cannot be measured with pymatana's 64 mm sampling line; here they are 1% of the strips.</li>
+      <li>Values are 2-D, per collimator position; PPDS per pixel.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Reproduce</h2>
+    <p>Code: branch <code>design-maps</code> of <span class="url">github.com/Syedomershah99/pymatana</span>, pull request <span class="url">github.com/spebt/pymatana/pull/5</span> into dev. Run folder on CCR: <code>/projects/academic/rutaoyao/Omer/brain_maps_check</code>; PPDFs stacked per collimator position from <code>/vscratch/grp-rutaoyao/Tridev/brain_spect/data</code>, linked as <code>position_000_ppdfs.hdf5</code> and <code>position_001_ppdfs.hdf5</code>.</p>
+<pre>cd beam-analysis
+python arg_extract_beam_masks.py 0 --config brain.yml
+python arg_extract_beam_properties.py 0 --config brain.yml
+python arg_extract_beam_masks.py 1 --config brain.yml
+python arg_extract_beam_properties.py 1 --config brain.yml
+python arg_design_maps.py --config brain.yml --layouts 0 1 --out brain_maps.hdf5
+python plot_design_maps.py brain_maps.hdf5 --labels "Brain template" --out brain_maps.png</pre>
+    <p class="byline">brain.yml: <code>fov.n_pixels [200, 200]</code>, <code>fov.mm_per_pixel [1.0, 1.0]</code>, <code>analysis.fwhm_max_mm 10</code> (the ASCI window), the <code>maps</code> file names as in base_config.yml. Extraction and maps take under a minute for both positions.</p>
+  </section>
+
+</main>
+</body>
+</html>
