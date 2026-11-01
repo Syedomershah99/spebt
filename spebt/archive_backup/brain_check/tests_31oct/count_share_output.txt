@@ -1,0 +1,5 @@
+strips wider than  5 mm:  58.8% of the strips,  94.2% of the counts
+strips wider than 10 mm:  35.9% of the strips,  78.7% of the counts
+strips wider than 20 mm:   7.5% of the strips,  26.5% of the counts
+strips wider than 30 mm:   2.8% of the strips,  12.8% of the counts
+median strip FWHM 6.77 mm over 8670 strips; count-weighted median 14.8 mm

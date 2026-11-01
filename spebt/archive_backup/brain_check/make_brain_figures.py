@@ -16,8 +16,9 @@ B = "/projects/academic/rutaoyao/Omer/brain_maps_check"
 sys.path.insert(0, f"{B}/code/beam-analysis")
 from arg_design_maps import load_matrix
 
-OUT = f"{B}/figs"
-D = f"{B}/data"
+# usage: python make_brain_figures.py [DATA_DIR MAPS MAPS_NOFILTER OUT_DIR]; defaults: the first run
+D, MAPS, MAPS_ALL, OUT = (sys.argv[1:5] if len(sys.argv) == 5 else
+                          (f"{B}/data", f"{B}/out/brain_maps.hdf5", f"{B}/out/brain_maps_nofilter.hdf5", f"{B}/figs"))
 TENSOR = ("/vscratch/grp-rutaoyao/Tridev/brain_spect/geometry/"
           "brain_spect_layouts_e90446e80e2b0ae1da75fd55d98c8d37_rot2_ang1p0deg_trans1x1_step0p0x0p0.tensor")
 N = 200
@@ -72,9 +73,9 @@ def draw_geometry(ax):
 
 
 # Figure 1: geometry and the four maps inside the FOV circle
-with h5py.File(f"{B}/out/brain_maps.hdf5") as h:
+with h5py.File(MAPS) as h:
     m = {k: h[k][:].ravel() for k in ("wfwhm", "asci", "sensitivity", "ppds")}
-with h5py.File(f"{B}/out/brain_maps_nofilter.hdf5") as h:
+with h5py.File(MAPS_ALL) as h:
     m["asci_all"] = h["asci"][:].ravel()
 panels = [("wfwhm", "wFWHM", " mm", "wFWHM (mm)", ".1f"),
           ("asci_all", "ASCI, all strips", "%", "ASCI (%)", ".1f"),
@@ -115,7 +116,7 @@ for c, (name, i) in enumerate(picks.items()):
     a0, a1 = axes[0, c], axes[1, c]
     a0.imshow(np.log10(img.T + 1e-12), origin="lower", extent=EXT, cmap="magma",
               vmin=np.log10(img.max()) - 3, vmax=np.log10(img.max()))
-    rows = props[(props[:, 1] == i) & (props[:, 9] > 0)]
+    rows = props[(props[:, 1] == i) & (props[:, 9] > 0) & np.isfinite(props[:, 3]) & (props[:, 4] > 0)]
     lab = np.ma.masked_equal(mask[i].reshape(N, N).T, 0)
     a1.imshow(lab, origin="lower", extent=EXT, cmap="tab20", interpolation="nearest")
     for r in rows:
@@ -128,7 +129,7 @@ for c, (name, i) in enumerate(picks.items()):
         a.set_xlabel("x (mm)"); a.set_ylabel("y (mm)")
     w = np.array([ppdf[i, mask[i] == r[2]].sum() for r in rows])
     a0.set_title(f"{name.title()} Layer Crystal {i}: PPDF (log, 3 decades)")
-    a1.set_title(f"{len(rows)} strips, FWHM in mm; wFWHM {np.dot(w, rows[:, 4]) / w.sum():.1f} mm")
+    a1.set_title(f"{len(rows)} strips, FWHM in mm; count-weighted mean {np.dot(w, rows[:, 4]) / w.sum():.1f} mm")
 stats["example_crystals"] = picks
 fig.savefig(f"{OUT}/brain_strips_by_layer.png", dpi=200)
 plt.close(fig)
@@ -151,7 +152,7 @@ stats["by_layer"] = {}
 for name, colour in LAYER_COL.items():
     s = lyr == name
     h1.hist(p[s, 4], bins=edges, histtype="step", lw=1.6, color=colour,
-            label=f"{name}: median {np.median(p[s, 4]):.1f} mm, wFWHM {np.dot(w[s], p[s, 4]) / w[s].sum():.1f} mm")
+            label=f"{name}: median {np.median(p[s, 4]):.1f} mm, count-weighted mean {np.dot(w[s], p[s, 4]) / w[s].sum():.1f} mm")
     stats["by_layer"][name] = {"strips": int(s.sum()), "median_fwhm": float(np.median(p[s, 4])),
                                "wfwhm": float(np.dot(w[s], p[s, 4]) / w[s].sum()),
                                "ppdf_share": float(w[s].sum() / w.sum())}
