@@ -174,7 +174,9 @@ def maps_figure(d, rows, out, side, name, gap=0.22, left=0.08):
 
 def fwhm_mpxi_figure(d, out):
     """Slide 13 ("wFWHM Map and MPXI Histograms"): his wFWHM_j map above, strips per
-    detector with the FWHM filter below, a line on the slide between the two."""
+    detector with the FWHM filter below, a line on the slide between the two. The
+    histograms cover the detectors with one or more such strips, the set MPXI's mean
+    is taken over (R13: a grey bar for the rest confused Dr. Yao)."""
     fw, fh = AREA_W, AREA_H
     side, hw, hh, y_h = 1.9, 3.0, 1.62, 0.55
     cx = (2.1, 5.5)
@@ -192,16 +194,17 @@ def fwhm_mpxi_figure(d, out):
         maps[c].set_title(f"wFWHM, mean {np.nanmean(v):.3f} mm", fontsize=FS_T, color=INK, pad=4)
         kw = d[key]["dets"][:, 4].astype(int)
         act = kw[kw > 0]
-        hk = np.bincount(np.clip(kw, 0, 8), minlength=9)[:9] / kw.size * 100
-        hists[c].bar(np.arange(9), hk, width=0.8, color=[GRID] + [C_BAR] * 8, lw=0)
+        # 5 and up in one bar (his 2 Nov meeting): alone, 6 to 8 were too small to see
+        hk = np.bincount(np.clip(act, 0, 5), minlength=6)[1:6] / act.size * 100
+        hists[c].bar(np.arange(1, 6), hk, width=0.8, color=C_BAR, lw=0)
         hists[c].text(0.98, 0.95, f"mean {act.mean():.2f}", transform=hists[c].transAxes,
                       ha="right", va="top", fontsize=FS_T, color=INK)
         stats.append((np.nanmean(v), act.mean(), (kw == 0).mean() * 100))
     cbar = vbar(fig, im, cx[1] + side / 2 + 0.14, y_map, side, fw, fh, "wFWHM (mm)")
     ymax = max(h.get_ylim()[1] for h in hists)
     for c, h in enumerate(hists):
-        h.set_xlim(-0.6, 8.6); h.set_ylim(0, ymax * 1.1)
-        h.set_xticks(range(9)); h.set_xticklabels([str(i) for i in range(8)] + ["≥8"])
+        h.set_xlim(0.4, 5.6); h.set_ylim(0, ymax * 1.1)
+        h.set_xticks(range(1, 6)); h.set_xticklabels([str(i) for i in range(1, 5)] + ["≥5"])
         h.set_xlabel("MPXI", fontsize=FS_L, color=INK, labelpad=2)
         if c == 0:
             h.set_ylabel("% of detectors", fontsize=FS_L, color=INK)
