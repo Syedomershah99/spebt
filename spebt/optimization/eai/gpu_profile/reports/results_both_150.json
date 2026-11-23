@@ -1,0 +1,23 @@
+{
+  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+  "torch": "2.7.1+cu128",
+  "cuda": "12.8",
+  "files": 16,
+  "matrix_GB": 9.477218304,
+  "iters": 150,
+  "campaign": {
+    "seconds": 146.14855390402954,
+    "iterations_run": 150,
+    "seconds_per_iteration": 0.9743236926935303,
+    "peak_gpu_GB": 1.1120624542236328
+  },
+  "resident": {
+    "seconds": 2.863507727975957,
+    "iterations_run": 150,
+    "seconds_per_iteration": 0.019090051519839713,
+    "peak_gpu_GB": 8.987298965454102
+  },
+  "max_abs_diff": 0.0,
+  "max_rel_diff": 0.0,
+  "speedup": 51.038295610724
+}

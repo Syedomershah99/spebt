@@ -69,3 +69,7 @@ spebt/pymatcal/subdivision_fix_validation.png
 # Figure scripts write their PNG next to themselves; the copy that ships
 # lives in deck_figures/ (see deck_figures/SOURCES.md).
 spebt/optimization/*.png
+
+# --- Nsight Systems reports (large binaries; kept on OneDrive) ---
+*.nsys-rep
+*.sqlite
